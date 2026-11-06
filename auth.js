@@ -32,7 +32,7 @@ modal.innerHTML = `<div class="modal-card auth-card">
     <button class="btn block auth-magic" type="button" id="authMagic">email me a sign-in link instead</button>
   </form>
   <p class="auth-msg" id="authMsg"></p>
-  <p class="auth-legal">By continuing you agree to the terms of use and the privacy policy.</p>
+  <p class="auth-legal">By continuing you agree to the <a href="/terms" target="_blank">terms of use</a> and the <a href="/privacy" target="_blank">privacy policy</a>.</p>
 </div>`;
 document.body.append(modal);
 modal.querySelector('[data-close]').onclick = () => modal.classList.add('hidden');

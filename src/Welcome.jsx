@@ -152,7 +152,7 @@ export default function Welcome(){
 
       <footer className="wl-foot">
         <div className="wl-brand small"><Logo size={18} /><span><i>open</i>constructor</span></div>
-        <span><button className="wl-donate" onClick={openDonate}>support the project</button> · effects: React Bits, Magic UI · icons: Lobe Icons</span>
+        <span><button className="wl-donate" onClick={openDonate}>support the project</button> · <a href="/privacy">privacy</a> · <a href="/terms">terms</a> · effects: React Bits, Magic UI · icons: Lobe Icons</span>
       </footer>
     </div>
   );

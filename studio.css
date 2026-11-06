@@ -497,3 +497,5 @@ body.resizing iframe { pointer-events: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; animation-delay: 0s !important; transition-duration: .01ms !important; }
 }
+.auth-legal a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+

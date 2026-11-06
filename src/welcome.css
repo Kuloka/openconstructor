@@ -124,3 +124,5 @@
 .wl-donate { color: #e4572e; }
 .wl-nav nav .wl-gh { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 4px; color: #cbc0bb; font-size: 13px; text-decoration: none; transition: color .15s, background .15s; }
 .wl-nav nav .wl-gh:hover { color: #fff; background: #ffffff0d; }
+.wl-foot a, .wl a[href^='/'] { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+
