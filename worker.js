@@ -258,11 +258,72 @@ async function aiQuota(request, env){
   }
 }
 
+/* ── Roblox Studio sync ──────────────────────────────────────
+   POST /api/sync        (signed in) { code?, spec } → { code }   stores the UI tree under a sync code
+   GET  /api/sync/<code> (public, the code is the secret)        → spec, read by the Studio plugin
+   One KV entry per code: { owner, updated, spec }. Re-syncing with your own code overwrites it. */
+const SYNC_MAX = 1_500_000; // bytes of JSON
+const SYNC_CODE = /^[a-z2-7]{12}$/;
+function newCode(){
+  const abc = 'abcdefghijklmnopqrstuvwxyz234567', b = crypto.getRandomValues(new Uint8Array(12));
+  return [...b].map(x => abc[x & 31]).join('');
+}
+async function supabaseUser(env, token){
+  const r = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, { headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` } });
+  if (!r.ok) return null;
+  const u = await r.json();
+  return u?.id ? u : null;
+}
+async function syncPut(request, env){
+  if (!env.SYNC) return fail(503, 'Roblox sync is not configured.');
+  const token = bearer(request);
+  if (!token) return fail(401, 'Sign in to sync with Roblox Studio.');
+  if ((+request.headers.get('Content-Length') || 0) > SYNC_MAX) return fail(413, 'This UI is too large to sync (1.5 MB max).');
+  const raw = await request.text();
+  if (raw.length > SYNC_MAX) return fail(413, 'This UI is too large to sync (1.5 MB max).');
+  let d; try { d = JSON.parse(raw); } catch { return fail(400, 'Request body must be JSON.'); }
+  const spec = d?.spec;
+  if (!spec || spec.v !== 1 || !spec.tree || spec.tree.c !== 'ScreenGui') return fail(400, 'Not a Roblox UI spec.');
+  const user = await supabaseUser(env, token);
+  if (!user) return fail(401, 'Your session has expired. Sign in again.');
+  // one sync per user every 3 seconds (KV allows one write per key per second anyway)
+  const gate = new Request(`https://sync-gate.invalid/${user.id}`);
+  if (await caches.default.match(gate)) return fail(429, 'Syncing too fast — wait a few seconds.');
+  await caches.default.put(gate, new Response('1', { headers: { 'Cache-Control': 'max-age=3' } }));
+
+  let code = typeof d.code === 'string' && SYNC_CODE.test(d.code) ? d.code : null;
+  if (code) {
+    const prev = await env.SYNC.get('sync:' + code, 'json');
+    if (prev && prev.owner !== user.id) code = null; // someone else's code: issue a fresh one
+  }
+  code ||= newCode();
+  const updated = Date.now();
+  await env.SYNC.put('sync:' + code, JSON.stringify({ owner: user.id, updated, spec }), { metadata: { updated } });
+  return json(200, { code, updated });
+}
+async function syncGet(request, env, ctx, code){
+  if (!env.SYNC) return fail(503, 'Roblox sync is not configured.');
+  if (!SYNC_CODE.test(code)) return fail(404, 'Unknown sync code.');
+  // the plugin's live mode polls: a 3-second edge cache keeps KV reads low
+  const cache = caches.default, key = new Request(new URL(`/api/sync/${code}`, request.url).toString());
+  let res = await cache.match(key);
+  if (!res) {
+    const row = await env.SYNC.get('sync:' + code, 'json');
+    if (!row) return fail(404, 'Unknown sync code. Copy it again from openconstructor → Export → Sync to Roblox Studio.');
+    res = new Response(JSON.stringify({ updated: row.updated, spec: row.spec }), { headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=3' } });
+    ctx.waitUntil(cache.put(key, res.clone()));
+  }
+  return res;
+}
+
 export default {
   async fetch(request, env, ctx){
     const url = new URL(request.url);
     if (url.pathname === '/api/ai' || url.pathname === '/api/ai/') return aiChat(request, env);
     if (url.pathname === '/api/ai/quota') return aiQuota(request, env);
+    if (url.pathname === '/api/sync') return request.method === 'POST' ? syncPut(request, env) : fail(405, 'Method not allowed', { Allow: 'POST' });
+    const sm = /^\/api\/sync\/([^/]+)$/.exec(url.pathname);
+    if (sm) return request.method === 'GET' ? syncGet(request, env, ctx, sm[1]) : fail(405, 'Method not allowed', { Allow: 'GET' });
     if (url.pathname.startsWith('/api/')) return fail(404, 'Not found');
     const m = /^\/p\/([^/]+)\/?$/.exec(url.pathname);
     if (m) { let slug = ''; try { slug = decodeURIComponent(m[1]); } catch {} return servePage(request, env, ctx, slug); }

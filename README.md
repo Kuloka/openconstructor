@@ -19,6 +19,8 @@ Drop ready-made components onto one shared canvas, move them around freely, and 
 - **AI assistant** — 20 free generations a day when signed in (GPT-OSS 120B via a small server proxy), or bring your own key for OpenRouter, Google Gemini, Groq, Cerebras, Mistral, DeepSeek, OpenAI, Anthropic, xAI or Together — those keys stay in your browser and go only to the provider you choose. Paste a screenshot to rebuild it with a vision model.
 - **Edit without code** — double-click to edit text in place, restyle any part, swap in your own image, tune every animation (speed, direction, repeats).
 - **Multi-select** — Shift-click or Shift-drag a box, move together, align & distribute; smart guides while dragging.
+- **Screens & prototypes** — menu → shop → inventory: several screens in one project, link any button to `#screen` and it opens that screen in ▶ play, in the published page and in the Roblox export.
+- **Roblox Studio sync** — install the [plugin](public/roblox/openconstructor-sync.lua), press *Export → Sync to Roblox Studio*, paste the code in Studio: the UI lands in StarterGui with named buttons. *Live* mode re-syncs on every change, and your own button scripts are kept.
 - **Game UI for Roblox** — 25 HUD components and 5 full screens (simulator, tycoon shop, shooter, obby, mobile RPG), Roblox safe-zone overlay, any page size from all four edges.
 - **Publish & share** — one-click public link, community gallery with **remix**, embed code, cloud projects, version history.
 - **VS Code–style layout** — resizable, movable, collapsible panels.

@@ -11,6 +11,8 @@ import '../remix.js';
 import '../versions.js';
 import '../projects.js';
 import '../theme.js';
+import '../screens.js';
+import '../roblox-sync.js';
 import Welcome from './Welcome';
 
 function Composer(){

@@ -1,6 +1,6 @@
 // Voluntary support. Donations are optional and unlock nothing.
 // Configured in .env.local: VITE_DONATE_URL=... and/or VITE_CRYPTO_WALLETS=coin|network|address;...
-import QRCode from 'qrcode';
+// qrcode loads only when the donate window opens
 
 const URL_ = (import.meta.env.VITE_DONATE_URL || '').trim();
 const safeUrl = /^https:\/\//.test(URL_) ? URL_ : '';
@@ -44,7 +44,7 @@ let qrDone = false;
 async function drawQR(){
   if (qrDone) return; qrDone = true;
   for (const img of modal.querySelectorAll('[data-qr]')) {
-    try { img.src = await QRCode.toDataURL(wallets[+img.dataset.qr].address, { margin: 1, width: 192, color: { dark: '#0c0a09', light: '#ffffff' } }); } catch {}
+    try { const { default: QRCode } = await import('qrcode'); img.src = await QRCode.toDataURL(wallets[+img.dataset.qr].address, { margin: 1, width: 192, color: { dark: '#0c0a09', light: '#ffffff' } }); } catch {}
   }
 }
 modal.addEventListener('click', async e => {

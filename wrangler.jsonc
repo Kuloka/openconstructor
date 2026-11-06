@@ -10,6 +10,8 @@
     "enabled": true
   },
   "ai": { "binding": "AI" }, // Cloudflare Workers AI: keyless fallback for the free AI
+  // Roblox Studio sync: /api/sync stores the latest UI per sync code (see roblox/)
+  "kv_namespaces": [{ "binding": "SYNC", "id": "bf90e3c4a70b48f6af0f63d9fc3dd529" }],
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",

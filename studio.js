@@ -1,6 +1,8 @@
-import {presets} from './presets.js';
+// The 200-component catalog is a separate chunk: the editor paints first, the catalog fills in right after
+let presets = [];
+const presetsReady = import('./presets.js').then(m => { presets = m.presets; stats.presets = presets.length; renderLibrary(); return presets; });
 import {CATEGORIES} from './categories.js';
-import { TARGETS, snapshot, toRobloxLuau, toRobloxModel, toLoveLua, toReact, toVue, toSvelte } from './exporters.js';
+import { TARGETS } from './export-targets.js'; // the converters themselves (exporters.js) load on first export
 import { PRESETS as BG_PRESETS, DEFAULT_SPEC as BG_DEFAULT, toCSS as bgCSS, luminance as bgLum, mountBackgroundEditor } from './background.js';
 import logoSvg from './src/logo.svg?raw';
 import { PROVIDERS, byId, listModels, chat, freeQuota } from './providers.js';
@@ -98,7 +100,7 @@ function createNode(item){
   el.innerHTML = `<span class="node-tag"></span><iframe sandbox="allow-same-origin" tabindex="-1" referrerpolicy="no-referrer"></iframe>`;
   const frame = el.querySelector('iframe');
   frame.style.width = page.w + 'px';
-  frame.addEventListener('load', () => { frame._max = null; measure(frame); setTimeout(() => measure(frame), 300); });
+  frame.addEventListener('load', () => { frame._max = null; frame._loaded = true; measure(frame); setTimeout(() => measure(frame), 300); });
   el.classList.add('entering'); el.addEventListener('animationend', () => el.classList.remove('entering'), { once: true });
   board.append(el); nodes.set(item.id, el); return el;
 }
@@ -115,7 +117,7 @@ function render(){
     const el = nodes.get(item.id) || createNode(item);
     const frame = el.querySelector('iframe');
     const key = item.code + '|' + (item.full ? page.w : 0);
-    if (el._key !== key) { el._key = key; frame.title = item.name; frame.srcdoc = nodeDoc(item); }
+    if (el._key !== key) { el._key = key; frame.title = item.name; frame._loaded = false; frame.srcdoc = nodeDoc(item); }
     el.querySelector('.node-tag').textContent = item.name;
     el.style.left = item.x + 'px'; el.style.top = item.y + 'px'; el.style.zIndex = i + 1;
     el.classList.toggle('selected', picked.has(item.id) || selected === item.id);
@@ -701,6 +703,7 @@ $('library').addEventListener('pointerout', e => {
   const f = c.querySelector('iframe'); if (f) holdPreview(f);
 });
 function renderLibrary(){
+  if (!presets.length) { $('library').innerHTML = '<div class="catalog-empty">loading components…</div>'; return; }
   const query = $('catalogSearch').value.trim().toLocaleLowerCase();
   const indexed = presets.map((p, i) => ({ ...p, index: i }));
   const known = new Set(CATEGORIES.map(c => c.id));
@@ -759,27 +762,45 @@ const AI_TARGETS = [
   { id: 'compose', label: 'Jetpack Compose', ext: '.kt', lang: 'a single Kotlin file with Jetpack Compose @Composable functions' },
   { id: 'tailwind', label: 'HTML + Tailwind', ext: '.html', lang: 'one HTML file that uses the Tailwind CSS v4 browser CDN and Tailwind utility classes instead of custom CSS' },
 ];
-function exportTo(t){
-  if (!items.length) { setState('nothing to export: the page is empty', 'warn'); return; }
+// The rendered element frames of the current screen, for snapshot()
+const liveFrames = () => items.map(it => ({ doc: nodes.get(it.id)?.querySelector('iframe')?.contentDocument, x: it.x, y: it.y, name: it.name })).filter(f => f.doc);
+// Visual nodes of every screen ([{ name, slug, page, nodes }]), or null for a single-screen project
+async function snapshotScreens(ex){
+  if (!(studio.screens?.count() > 1)) return null;
+  return studio.screens.collect(() => ex.snapshot(liveFrames()));
+}
+async function exportTo(t){
+  const multi = studio.screens?.count() > 1;
+  if (!items.length && !multi) { setState('nothing to export: the page is empty', 'warn'); return; }
   const title = nameEl.textContent.trim() || 'My interface';
   const withH = items.map(it => ({ ...it, h: nodes.get(it.id)?.offsetHeight || 0 }));
   try {
+    setState('exporting…', 'busy');
+    const ex = await import('./exporters.js');
     if (['luau', 'luau-scale', 'rbxmx', 'love'].includes(t.id)) {
-      const frames = items.map(it => ({ doc: nodes.get(it.id)?.querySelector('iframe')?.contentDocument, x: it.x, y: it.y, name: it.name })).filter(f => f.doc);
-      const snap = snapshot(frames);
-      if (t.id === 'love') download(toLoveLua(snap, page, title), 'main.lua');
-      else if (t.id === 'rbxmx') download(toRobloxModel(snap, page, title), fileBase() + t.ext, 'application/xml');
-      else download(toRobloxLuau(snap, page, title, { scale: t.id === 'luau-scale' }), fileBase() + (t.id === 'luau-scale' ? '.scale' : '') + t.ext);
+      const screens = t.id === 'love' ? null : await snapshotScreens(ex);
+      const snap = screens ? null : ex.snapshot(liveFrames());
+      if (t.id === 'love') download(ex.toLoveLua(snap, page, title), 'main.lua');
+      else if (t.id === 'rbxmx') download(ex.toRobloxModel(snap, page, title, { screens }), fileBase() + t.ext, 'application/xml');
+      else download(ex.toRobloxLuau(snap, page, title, { scale: t.id === 'luau-scale', screens }), fileBase() + (t.id === 'luau-scale' ? '.scale' : '') + t.ext);
+      if (screens) message(`Exported ${screens.length} screens (${screens.map(s => s.name).join(', ')}). Only the first is visible at start; buttons linked to a screen switch to it.`, 'assistant');
     }
-    else if (t.id === 'react') download(toReact(withH, page, title), fileBase() + t.ext);
-    else if (t.id === 'vue') download(toVue(withH, page, title), fileBase() + t.ext);
-    else if (t.id === 'svelte') download(toSvelte(withH, page, title), fileBase() + t.ext);
+    else if (t.id === 'react') download(ex.toReact(withH, page, title), fileBase() + t.ext);
+    else if (t.id === 'vue') download(ex.toVue(withH, page, title), fileBase() + t.ext);
+    else if (t.id === 'svelte') download(ex.toSvelte(withH, page, title), fileBase() + t.ext);
   } catch (e) { setState('export failed: ' + e.message, 'error'); }
+}
+// Roblox Studio sync: the instance tree of all screens as JSON (see roblox/ and worker.js /api/sync)
+export async function robloxSpec(){
+  const ex = await import('./exporters.js');
+  const screens = await snapshotScreens(ex);
+  const title = nameEl.textContent.trim() || 'My interface';
+  return ex.toRobloxSpec(screens ? null : ex.snapshot(liveFrames()), page, title, { screens });
 }
 async function exportWithAI(t){
   if (!items.length) { setState('nothing to export: the page is empty', 'warn'); return; }
   const m = current(), p = byId(m.pid), key = keys[m.pid];
-  if (!key) { openSettings(); $('chatStatus').textContent = 'AI export needs a connected AI provider.'; return; }
+  if (!usable(m.pid)) { openSettings(); $('chatStatus').textContent = 'AI export needs a connected AI provider.'; return; }
   window.dispatchEvent(new CustomEvent('oc:open-chat'));
   message(`Export the page to ${t.label}`, 'user');
   const stop = thinking();
@@ -795,13 +816,50 @@ $('export').onclick = () => {
   const r = $('export').getBoundingClientRect();
   openCtx(r.right - 260, r.bottom + 6, [
     { label: '⬇ HTML page', key: '.html', run: exportHTML },
+    { label: '⟳ Sync to Roblox Studio', key: 'plugin', run: () => window.dispatchEvent(new CustomEvent('oc:roblox-sync')) },
     '-',
     ...TARGETS.map(t => ({ label: t.label, key: t.ext, run: () => exportTo(t) })),
     '-',
     ...AI_TARGETS.map(t => ({ label: '✦ ' + t.label, key: 'ai', run: () => exportWithAI(t) })),
   ]);
 };
+// Several screens → one page: each screen is a <section id="slug">, links to "#slug" switch screens with
+// CSS :target alone (published pages have no scripts). The first screen shows when nothing is targeted.
+function buildScreensHTML(list){
+  const title = escapeHTML(nameEl.textContent.trim() || 'My interface');
+  const css = [], html = [];
+  for (const sc of list) {
+    const pg = sc.page, id = sc.slug, its = sc.items;
+    if (pg.themeCss) css.push(pg.themeCss.replace(/#__root/g, `#${id} .oc-page`));
+    css.push(`#${id}{background:${pg.bg};background-attachment:fixed}`);
+    let body;
+    if (pg.layout === 'stack') {
+      body = `<main class="oc-page oc-stack">\n${[...its].sort((a, b) => a.y - b.y).map(it => it.full ? `<section class="oc-full">\n${it.code}\n</section>` : `<div class="oc-block">\n${it.code}\n</div>`).join('\n')}\n</main>`;
+    } else {
+      const H = Math.max(pg.h, sc.height || 0);
+      body = `<div class="oc-page" style="position:relative;width:${pg.w}px;height:${H}px;margin:0 auto">\n${its.map(it => it.full
+        ? `<div style="position:absolute;left:0;top:${it.y}px;width:${pg.w}px">\n${it.code}\n</div>`
+        : `<div style="position:absolute;left:${it.x}px;top:${it.y}px;padding:${PAD}px">\n${it.code}\n</div>`).join('\n')}\n</div>`;
+    }
+    html.push(`<section class="oc-screen" id="${id}" aria-label="${escapeHTML(sc.name)}">\n${body}\n</section>`);
+  }
+  const anyStack = list.some(s => s.page.layout === 'stack');
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="${anyStack ? 'width=device-width,initial-scale=1' : `width=${list[0].page.w}`}"><title>${title}</title><style>
+html,body{margin:0}body{min-height:100vh;background:${list[0].page.bg};color:#eee;font-family:system-ui}
+.oc-screen{display:none;min-height:100vh}.oc-screen:first-of-type{display:block}
+.oc-screen:target{display:block;animation:oc-in .28s cubic-bezier(.2,.7,.2,1)}
+body:has(.oc-screen:target) .oc-screen:not(:target){display:none}
+@keyframes oc-in{from{opacity:0;transform:translateY(10px)}}
+@media(prefers-reduced-motion:reduce){.oc-screen:target{animation:none}}
+.oc-stack{display:flex;flex-direction:column;gap:${STACK_GAP}px;min-height:100vh;overflow-x:hidden}
+.oc-full{width:100%}.oc-full>*{max-width:100%;box-sizing:border-box}
+.oc-block{display:flex;justify-content:center;padding:0 16px}.oc-block>*{max-width:100%;box-sizing:border-box}
+${css.join('\n')}
+</style></head><body>\n${html.join('\n')}\n</body></html>`;
+}
 function buildHTML(){
+  const screens = studio.screens?.count() > 1 ? studio.screens.forHTML() : null;
+  if (screens) return buildScreensHTML(screens);
   if (isStack()) return buildStackHTML();
   const H = pageHeightNow();
   const body = items.map(it => it.full
@@ -1183,7 +1241,7 @@ canvas.addEventListener('dragleave', () => canvas.classList.remove('drop-shot'))
 canvas.addEventListener('drop', e => { canvas.classList.remove('drop-shot'); const f = [...e.dataTransfer.files].find(x => x.type.startsWith('image/')); if (f) { e.preventDefault(); fromScreenshot(f); } });
 
 /* ── API for the welcome screen, menus and feature modules (publish, projects, theme…) ── */
-export const stats = { presets: presets.length };
+export const stats = { presets: 200, ready: presetsReady };
 export const studio = {
   // read
   items: () => items.map(x => ({ ...x })),
@@ -1197,10 +1255,29 @@ export const studio = {
   setPage(patch, { refresh = false } = {}){ page = { ...page, ...patch }; store.set('oc-page', page); if (refresh) for (const el of nodes.values()) el._key = null; render(); },
   load({ items: list = [], page: pg, name } = {}){
     checkpoint(); items = list.map(x => ({ id: x.id || crypto.randomUUID(), ...x }));
-    if (pg) { page = { ...page, ...pg }; store.set('oc-page', page); syncPageSize(); syncSwatches(); }
+    // a loaded project brings its own screens (or none) — never keep the previous project's
+    if (pg) { page = { ...page, screens: undefined, screen: undefined, ...pg }; store.set('oc-page', page); syncPageSize(); syncSwatches(); }
+    window.dispatchEvent(new CustomEvent('oc:screens'));
     if (name) { nameEl.textContent = name; store.set('oc-name', name); }
     selected = null; for (const el of nodes.values()) el._key = null; render(); requestAnimationFrame(fitZoom);
   },
+  // Switch the canvas to another screen's content: no undo step (undo history is per screen)
+  swap({ items: list = [], page: pg = {} }){
+    items = list.map(x => ({ id: x.id || crypto.randomUUID(), ...x })); history = [];
+    page = { ...pg }; store.set('oc-page', page); syncPageSize(); syncSwatches(); drawZones();
+    selected = null; picked.clear(); for (const el of nodes.values()) el._key = null; render(); requestAnimationFrame(fitZoom);
+  },
+  // Resolves once every element frame has loaded and been measured (for exports that read the DOM)
+  async rendered(timeout = 4000){
+    const t0 = performance.now();
+    while (performance.now() - t0 < timeout && [...nodes.values()].some(el => !el.querySelector('iframe')._loaded)) await new Promise(r => setTimeout(r, 50));
+    await new Promise(r => setTimeout(r, 380));
+  },
+  layoutNow: () => layout(),
+  contentHeight: () => pageHeightNow(),
+  // set by screens.js: { count(), collect(snap), forHTML() }
+  screens: null,
+  isPlaying: () => playing,
   // feedback
   status: (text, kind) => setState(text, kind),
   say: (text, role = 'assistant') => message(text, role),

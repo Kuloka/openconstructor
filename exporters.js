@@ -4,15 +4,7 @@
 //  - toReact / toVue / toSvelte         wrap the raw HTML+CSS items in one component file
 // No dependencies; snapshot() needs a browser, everything else is pure string building.
 
-export const TARGETS = [
-  { id: 'luau', label: 'Roblox (Luau)', ext: '.client.lua' },
-  { id: 'luau-scale', label: 'Roblox (Luau, scale)', ext: '.client.lua' },
-  { id: 'rbxmx', label: 'Roblox model (.rbxmx)', ext: '.rbxmx' },
-  { id: 'love', label: 'LÖVE 2D (Lua)', ext: '.lua' },
-  { id: 'react', label: 'React (JSX)', ext: '.jsx' },
-  { id: 'vue', label: 'Vue SFC', ext: '.vue' },
-  { id: 'svelte', label: 'Svelte', ext: '.svelte' },
-];
+export { TARGETS } from './export-targets.js';
 
 const PAD = 16, MAX_NODES = 1500, MAX_DEPTH = 200;
 
@@ -303,8 +295,8 @@ export function snapshot(frames) {
           const isButton = tag === 'BUTTON' || role === 'button' || (tag === 'A' && hasBox);
           if (visible && hasSize && isButton) {
             // label = all text inside (incl. child spans) or aria-label/title — used to name the Roblox button
-            const label = (el.innerText || el.textContent || '').replace(/s+/g, ' ').trim().slice(0, 40) || el.getAttribute('aria-label') || el.getAttribute('title') || '';
-            push({ ...base, kind: 'button', text, label, seq: seq++, z });
+            const label = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 40) || el.getAttribute('aria-label') || el.getAttribute('title') || '';
+            push({ ...base, kind: 'button', text, label, href: el.closest('a')?.getAttribute('href') || '', seq: seq++, z });
             text = '';
           } else if (visible && hasSize && MEDIA.has(tag)) {
             descend = false;
@@ -404,9 +396,10 @@ function buttonNamer() {
 // root fills the screen with a UIAspectRatioConstraint. Default: pixel offsets + UIScale fit.
 export function toRobloxLuau(nodes, page, title, opts = {}) {
   const S = !!opts?.scale;
-  const list = safeNodes(nodes);
-  const W = Math.round(+page?.w || 1440), H = pageHeight(list, page || {});
-  const pbg = parseBackground(page?.bg);
+  // opts.screens: [{ name, slug, nodes, page }] — several screens, buttons linking to '#slug' switch between them
+  const screens = opts?.screens?.length ? opts.screens : [{ name: 'Page', slug: '', nodes, page }];
+  const multi = screens.length > 1;
+  const W = Math.round(+screens[0].page?.w || 1440), H = pageHeight(safeNodes(screens[0].nodes), screens[0].page || {});
   const L = [];
   L.push(
     `--[[`,
@@ -420,6 +413,7 @@ export function toRobloxLuau(nodes, page, title, opts = {}) {
     ...(S ? [`  keeps its aspect ratio and the text resizes itself (TextScaled).`] : []),
     `  Every button is named after its label and collected in the \`buttons\` table;`,
     `  click handlers with TODOs are at the bottom of the file — put your game logic there.`,
+    ...(multi ? [`  Screens: ${luaComment(screens.map(sc => sc.name).join(', '))}. Only the first is visible;`, `  show("Name") opens another one (buttons linked to a screen already call it).`] : []),
     `]]`,
     ``,
     `local Players = game:GetService("Players")`,
@@ -454,74 +448,100 @@ export function toRobloxLuau(nodes, page, title, opts = {}) {
     ] : []),
     `local buttons = {} -- every TextButton by name`,
     ``,
-    `local W, H = ${W}, ${H}`,
     `local gui = make("ScreenGui", {Name = ${luaStr(title || 'Interface')}, ResetOnSpawn = false, IgnoreGuiInset = true, ZIndexBehavior = Enum.ZIndexBehavior.Sibling}, playerGui)`,
-    `local root = make("Frame", {Name = "Page", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = ${S ? 'UDim2.fromScale(1, 1)' : 'UDim2.fromOffset(W, H)'}, BackgroundColor3 = ${pbg.gradient ? 'Color3.new(1, 1, 1)' : rgb3(pbg.color)}, BackgroundTransparency = ${transp(pbg.gradient ? 1 : pbg.color.a)}, BorderSizePixel = 0, ClipsDescendants = true}, gui)`,
-  );
-  if (pbg.gradient) L.push(`gradient(root, ${luauRotation(pbg.gradient.angle)}, ${luauGradientStops(pbg.gradient)})`);
-  if (S) L.push(
-    `make("UIAspectRatioConstraint", {AspectRatio = W / H, AspectType = Enum.AspectType.FitWithinMaxSize, DominantAxis = Enum.DominantAxis.Width}, root)`,
-    ``,
-    `local o`,
-  );
-  else L.push(
-    `local scale = make("UIScale", {}, root)`,
-    `local function fit()`,
-    `\tlocal vp = workspace.CurrentCamera.ViewportSize`,
-    `\tscale.Scale = math.min(vp.X / W, vp.Y / H)`,
-    `end`,
-    `fit()`,
-    `workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fit)`,
-    ``,
-    `local o`,
+    ...(multi ? [
+      `local screens = {} -- every screen Frame by name`,
+      `local function show(name) -- open one screen, hide the others`,
+      `\tfor n, f in pairs(screens) do f.Visible = (n == name) end`,
+      `end`,
+    ] : []),
+    ...(S ? [] : [
+      `local scales = {} -- {UIScale, width, height} per screen: the design is scaled to fit the viewport`,
+      `local function fit()`,
+      `\tlocal vp = workspace.CurrentCamera.ViewportSize`,
+      `\tfor _, s in ipairs(scales) do s[1].Scale = math.min(vp.X / s[2], vp.Y / s[3]) end`,
+      `end`,
+    ]),
   );
 
   const namer = buttonNamer(), uniqueName = namer.next, btnNames = namer.names;
+  const goes = new Map(); // button name → screen it opens
+  const bySlug = new Map(screens.map(sc => [sc.slug, sc.name]));
 
-  for (const n of list) {
-    const op = clamp(+n.opacity || 1, 0, 1);
-    const color = n.color || { r: 238, g: 238, b: 238, a: 1 };
-    const font = isMono(n.fontFamily) ? 'Enum.Font.Code' : (+n.fontWeight || 400) >= 600 ? 'Enum.Font.GothamBold' : 'Enum.Font.Gotham';
-    const xa = n.align === 'center' ? 'Center' : n.align === 'right' ? 'Right' : 'Left';
-    const textProps = t => `Text = ${luaStr(t)}, TextColor3 = ${rgb3(color)}, TextTransparency = ${transp(color.a * op)}, TextSize = ${int(n.fontSize || 14)}, Font = ${font}, TextXAlignment = Enum.TextXAlignment.${xa}, TextWrapped = true` + (S ? ', TextScaled = true' : '');
-    const { x, w } = slack(n);
-    const geo = S
-      ? `Name = ${luaStr(n.name || n.kind)}, Position = UDim2.fromScale(${frac(x, W)}, ${frac(n.y, H)}), Size = UDim2.fromScale(${frac(w, W)}, ${frac(n.h, H)}), ZIndex = ${int(n.zIndex) || 1}, BorderSizePixel = 0`
-      : `Name = ${luaStr(n.name || n.kind)}, Position = UDim2.fromOffset(${num(x)}, ${num(n.y)}), Size = UDim2.fromOffset(${num(w)}, ${num(n.h)}), ZIndex = ${int(n.zIndex) || 1}, BorderSizePixel = 0`;
-    const maxT = S ? ` maxText(o, ${int(n.fontSize || 14)})` : '';
-    const padLR = () => S ? ` padS(o, ${frac(Math.max(0, +n.pad[1] || 0), w)}, ${frac(Math.max(0, +n.pad[3] || 0), w)})` : ` pad(o, 0, ${p[1]}, 0, ${p[3]})`;
-    const bgProps = () => n.gradient
-      ? `BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = ${transp(op)}`
-      : n.bg ? `BackgroundColor3 = ${rgb3(n.bg)}, BackgroundTransparency = ${transp(n.bg.a * op)}` : `BackgroundTransparency = 1`;
-    const decorate = () => {
-      const extra = [];
-      if (n.radius > 0) extra.push(`corner(o, ${num(n.radius)})`);
-      if (n.border && n.border.w > 0) extra.push(`stroke(o, ${num(n.border.w)}, ${rgb3(n.border.color)}, ${transp(n.border.color.a * op)})`);
-      if (n.gradient && n.gradient.stops?.length) extra.push(`gradient(o, ${luauRotation(n.gradient.angle)}, ${luauGradientStops(n.gradient)})`);
-      return extra.length ? ' ' + extra.join(' ') : '';
-    };
-    const p = Array.isArray(n.pad) ? n.pad.map(v => num(Math.max(0, +v || 0))) : null;
-    if (n.kind === 'text') {
-      const multi = n.h > (n.fontSize || 14) * 1.9;
-      const label = `make("TextLabel", {${geo}, BackgroundTransparency = 1, ${textProps(n.text)}, TextYAlignment = Enum.TextYAlignment.${multi ? 'Top' : 'Center'}}, root)`;
-      L.push(S ? `o = ${label}${maxT}` : label);
-    } else if (n.kind === 'button') {
-      const bname = uniqueName(n.text || n.label || 'Button');
-      L.push(`o = make("TextButton", {${geo}, ${bgProps()}, AutoButtonColor = true, ${textProps(n.text || '')}}, root)` + maxT + decorate() + (p && n.align !== 'center' ? padLR() : '') + ` o.Name = ${luaStr(bname)} buttons[${luaStr(bname)}] = o`);
-    } else if (n.kind === 'input') {
-      const ph = { r: color.r * 0.6, g: color.g * 0.6, b: color.b * 0.6 }; // Color3 has no alpha: dim instead
-      L.push(`o = make("TextBox", {${geo}, ${bgProps()}, ClearTextOnFocus = false, PlaceholderText = ${luaStr(n.placeholder || '')}, PlaceholderColor3 = ${rgb3(ph)}, ${textProps(n.text || '')}}, root)` + maxT + decorate() + (p ? padLR() : ''));
-    } else {
-      // box / icon
-      L.push(`o = make("Frame", {${geo}, ${bgProps()}}, root)` + decorate());
+  screens.forEach((sc, si) => {
+    const list = safeNodes(sc.nodes);
+    const W = Math.round(+sc.page?.w || 1440), H = pageHeight(list, sc.page || {});
+    const pbg = parseBackground(sc.page?.bg);
+    const rootName = multi ? sc.name : 'Page';
+    if (multi) L.push('', `-- ── Screen: ${luaComment(sc.name)} ──`, `do`);
+    L.push(
+      `local W, H = ${W}, ${H}`,
+      `local root = make("Frame", {Name = ${luaStr(rootName)}, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = ${S ? 'UDim2.fromScale(1, 1)' : 'UDim2.fromOffset(W, H)'}, BackgroundColor3 = ${pbg.gradient ? 'Color3.new(1, 1, 1)' : rgb3(pbg.color)}, BackgroundTransparency = ${transp(pbg.gradient ? 1 : pbg.color.a)}, BorderSizePixel = 0, ClipsDescendants = true${multi ? `, Visible = ${si === 0}` : ''}}, gui)`,
+    );
+    if (multi) L.push(`screens[${luaStr(sc.name)}] = root`);
+    if (pbg.gradient) L.push(`gradient(root, ${luauRotation(pbg.gradient.angle)}, ${luauGradientStops(pbg.gradient)})`);
+    if (S) L.push(`make("UIAspectRatioConstraint", {AspectRatio = W / H, AspectType = Enum.AspectType.FitWithinMaxSize, DominantAxis = Enum.DominantAxis.Width}, root)`);
+    else L.push(`table.insert(scales, {make("UIScale", {}, root), W, H})`);
+    L.push(``, `local o`);
+
+    for (const n of list) {
+      const op = clamp(+n.opacity || 1, 0, 1);
+      const color = n.color || { r: 238, g: 238, b: 238, a: 1 };
+      const font = isMono(n.fontFamily) ? 'Enum.Font.Code' : (+n.fontWeight || 400) >= 600 ? 'Enum.Font.GothamBold' : 'Enum.Font.Gotham';
+      const xa = n.align === 'center' ? 'Center' : n.align === 'right' ? 'Right' : 'Left';
+      const textProps = t => `Text = ${luaStr(t)}, TextColor3 = ${rgb3(color)}, TextTransparency = ${transp(color.a * op)}, TextSize = ${int(n.fontSize || 14)}, Font = ${font}, TextXAlignment = Enum.TextXAlignment.${xa}, TextWrapped = true` + (S ? ', TextScaled = true' : '');
+      const { x, w } = slack(n);
+      const geo = S
+        ? `Name = ${luaStr(n.name || n.kind)}, Position = UDim2.fromScale(${frac(x, W)}, ${frac(n.y, H)}), Size = UDim2.fromScale(${frac(w, W)}, ${frac(n.h, H)}), ZIndex = ${int(n.zIndex) || 1}, BorderSizePixel = 0`
+        : `Name = ${luaStr(n.name || n.kind)}, Position = UDim2.fromOffset(${num(x)}, ${num(n.y)}), Size = UDim2.fromOffset(${num(w)}, ${num(n.h)}), ZIndex = ${int(n.zIndex) || 1}, BorderSizePixel = 0`;
+      const maxT = S ? ` maxText(o, ${int(n.fontSize || 14)})` : '';
+      const p = Array.isArray(n.pad) ? n.pad.map(v => num(Math.max(0, +v || 0))) : null;
+      const padLR = () => S ? ` padS(o, ${frac(Math.max(0, +n.pad[1] || 0), w)}, ${frac(Math.max(0, +n.pad[3] || 0), w)})` : ` pad(o, 0, ${p[1]}, 0, ${p[3]})`;
+      const bgProps = () => n.gradient
+        ? `BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = ${transp(op)}`
+        : n.bg ? `BackgroundColor3 = ${rgb3(n.bg)}, BackgroundTransparency = ${transp(n.bg.a * op)}` : `BackgroundTransparency = 1`;
+      const decorate = () => {
+        const extra = [];
+        if (n.radius > 0) extra.push(`corner(o, ${num(n.radius)})`);
+        if (n.border && n.border.w > 0) extra.push(`stroke(o, ${num(n.border.w)}, ${rgb3(n.border.color)}, ${transp(n.border.color.a * op)})`);
+        if (n.gradient && n.gradient.stops?.length) extra.push(`gradient(o, ${luauRotation(n.gradient.angle)}, ${luauGradientStops(n.gradient)})`);
+        return extra.length ? ' ' + extra.join(' ') : '';
+      };
+      if (n.kind === 'text') {
+        const multiLine = n.h > (n.fontSize || 14) * 1.9;
+        const label = `make("TextLabel", {${geo}, BackgroundTransparency = 1, ${textProps(n.text)}, TextYAlignment = Enum.TextYAlignment.${multiLine ? 'Top' : 'Center'}}, root)`;
+        L.push(S ? `o = ${label}${maxT}` : label);
+      } else if (n.kind === 'button') {
+        const bname = uniqueName(n.text || n.label || 'Button');
+        const target = multi && screenLink(n.href) != null ? bySlug.get(screenLink(n.href)) : null;
+        if (target) goes.set(bname, target);
+        L.push(`o = make("TextButton", {${geo}, ${bgProps()}, AutoButtonColor = true, ${textProps(n.text || '')}}, root)` + maxT + decorate() + (p && n.align !== 'center' ? padLR() : '') + ` o.Name = ${luaStr(bname)} buttons[${luaStr(bname)}] = o`);
+      } else if (n.kind === 'input') {
+        const ph = { r: color.r * 0.6, g: color.g * 0.6, b: color.b * 0.6 }; // Color3 has no alpha: dim instead
+        L.push(`o = make("TextBox", {${geo}, ${bgProps()}, ClearTextOnFocus = false, PlaceholderText = ${luaStr(n.placeholder || '')}, PlaceholderColor3 = ${rgb3(ph)}, ${textProps(n.text || '')}}, root)` + maxT + decorate() + (p ? padLR() : ''));
+      } else {
+        // box / icon
+        L.push(`o = make("Frame", {${geo}, ${bgProps()}}, root)` + decorate());
+      }
     }
-  }
+    if (multi) L.push(`end`);
+  });
+  if (!S) L.push('', `fit()`, `workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fit)`);
   if (btnNames.length) {
     L.push('', '-- ── Buttons: put your game logic in these handlers ──');
-    for (const b of btnNames) L.push(`buttons[${luaStr(b)}].MouseButton1Click:Connect(function()`, `\t-- TODO: what happens when ${luaComment(b)} is clicked`, `\tprint("clicked", ${luaStr(b)})`, `end)`);
+    for (const b of btnNames) L.push(...buttonHandler(b, goes.get(b)));
   }
   L.push('');
   return L.join('\n');
+}
+
+// "#shop" → "shop" (a link to another screen), anything else → null
+function screenLink(href) { const m = /^#([\w-]+)$/.exec(String(href || '').trim()); return m ? m[1] : null; }
+// one click handler: opens the linked screen, or a TODO stub for your own game logic
+function buttonHandler(b, target) {
+  return target
+    ? [`buttons[${luaStr(b)}].MouseButton1Click:Connect(function()`, `\tshow(${luaStr(target)})`, `end)`]
+    : [`buttons[${luaStr(b)}].MouseButton1Click:Connect(function()`, `\t-- TODO: what happens when ${luaComment(b)} is clicked`, `\tprint("clicked", ${luaStr(b)})`, `end)`];
 }
 
 /* ── 2b. Roblox XML model (.rbxmx) ───────────────────────── */
@@ -543,19 +563,21 @@ const TOKEN = {
 };
 
 // property builders → [xmlTypeTag, name, innerXml]
+// The 4th element is the same value as plain data, for the Roblox Studio sync plugin (toRobloxSpec).
+const FONT_URL = mono => mono ? 'rbxasset://fonts/families/RobotoMono.json' : 'rbxasset://fonts/families/GothamSSm.json';
 const P = {
-  str: (name, v) => ['string', name, xmlText(v)],
-  bool: (name, v) => ['bool', name, v ? 'true' : 'false'],
-  int: (name, v) => ['int', name, String(int(v))],
-  float: (name, v) => ['float', name, xf(v)],
-  token: (name, v) => ['token', name, String(int(v))],
-  color: (name, c) => { const k = c01(c); return ['Color3', name, `<R>${xf(k.r)}</R><G>${xf(k.g)}</G><B>${xf(k.b)}</B>`]; },
-  udim2: (name, xs, xo, ys, yo) => ['UDim2', name, `<XS>${xf(xs)}</XS><XO>${int(xo)}</XO><YS>${xf(ys)}</YS><YO>${int(yo)}</YO>`],
-  udim: (name, s, o) => ['UDim', name, `<S>${xf(s)}</S><O>${int(o)}</O>`],
-  vec2: (name, x, y) => ['Vector2', name, `<X>${xf(x)}</X><Y>${xf(y)}</Y>`],
+  str: (name, v) => ['string', name, xmlText(v), String(v ?? '')],
+  bool: (name, v) => ['bool', name, v ? 'true' : 'false', !!v],
+  int: (name, v) => ['int', name, String(int(v)), int(v)],
+  float: (name, v) => ['float', name, xf(v), +xf(v)],
+  token: (name, v) => ['token', name, String(int(v)), int(v)],
+  color: (name, c) => { const k = c01(c); return ['Color3', name, `<R>${xf(k.r)}</R><G>${xf(k.g)}</G><B>${xf(k.b)}</B>`, [+xf(k.r), +xf(k.g), +xf(k.b)]]; },
+  udim2: (name, xs, xo, ys, yo) => ['UDim2', name, `<XS>${xf(xs)}</XS><XO>${int(xo)}</XO><YS>${xf(ys)}</YS><YO>${int(yo)}</YO>`, [+xf(xs), int(xo), +xf(ys), int(yo)]],
+  udim: (name, s, o) => ['UDim', name, `<S>${xf(s)}</S><O>${int(o)}</O>`, [+xf(s), int(o)]],
+  vec2: (name, x, y) => ['Vector2', name, `<X>${xf(x)}</X><Y>${xf(y)}</Y>`, [+xf(x), +xf(y)]],
   font: (name, mono, bold) => ['Font', name,
-    `<Family><url>${mono ? 'rbxasset://fonts/families/RobotoMono.json' : 'rbxasset://fonts/families/GothamSSm.json'}</url></Family><Weight>${bold ? 700 : 400}</Weight><Style>Normal</Style>`],
-  source: (name, code) => ['ProtectedString', name, `<![CDATA[${String(code).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g, '').replace(/\]\]>/g, ']]]]><![CDATA[>')}]]>`],
+    `<Family><url>${FONT_URL(mono)}</url></Family><Weight>${bold ? 700 : 400}</Weight><Style>Normal</Style>`, [FONT_URL(mono), bold ? 700 : 400]],
+  source: (name, code) => ['ProtectedString', name, `<![CDATA[${String(code).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g, '').replace(/\]\]>/g, ']]]]><![CDATA[>')}]]>`, String(code)],
 };
 
 // same stop normalisation as luauGradientStops, as data
@@ -572,116 +594,139 @@ function gradientKeypoints(g, opacity = 1) {
 const gradientItem = (g, opacity = 1) => {
   const k = gradientKeypoints(g, opacity);
   return { cls: 'UIGradient', props: [P.str('Name', 'UIGradient'), P.float('Rotation', ((g.angle - 90) % 360 + 360) % 360),
-    ['ColorSequence', 'Color', k.map(p => `${xf(p.t)} ${xf(p.c.r)} ${xf(p.c.g)} ${xf(p.c.b)} 0`).join(' ') + ' '],
-    ['NumberSequence', 'Transparency', k.map(p => `${xf(p.t)} ${xf(p.tr)} 0`).join(' ') + ' ']] };
+    ['ColorSequence', 'Color', k.map(p => `${xf(p.t)} ${xf(p.c.r)} ${xf(p.c.g)} ${xf(p.c.b)} 0`).join(' ') + ' ', k.map(p => [+xf(p.t), +xf(p.c.r), +xf(p.c.g), +xf(p.c.b)])],
+    ['NumberSequence', 'Transparency', k.map(p => `${xf(p.t)} ${xf(p.tr)} 0`).join(' ') + ' ', k.map(p => [+xf(p.t), +xf(p.tr)])]] };
 };
 
 export function toRobloxModel(nodes, page, title, opts = {}) {
   const S = !!opts?.scale;
-  const list = safeNodes(nodes);
-  const W = Math.round(+page?.w || 1440), H = pageHeight(list, page || {});
-  const pbg = parseBackground(page?.bg);
+  // opts.screens: [{ name, slug, nodes, page }] — one Frame per screen, the first one visible
+  const screens = opts?.screens?.length ? opts.screens : [{ name: 'Page', slug: '', nodes, page }];
+  const multi = screens.length > 1;
   const namer = buttonNamer();
+  const goes = new Map(); // button name → screen it opens
+  const bySlug = new Map(screens.map(sc => [sc.slug, sc.name]));
+  const sizes = []; // [frame name, W, H]
 
-  const rootProps = [
-    P.str('Name', 'Page'), P.vec2('AnchorPoint', 0.5, 0.5), P.udim2('Position', 0.5, 0, 0.5, 0),
-    S ? P.udim2('Size', 1, 0, 1, 0) : P.udim2('Size', 0, W, 0, H),
-    P.color('BackgroundColor3', pbg.gradient ? { r: 255, g: 255, b: 255 } : pbg.color),
-    P.float('BackgroundTransparency', clamp(1 - (pbg.gradient ? 1 : pbg.color.a), 0, 1)),
-    P.int('BorderSizePixel', 0), P.bool('ClipsDescendants', true),
-  ];
-  const rootKids = [];
-  if (pbg.gradient) rootKids.push(gradientItem(pbg.gradient));
-  rootKids.push(S
-    ? { cls: 'UIAspectRatioConstraint', props: [P.str('Name', 'UIAspectRatioConstraint'), P.float('AspectRatio', W / H), P.token('AspectType', TOKEN.AspectType.FitWithinMaxSize), P.token('DominantAxis', TOKEN.DominantAxis.Width)] }
-    : { cls: 'UIScale', props: [P.str('Name', 'UIScale'), P.float('Scale', 1)] });
-
-  for (const n of list) {
-    const op = clamp(+n.opacity || 1, 0, 1);
-    const color = n.color || { r: 238, g: 238, b: 238, a: 1 };
-    const { x, w } = slack(n);
-    const props = [
-      P.str('Name', n.name || n.kind),
-      S ? P.udim2('Position', +frac(x, W), 0, +frac(n.y, H), 0) : P.udim2('Position', 0, Math.round(x), 0, Math.round(n.y)),
-      S ? P.udim2('Size', +frac(w, W), 0, +frac(n.h, H), 0) : P.udim2('Size', 0, Math.round(w), 0, Math.round(n.h)),
-      P.int('ZIndex', int(n.zIndex) || 1), P.int('BorderSizePixel', 0),
+  const frames = screens.map((sc, si) => {
+    const list = safeNodes(sc.nodes);
+    const W = Math.round(+sc.page?.w || 1440), H = pageHeight(list, sc.page || {});
+    const pbg = parseBackground(sc.page?.bg);
+    const rootName = multi ? sc.name : 'Page';
+    sizes.push([rootName, W, H]);
+    const rootProps = [
+      P.str('Name', rootName), P.vec2('AnchorPoint', 0.5, 0.5), P.udim2('Position', 0.5, 0, 0.5, 0),
+      S ? P.udim2('Size', 1, 0, 1, 0) : P.udim2('Size', 0, W, 0, H),
+      P.color('BackgroundColor3', pbg.gradient ? { r: 255, g: 255, b: 255 } : pbg.color),
+      P.float('BackgroundTransparency', clamp(1 - (pbg.gradient ? 1 : pbg.color.a), 0, 1)),
+      P.int('BorderSizePixel', 0), P.bool('ClipsDescendants', true), P.bool('Visible', si === 0),
     ];
-    const kids = [];
-    const fill = bgFill(n, op);
-    const addBg = () => {
-      if (fill) props.push(P.color('BackgroundColor3', fill.color), P.float('BackgroundTransparency', clamp(fill.t, 0, 1)));
-      else props.push(P.float('BackgroundTransparency', 1));
-    };
-    const addText = t => {
-      const xa = n.align === 'center' ? 'Center' : n.align === 'right' ? 'Right' : 'Left';
-      props.push(P.str('Text', t), P.color('TextColor3', color), P.float('TextTransparency', clamp(1 - color.a * op, 0, 1)),
-        P.float('TextSize', int(n.fontSize || 14)), P.font('FontFace', isMono(n.fontFamily), !isMono(n.fontFamily) && fontWeightBold(n)),
-        P.token('TextXAlignment', TOKEN.TextXAlignment[xa]), P.bool('TextWrapped', true), P.bool('TextScaled', S));
-      if (S) kids.push({ cls: 'UITextSizeConstraint', props: [P.str('Name', 'UITextSizeConstraint'), P.int('MaxTextSize', int(n.fontSize || 14)), P.int('MinTextSize', 1)] });
-    };
-    const decorate = () => {
-      if (n.radius > 0) kids.push({ cls: 'UICorner', props: [P.str('Name', 'UICorner'), P.udim('CornerRadius', 0, Math.round(n.radius))] });
-      if (n.border && n.border.w > 0) kids.push({ cls: 'UIStroke', props: [P.str('Name', 'UIStroke'), P.float('Thickness', n.border.w), P.color('Color', n.border.color),
-        P.float('Transparency', clamp(1 - n.border.color.a * op, 0, 1)), P.token('ApplyStrokeMode', TOKEN.ApplyStrokeMode.Border)] });
-      if (n.gradient && n.gradient.stops?.length) kids.push(gradientItem(n.gradient));
-    };
-    const addPad = () => {
-      if (!Array.isArray(n.pad)) return;
-      const r = Math.max(0, +n.pad[1] || 0), l = Math.max(0, +n.pad[3] || 0);
-      kids.push({ cls: 'UIPadding', props: [P.str('Name', 'UIPadding'),
-        P.udim('PaddingTop', 0, 0), P.udim('PaddingBottom', 0, 0),
-        S ? P.udim('PaddingRight', +frac(r, w), 0) : P.udim('PaddingRight', 0, Math.round(r)),
-        S ? P.udim('PaddingLeft', +frac(l, w), 0) : P.udim('PaddingLeft', 0, Math.round(l))] });
-    };
-    let cls;
-    if (n.kind === 'text') {
-      cls = 'TextLabel';
-      props.push(P.float('BackgroundTransparency', 1));
-      addText(n.text);
-      props.push(P.token('TextYAlignment', n.h > (n.fontSize || 14) * 1.9 ? TOKEN.TextYAlignment.Top : TOKEN.TextYAlignment.Center));
-    } else if (n.kind === 'button') {
-      cls = 'TextButton';
-      props[0] = P.str('Name', namer.next(n.text || n.label || 'Button'));
-      addBg(); props.push(P.bool('AutoButtonColor', true)); addText(n.text || '');
-      decorate(); if (n.align !== 'center') addPad();
-    } else if (n.kind === 'input') {
-      cls = 'TextBox';
-      addBg();
-      props.push(P.bool('ClearTextOnFocus', false), P.str('PlaceholderText', n.placeholder || ''), P.color('PlaceholderColor3', { r: color.r * 0.6, g: color.g * 0.6, b: color.b * 0.6 }));
-      addText(n.text || ''); decorate(); addPad();
-    } else {
-      cls = 'Frame'; addBg(); decorate();
-    }
-    rootKids.push({ cls, props, kids });
-  }
+    const rootKids = [];
+    if (pbg.gradient) rootKids.push(gradientItem(pbg.gradient));
+    rootKids.push(S
+      ? { cls: 'UIAspectRatioConstraint', props: [P.str('Name', 'UIAspectRatioConstraint'), P.float('AspectRatio', W / H), P.token('AspectType', TOKEN.AspectType.FitWithinMaxSize), P.token('DominantAxis', TOKEN.DominantAxis.Width)] }
+      : { cls: 'UIScale', props: [P.str('Name', 'UIScale'), P.float('Scale', 1)] });
 
-  // drag-and-drop script: only wiring (plus the UIScale fit in offset mode)
+    for (const n of list) {
+      const op = clamp(+n.opacity || 1, 0, 1);
+      const color = n.color || { r: 238, g: 238, b: 238, a: 1 };
+      const { x, w } = slack(n);
+      const props = [
+        P.str('Name', n.name || n.kind),
+        S ? P.udim2('Position', +frac(x, W), 0, +frac(n.y, H), 0) : P.udim2('Position', 0, Math.round(x), 0, Math.round(n.y)),
+        S ? P.udim2('Size', +frac(w, W), 0, +frac(n.h, H), 0) : P.udim2('Size', 0, Math.round(w), 0, Math.round(n.h)),
+        P.int('ZIndex', int(n.zIndex) || 1), P.int('BorderSizePixel', 0),
+      ];
+      const kids = [];
+      const fill = bgFill(n, op);
+      const addBg = () => {
+        if (fill) props.push(P.color('BackgroundColor3', fill.color), P.float('BackgroundTransparency', clamp(fill.t, 0, 1)));
+        else props.push(P.float('BackgroundTransparency', 1));
+      };
+      const addText = t => {
+        const xa = n.align === 'center' ? 'Center' : n.align === 'right' ? 'Right' : 'Left';
+        props.push(P.str('Text', t), P.color('TextColor3', color), P.float('TextTransparency', clamp(1 - color.a * op, 0, 1)),
+          P.float('TextSize', int(n.fontSize || 14)), P.font('FontFace', isMono(n.fontFamily), !isMono(n.fontFamily) && fontWeightBold(n)),
+          P.token('TextXAlignment', TOKEN.TextXAlignment[xa]), P.bool('TextWrapped', true), P.bool('TextScaled', S));
+        if (S) kids.push({ cls: 'UITextSizeConstraint', props: [P.str('Name', 'UITextSizeConstraint'), P.int('MaxTextSize', int(n.fontSize || 14)), P.int('MinTextSize', 1)] });
+      };
+      const decorate = () => {
+        if (n.radius > 0) kids.push({ cls: 'UICorner', props: [P.str('Name', 'UICorner'), P.udim('CornerRadius', 0, Math.round(n.radius))] });
+        if (n.border && n.border.w > 0) kids.push({ cls: 'UIStroke', props: [P.str('Name', 'UIStroke'), P.float('Thickness', n.border.w), P.color('Color', n.border.color),
+          P.float('Transparency', clamp(1 - n.border.color.a * op, 0, 1)), P.token('ApplyStrokeMode', TOKEN.ApplyStrokeMode.Border)] });
+        if (n.gradient && n.gradient.stops?.length) kids.push(gradientItem(n.gradient));
+      };
+      const addPad = () => {
+        if (!Array.isArray(n.pad)) return;
+        const r = Math.max(0, +n.pad[1] || 0), l = Math.max(0, +n.pad[3] || 0);
+        kids.push({ cls: 'UIPadding', props: [P.str('Name', 'UIPadding'),
+          P.udim('PaddingTop', 0, 0), P.udim('PaddingBottom', 0, 0),
+          S ? P.udim('PaddingRight', +frac(r, w), 0) : P.udim('PaddingRight', 0, Math.round(r)),
+          S ? P.udim('PaddingLeft', +frac(l, w), 0) : P.udim('PaddingLeft', 0, Math.round(l))] });
+      };
+      let cls;
+      if (n.kind === 'text') {
+        cls = 'TextLabel';
+        props.push(P.float('BackgroundTransparency', 1));
+        addText(n.text);
+        props.push(P.token('TextYAlignment', n.h > (n.fontSize || 14) * 1.9 ? TOKEN.TextYAlignment.Top : TOKEN.TextYAlignment.Center));
+      } else if (n.kind === 'button') {
+        cls = 'TextButton';
+        const bname = namer.next(n.text || n.label || 'Button');
+        const target = multi && screenLink(n.href) != null ? bySlug.get(screenLink(n.href)) : null;
+        if (target) goes.set(bname, target);
+        props[0] = P.str('Name', bname);
+        addBg(); props.push(P.bool('AutoButtonColor', true)); addText(n.text || '');
+        decorate(); if (n.align !== 'center') addPad();
+      } else if (n.kind === 'input') {
+        cls = 'TextBox';
+        addBg();
+        props.push(P.bool('ClearTextOnFocus', false), P.str('PlaceholderText', n.placeholder || ''), P.color('PlaceholderColor3', { r: color.r * 0.6, g: color.g * 0.6, b: color.b * 0.6 }));
+        addText(n.text || ''); decorate(); addPad();
+      } else {
+        cls = 'Frame'; addBg(); decorate();
+      }
+      rootKids.push({ cls, props, kids });
+    }
+    return { cls: 'Frame', props: rootProps, kids: rootKids };
+  });
+
+  // drag-and-drop script: only wiring (screen switching, the UIScale fit in offset mode, button handlers)
   const src = [
     `-- ${luaComment(title || 'My interface')}: button handlers (generated by openconstructor).`,
     `-- The UI is already built in this ScreenGui; put your game logic in the handlers below.`,
     `local gui = script.Parent`,
-    `local root = gui:WaitForChild("Page")`,
+    `local screens = {} -- every screen Frame by name`,
+    ...sizes.map(([name]) => `screens[${luaStr(name)}] = gui:WaitForChild(${luaStr(name)})`),
+    ...(multi ? [
+      `local function show(name) -- open one screen, hide the others`,
+      `\tfor n, f in pairs(screens) do f.Visible = (n == name) end`,
+      `end`,
+    ] : []),
     ...(S ? [] : [
-      `local W, H = ${W}, ${H}`,
-      `local scale = root:WaitForChild("UIScale")`,
+      `local sizes = {${sizes.map(([name, W, H]) => `[${luaStr(name)}] = {${W}, ${H}}`).join(', ')}}`,
       `local function fit()`,
       `\tlocal vp = workspace.CurrentCamera.ViewportSize`,
-      `\tscale.Scale = math.min(vp.X / W, vp.Y / H)`,
+      `\tfor name, f in pairs(screens) do`,
+      `\t\tlocal s = sizes[name]`,
+      `\t\tf:WaitForChild("UIScale").Scale = math.min(vp.X / s[1], vp.Y / s[2])`,
+      `\tend`,
       `end`,
       `fit()`,
       `workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fit)`,
     ]),
     ``,
     `local buttons = {} -- every TextButton by name`,
-    `for _, d in ipairs(root:GetDescendants()) do`,
+    `for _, d in ipairs(gui:GetDescendants()) do`,
     `\tif d:IsA("TextButton") then buttons[d.Name] = d end`,
     `end`,
   ];
-  for (const b of namer.names) src.push(``, `buttons[${luaStr(b)}].MouseButton1Click:Connect(function()`, `\t-- TODO: what happens when ${luaComment(b)} is clicked`, `\tprint("clicked", ${luaStr(b)})`, `end)`);
+  for (const b of namer.names) src.push(``, ...buttonHandler(b, goes.get(b)));
   src.push('');
 
   const tree = { cls: 'ScreenGui', props: [P.str('Name', title || 'Interface'), P.bool('ResetOnSpawn', false), P.bool('IgnoreGuiInset', true), P.token('ZIndexBehavior', TOKEN.ZIndexBehavior.Sibling)],
-    kids: [{ cls: 'Frame', props: rootProps, kids: rootKids }, { cls: 'LocalScript', props: [P.str('Name', 'Buttons'), P.source('Source', src.join('\n'))] }] };
+    kids: [...frames, { cls: 'LocalScript', props: [P.str('Name', 'Buttons'), P.source('Source', src.join('\n'))] }] };
+  if (opts?.spec) return specOf(tree);
 
   let ref = 0;
   const out = [
@@ -701,6 +746,11 @@ export function toRobloxModel(nodes, page, title, opts = {}) {
   out.push(`</roblox>`, '');
   return out.join('\n');
 }
+
+// Same instance tree as the .rbxmx model, as JSON for the Roblox Studio sync plugin:
+// { c: ClassName, p: { Prop: [type, value] }, k: [children] }
+const specOf = item => ({ c: item.cls, p: Object.fromEntries(item.props.map(([type, name, , raw]) => [name, [type, raw]])), k: (item.kids || []).map(specOf) });
+export const toRobloxSpec = (nodes, page, title, opts = {}) => ({ v: 1, title: String(title || 'Interface'), tree: toRobloxModel(nodes, page, title, { ...opts, spec: true }) });
 
 /* ── 3. LÖVE 2D ──────────────────────────────────────────── */
 const loveColor = (c, op = 1) => `{${num(c.r / 255)}, ${num(c.g / 255)}, ${num(c.b / 255)}, ${num(clamp(c.a * op, 0, 1))}}`;
