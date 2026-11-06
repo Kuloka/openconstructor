@@ -49,7 +49,7 @@ Without these, the app works fully, just without accounts.
 npm run build   # output in dist/
 ```
 
-`dist/` is a static site — deploy it to Cloudflare Pages, Netlify, Vercel or GitHub Pages. Set the same `VITE_*` variables in your host's build settings.
+`npm run deploy` builds and uploads to Cloudflare (config in `wrangler.jsonc`). `dist/` is a plain static site, so Netlify, Vercel or GitHub Pages work too.
 
 ## Stack
 
