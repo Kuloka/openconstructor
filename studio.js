@@ -1,5 +1,7 @@
 import {presets} from './presets.js';
 import {CATEGORIES} from './categories.js';
+import { TARGETS, snapshot, toRobloxLuau, toLoveLua, toReact, toVue, toSvelte } from './exporters.js';
+import { PRESETS as BG_PRESETS, DEFAULT_SPEC as BG_DEFAULT, toCSS as bgCSS, luminance as bgLum, mountBackgroundEditor } from './background.js';
 import logoSvg from './src/logo.svg?raw';
 import { PROVIDERS, byId, listModels, chat } from './providers.js';
 import { signOut, user as authUser } from './auth.js';
@@ -130,7 +132,7 @@ function layout(){
   board.style.background = page.bg;
   board.style.transform = `scale(${zoom})`;
   board.style.setProperty('--inv', String(1 / zoom));
-  board.classList.toggle('light', page.bg === '#fafafa');
+  board.classList.toggle('light', isLightPage());
   stage.style.width = page.w * zoom + STAGE_PAD * 2 + 'px';
   stage.style.height = h * zoom + STAGE_PAD * 2 + 'px';
   $('boardLabel').textContent = `page · ${page.w} × ${Math.round(h)}`;
@@ -160,10 +162,16 @@ canvas.addEventListener('wheel', e => { if (!(e.ctrlKey || e.metaKey)) return; e
 $('pageSize').value = `${page.w}x${page.h}`;
 if (!$('pageSize').value) $('pageSize').value = '1440x900';
 $('pageSize').onchange = () => { const [w, h] = $('pageSize').value.split('x').map(Number); page = { ...page, w, h }; store.set('oc-page', page); items.forEach(it => { if (it.full) it.x = 0; }); render(); fitZoom(); };
-$('swatches').innerHTML = BACKGROUNDS.map((b, i) => `<button role="radio" data-bg="${i}" title="${b.name}" aria-label="Background: ${b.name}" style="background:${b.value}"></button>`).join('');
-function syncSwatches(){ document.querySelectorAll('[data-bg]').forEach(b => b.setAttribute('aria-checked', BACKGROUNDS[+b.dataset.bg].value === page.bg)); }
-$('swatches').onclick = e => { const b = e.target.closest('[data-bg]'); if (!b) return; page = { ...page, bg: BACKGROUNDS[+b.dataset.bg].value }; store.set('oc-page', page); syncSwatches(); layout(); };
+// Quick swatches = the first background presets; the ✎ button opens the full editor (background.js)
+const QUICK = BG_PRESETS.slice(0, 7);
+function setBackground(spec, css){ page = { ...page, bg: css, bgSpec: spec }; store.set('oc-page', page); syncSwatches(); layout(); }
+$('swatches').innerHTML = QUICK.map((b, i) => `<button role="radio" data-bg="${i}" title="${b.name}" aria-label="Background: ${b.name}" style="background:${bgCSS(b.spec)}"></button>`).join('') + `<button class="bg-edit" id="bgEdit" title="Edit background" aria-label="Edit background"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>`;
+function syncSwatches(){ document.querySelectorAll('[data-bg]').forEach(b => b.setAttribute('aria-checked', bgCSS(QUICK[+b.dataset.bg].spec) === page.bg)); }
+$('swatches').onclick = e => { const b = e.target.closest('[data-bg]'); if (!b) return; const spec = { ...BG_DEFAULT, ...QUICK[+b.dataset.bg].spec }; setBackground(spec, bgCSS(spec)); };
+mountBackgroundEditor($('bgEdit'), { get: () => page.bgSpec || {}, set: setBackground });
 syncSwatches();
+// Light page = dark text cues for outlines and for the AI prompt
+function isLightPage(){ return page.bgSpec?.c1 && !page.bgSpec.css ? bgLum(page.bgSpec.c1) > .5 : page.bg === '#fafafa'; }
 addEventListener('resize', layout);
 
 /* ── Element operations ──────────────────────────────────── */
@@ -196,8 +204,42 @@ let drag = null, pan = null, spaceDown = false;
 addEventListener('keydown', e => { if (e.code === 'Space' && !e.target.closest('input, textarea, [contenteditable]')) { if (!spaceDown) { spaceDown = true; canvas.classList.add('can-pan'); } e.preventDefault(); } });
 addEventListener('keyup', e => { if (e.code === 'Space') { spaceDown = false; canvas.classList.remove('can-pan'); } });
 
+/* ── Fusion: element A keeps its job and content, element B lends its whole visual language ──
+   Right-click A → "fuse with…" → click B. The AI breeds a new component that does A's job in B's style. */
+let fusing = null;
+function startFusion(id){
+  const a = items.find(x => x.id === id); if (!a) return;
+  if (items.length < 2) { setState('add one more element to fuse with', 'warn'); return; }
+  fusing = id; canvas.classList.add('fusing'); nodes.get(id)?.classList.add('fuse-source');
+  setState(`fusion: click the element whose style "${a.name}" should take · Esc to cancel`, 'busy');
+}
+function cancelFusion(msg){
+  if (!fusing) return;
+  nodes.get(fusing)?.classList.remove('fuse-source'); canvas.classList.remove('fusing'); fusing = null;
+  setState(msg || 'fusion cancelled');
+}
+function completeFusion(styleId){
+  const a = items.find(x => x.id === fusing), b = items.find(x => x.id === styleId);
+  cancelFusion('fusing…'); if (!a || !b || a === b) return;
+  const bEl = nodes.get(b.id);
+  const place = a.full ? {} : { pos: { x: Math.max(0, Math.min(page.w - 380, snap(b.x + (bEl?.offsetWidth || 300) + 32))), y: snap(b.y) } };
+  const user = `FUSION. Create ONE new component (action "add", full: ${!!a.full}).
+Take the PURPOSE, structure and content of component A, and rebuild it entirely in the VISUAL LANGUAGE of component B: its palette, typography, corner radius, borders, shadows, textures, spacing rhythm and motion. The result must feel like it belongs to B's design system while doing A's job — not a copy of either. Name it "${a.name} × ${b.name}".
+Component A (purpose and content): ${JSON.stringify({ name: a.name, code: a.code })}
+Component B (style source): ${JSON.stringify({ name: b.name, code: b.code })}`;
+  window.dispatchEvent(new CustomEvent('oc:open-chat'));
+  runAI(`⚗ Fuse "${a.name}" with the style of "${b.name}"`, { user, place });
+}
+addEventListener('keydown', e => { if (e.key === 'Escape' && fusing) cancelFusion(); });
+
 board.addEventListener('pointerdown', e => {
   const el = e.target.closest('.node');
+  if (fusing && e.button === 0) {
+    e.stopPropagation(); e.preventDefault();
+    if (!el) return cancelFusion();
+    if (el.dataset.id === fusing) return;
+    return completeFusion(el.dataset.id);
+  }
   if (e.button !== 0 || !el || spaceDown) return;
   const item = items.find(x => x.id === el.dataset.id); if (!item) return;
   e.stopPropagation(); closeCtx();
@@ -264,6 +306,7 @@ canvas.addEventListener('scroll', closeCtx);
 function nodeMenu(id){
   return [
     { label: '✦ edit with ai', run: () => editWithAI(id) },
+    { label: '⚗ fuse with…', run: () => startFusion(id) },
     { label: '‹/› code', run: () => edit(id) },
     { label: 'rename', run: () => startRename(id) },
     '-',
@@ -346,7 +389,29 @@ document.addEventListener('keydown', e => {
 const openCats = new Set(store.get('oc-cats-open', [CATEGORIES[0].id]));
 const catChevron = '<svg class="cat-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>';
 const catIcon = c => `<svg class="cat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${c.icon || ''}</svg>`;
-const card = (p, k) => `<button class="component${p.full ? ' wide' : ''}" style="--i:${k}" data-add="${p.index}" title="Add: ${escapeHTML(p.name)}"><span class="component-preview"><iframe title="${escapeHTML(p.name)}" sandbox tabindex="-1" data-preset="${p.index}"></iframe></span><span class="component-info"><span>${escapeHTML(p.name)}</span><span class="component-plus">+</span></span></button>`;
+const card = (p, k) => `<button class="component${p.full ? ' wide' : ''}" style="--i:${k}" data-add="${p.index}" title="Add: ${escapeHTML(p.name)}"><span class="component-preview"><iframe title="${escapeHTML(p.name)}" sandbox="allow-same-origin" tabindex="-1" data-preset="${p.index}"></iframe></span><span class="component-info"><span>${escapeHTML(p.name)}</span><span class="component-plus">+</span></span></button>`;
+
+// Catalog previews hold still on a representative frame and come alive on hover.
+// (Same-origin frames without scripts: the CSP inside blocks JS, we only drive the Web Animations API from here.)
+function previewAnims(f){ try { return f.contentDocument?.getAnimations?.() || []; } catch { return []; } }
+function holdPreview(f){
+  const anims = previewAnims(f);
+  for (const a of anims) {
+    const t = a.effect?.getComputedTiming?.(); if (!t) continue;
+    if (t.iterations === Infinity && Number.isFinite(t.duration)) { a.pause(); a.currentTime = (t.delay || 0) + t.duration * 0.6; }
+    else { try { a.finish(); } catch { a.pause(); } }
+  }
+  f.closest('.component')?.classList.toggle('animated', anims.length > 0);
+}
+function playPreview(f){ for (const a of previewAnims(f)) if (a.playState !== 'finished') a.play(); }
+$('library').addEventListener('pointerover', e => {
+  const c = e.target.closest('.component'); if (!c || c.contains(e.relatedTarget)) return;
+  const f = c.querySelector('iframe'); if (f) playPreview(f);
+});
+$('library').addEventListener('pointerout', e => {
+  const c = e.target.closest('.component'); if (!c || c.contains(e.relatedTarget)) return;
+  const f = c.querySelector('iframe'); if (f) holdPreview(f);
+});
 function renderLibrary(){
   const query = $('catalogSearch').value.trim().toLocaleLowerCase();
   const indexed = presets.map((p, i) => ({ ...p, index: i }));
@@ -359,7 +424,7 @@ function renderLibrary(){
     return `<section class="cat${open ? ' open' : ''}"><button class="cat-head" data-cat="${escapeHTML(c.id)}" aria-expanded="${open}">${catChevron}${catIcon(c)}<span class="cat-name">${escapeHTML(c.id)}</span><span class="cat-count">${list.length}</span></button>${open ? `<div class="cat-body">${list.map(card).join('')}</div>` : ''}</section>`;
   }).join('');
   $('library').innerHTML = html || '<div class="catalog-empty">nothing found</div>';
-  document.querySelectorAll('[data-preset]').forEach(f => { const p = presets[+f.dataset.preset]; f.srcdoc = previewDoc(p.code, p.full); });
+  document.querySelectorAll('[data-preset]').forEach(f => { const p = presets[+f.dataset.preset]; f.onload = () => requestAnimationFrame(() => holdPreview(f)); f.srcdoc = previewDoc(p.code, p.full); });
   scaleWidePreviews();
 }
 // Sections render at 1280px wide and scale down to the card size
@@ -394,19 +459,70 @@ $('saveCode').onclick = () => {
 $('copyCode').onclick = async () => { try { await navigator.clipboard.writeText($('codeInput').value); $('copyCode').textContent = 'copied'; setTimeout(() => $('copyCode').textContent = 'copy', 1500); } catch { $('codeInput').select(); document.execCommand('copy'); } };
 $('undo').onclick = () => { if (history.length) { items = JSON.parse(history.pop()); if (!items.some(x => x.id === selected)) selected = null; render(); } };
 
-// Export: a page with the same size and background, elements in place
-$('export').onclick = () => {
+// Export menu: HTML, exact converters (Roblox Luau, LÖVE, React, Vue, Svelte) and AI-assisted ports
+const fileBase = () => (nameEl.textContent.trim() || 'interface').replace(/[\\/:*?"<>|\s]+/g, '-');
+function download(text, file, type = 'text/plain'){
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = file; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  setState('saved: ' + file, 'ok');
+}
+const AI_TARGETS = [
+  { id: 'flutter', label: 'Flutter (Dart)', ext: '.dart', lang: 'a single Flutter widget file in Dart (Material 3, a StatelessWidget named after the page)' },
+  { id: 'swiftui', label: 'SwiftUI', ext: '.swift', lang: 'a single SwiftUI View file in Swift' },
+  { id: 'compose', label: 'Jetpack Compose', ext: '.kt', lang: 'a single Kotlin file with Jetpack Compose @Composable functions' },
+  { id: 'tailwind', label: 'HTML + Tailwind', ext: '.html', lang: 'one HTML file that uses the Tailwind CSS v4 browser CDN and Tailwind utility classes instead of custom CSS' },
+];
+function exportTo(t){
   if (!items.length) { setState('nothing to export: the page is empty', 'warn'); return; }
+  const title = nameEl.textContent.trim() || 'My interface';
+  const withH = items.map(it => ({ ...it, h: nodes.get(it.id)?.offsetHeight || 0 }));
+  try {
+    if (t.id === 'luau' || t.id === 'love') {
+      const frames = items.map(it => ({ doc: nodes.get(it.id)?.querySelector('iframe')?.contentDocument, x: it.x, y: it.y, name: it.name })).filter(f => f.doc);
+      const snap = snapshot(frames);
+      download(t.id === 'luau' ? toRobloxLuau(snap, page, title) : toLoveLua(snap, page, title), t.id === 'luau' ? fileBase() + t.ext : 'main.lua');
+    }
+    else if (t.id === 'react') download(toReact(withH, page, title), fileBase() + t.ext);
+    else if (t.id === 'vue') download(toVue(withH, page, title), fileBase() + t.ext);
+    else if (t.id === 'svelte') download(toSvelte(withH, page, title), fileBase() + t.ext);
+  } catch (e) { setState('export failed: ' + e.message, 'error'); }
+}
+async function exportWithAI(t){
+  if (!items.length) { setState('nothing to export: the page is empty', 'warn'); return; }
+  const m = current(), p = byId(m.pid), key = keys[m.pid];
+  if (!key) { openSettings(); $('chatStatus').textContent = 'AI export needs a connected AI provider.'; return; }
+  window.dispatchEvent(new CustomEvent('oc:open-chat'));
+  message(`Export the page to ${t.label}`, 'user');
+  const stop = thinking();
+  try {
+    const system = `You convert web layouts into native UI code. Output ONLY the source code of ${t.lang} — no markdown fences, no explanations. Reproduce the layout, colors, typography, spacing, corner radii and text as faithfully as the target allows. Keep it compilable and self-contained.`;
+    const html = buildHTML();
+    const code = String(await chat(p, key, m.id, system, `Page "${nameEl.textContent.trim()}" (${page.w}×${page.h}). Source HTML:\n${html}`) || '').replace(/^\s*```[\w-]*\s*\n?/, '').replace(/\n?```\s*$/, '');
+    if (!code.trim()) throw Error('empty response');
+    stop(); download(code, fileBase() + t.ext); message(`Done — downloaded ${fileBase() + t.ext}. AI ports are a starting point: review before shipping.`, 'assistant');
+  } catch (e) { stop(); setState('ai export failed', 'error'); message('AI export failed: ' + e.message, 'assistant'); }
+}
+$('export').onclick = () => {
+  const r = $('export').getBoundingClientRect();
+  openCtx(r.right - 260, r.bottom + 6, [
+    { label: '⬇ HTML page', key: '.html', run: exportHTML },
+    '-',
+    ...TARGETS.map(t => ({ label: t.label, key: t.ext, run: () => exportTo(t) })),
+    '-',
+    ...AI_TARGETS.map(t => ({ label: '✦ ' + t.label, key: 'ai', run: () => exportWithAI(t) })),
+  ]);
+};
+function buildHTML(){
   const H = Math.max(page.h, contentBottom() + 48);
   const body = items.map(it => it.full
     ? `<div style="position:absolute;left:0;top:${it.y}px;width:${page.w}px">\n${it.code}\n</div>`
     : `<div style="position:absolute;left:${it.x}px;top:${it.y}px;padding:${PAD}px">\n${it.code}\n</div>`).join('\n');
   const title = escapeHTML(nameEl.textContent.trim() || 'My interface');
-  const output = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=${page.w}"><title>${title}</title><style>html,body{margin:0}body{min-height:100vh;background:${page.bg};background-attachment:fixed;color:#eee;font-family:system-ui}.oc-page{position:relative;width:${page.w}px;height:${H}px;margin:0 auto}</style></head><body><div class="oc-page">\n${body}\n</div></body></html>`;
-  const file = (nameEl.textContent.trim() || 'interface').replace(/[\\/:*?"<>|\s]+/g, '-') + '.html';
-  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([output], { type: 'text/html' })); a.download = file; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  setState('saved: ' + file, 'ok');
-};
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=${page.w}"><title>${title}</title><style>html,body{margin:0}body{min-height:100vh;background:${page.bg};background-attachment:fixed;color:#eee;font-family:system-ui}.oc-page{position:relative;width:${page.w}px;height:${H}px;margin:0 auto}</style></head><body><div class="oc-page">\n${body}\n</div></body></html>`;
+}
+function exportHTML(){
+  if (!items.length) { setState('nothing to export: the page is empty', 'warn'); return; }
+  download(buildHTML(), fileBase() + '.html', 'text/html');
+}
 
 // Status bar
 let stateTimer;
@@ -563,24 +679,26 @@ function parseAnswer(content){
   return result;
 }
 
-$('send').onclick = async () => {
-  const request = $('prompt').value.trim(); if (!request) return;
+$('send').onclick = () => { const request = $('prompt').value.trim(); if (request) runAI(request); };
+
+// One AI round-trip. `custom.user` replaces the default context (used by Fusion); `custom.place` positions a new element.
+async function runAI(request, custom = {}){
   const m = current(), p = byId(m.pid), key = keys[m.pid];
   if (!p) { $('chatStatus').textContent = 'Pick a model from the list below the input.'; return; }
   if (!key) { $('chatStatus').textContent = `Add a ${p.name} key to use this model.`; openSettings(); return; }
-  const target = items.find(x => x.id === selected);
+  const target = custom.user ? null : items.find(x => x.id === selected);
   message(request, 'user'); $('send').disabled = true; $('chatStatus').textContent = '';
   const stop = thinking();
   const system = `You are openconstructor AI, you build interfaces. Return ONLY JSON, no markdown and no explanations: {"action":"add|update","full":true|false,"name":"short element name","code":"HTML and CSS","reply":"short reply to the user"}.
 Rules:
 - If the user asks to change the selected element, use action "update", otherwise "add".
-- Page: ${page.w}×${page.h}px, ${page.bg === '#fafafa' ? 'light' : 'dark'} background. If the user asks for a website, landing page, page or section, set "full": true and build a complete full-width layout (header, hero, content blocks, footer) with a root element of width:100%. For a standalone component (button, card, form), set "full": false, width up to 360px.
+- Page: ${page.w}×${page.h}px, ${isLightPage() ? 'light' : 'dark'} background. If the user asks for a website, landing page, page or section, set "full": true and build a complete full-width layout (header, hero, content blocks, footer) with a root element of width:100%. For a standalone component (button, card, form), set "full": false, width up to 360px.
 - Self-contained HTML and CSS only: one <style> plus markup. No JavaScript, external links, images or fonts. Icons as inline SVG.
 - Do not style html or body; use unique class names with a shared prefix.
 - Clean, modern design: spacing, heading hierarchy, rounded corners, shadows, hover states. Respect prefers-reduced-motion for animations.
 - Write all UI text in the components in the same language as the user's request.
 - In the code field, encode regular line breaks as \\n exactly once; do not double-escape.`;
-  const user = 'Selected element: ' + JSON.stringify(target ? { name: target.name, code: target.code } : null) + '\nOther elements: ' + JSON.stringify(items.map(x => ({ name: x.name }))) + '\nRequest: ' + request;
+  const user = custom.user || ('Selected element: ' + JSON.stringify(target ? { name: target.name, code: target.code } : null) + '\nOther elements: ' + JSON.stringify(items.map(x => ({ name: x.name }))) + '\nRequest: ' + request);
   try {
     const content = await chat(p, key, m.id, system, user);
     if (typeof content !== 'string' || !content.trim()) throw Error('Empty model response');
@@ -592,19 +710,19 @@ Rules:
       checkpoint(); item.name = String(result.name || item.name).slice(0, 80); item.code = result.code;
       if (full) { item.full = true; item.x = 0; }
       selected = item.id; render();
-    } else add(String(result.name || 'New element').slice(0, 80), result.code, { full });
+    } else add(String(result.name || 'New element').slice(0, 80), result.code, { full, ...(custom.place || {}) });
     stop(); setState('element ready', 'ok');
     message(String(result.reply || 'Done. The element is on the page.'), 'assistant'); $('prompt').value = ''; window.dispatchEvent(new CustomEvent('oc:generated'));
   } catch (e) { stop(); setState('ai error', 'error'); $('chatStatus').textContent = 'Error: ' + e.message; message('Could not apply the response. Try again or pick another model.', 'assistant'); }
   finally { $('send').disabled = false; }
-};
+}
 $('prompt').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('send').click(); } });
 
 /* ── API for the welcome screen and menus ────────────────── */
 export const stats = { presets: presets.length };
 export function loadTemplate(tpl){
   checkpoint();
-  page = { ...page, ...tpl.page }; store.set('oc-page', page);
+  page = { ...page, ...tpl.page, ...(tpl.page?.bg ? { bgSpec: null } : {}) }; store.set('oc-page', page);
   $('pageSize').value = `${page.w}x${page.h}`; syncSwatches();
   items = tpl.items.map(i => ({ id: crypto.randomUUID(), ...i }));
   selected = null; render(); requestAnimationFrame(fitZoom);

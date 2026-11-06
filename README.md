@@ -12,12 +12,14 @@ Drop ready-made components onto one shared canvas, move them around freely, and 
 
 ## Features
 
-- **Component catalog** — buttons, inputs, elements, full page sections and effects, all plain HTML + CSS.
-- **Free-form canvas** — drag, pan, zoom, desktop / laptop / tablet / phone sizes, page backgrounds.
+- **Component catalog** — 145 components in 12 sections (AI & Chat, Dashboard, Commerce, Auth, Landing…), all plain HTML + CSS. Animated ones play on hover.
+- **Free-form canvas** — drag, pan, zoom, desktop / laptop / tablet / phone sizes.
+- **Background editor** — solid, linear, radial and mesh gradients, dot / grid / line / noise patterns, or raw CSS.
+- **⚗ Fusion** — right-click an element → *fuse with…* → click another: the AI breeds a new component that does the first one's job in the second one's visual style.
 - **AI assistant** — bring your own key for OpenRouter, Google Gemini, Groq, Cerebras, Mistral, DeepSeek, OpenAI, Anthropic, xAI or Together. Keys stay in your browser and go only to the provider you choose.
 - **VS Code–style layout** — resizable, movable, collapsible panels.
 - **Safe previews** — every element renders in a sandboxed iframe with scripts and network requests disabled.
-- **Export** — one HTML file you can host anywhere.
+- **Export anywhere** — HTML, React, Vue, Svelte, plus **Roblox (Luau)** and **LÖVE 2D (Lua)**: the rendered layout is converted into native UI code (ScreenGui/Frames/TextLabels or love.graphics calls). AI-assisted ports to Flutter, SwiftUI, Jetpack Compose and Tailwind.
 - Optional sign-in with Google, GitHub or email (Supabase).
 
 ## Quick start

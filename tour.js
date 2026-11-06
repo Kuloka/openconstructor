@@ -5,15 +5,15 @@ const STEPS = [
   { target: '#sidePanel', before: () => window.dispatchEvent(new CustomEvent('oc:show-view', { detail: 'library' })), place: 'right',
     title: '1 · Components', text: 'Your building blocks. Open a section — AI & Chat, Forms, Dashboard, Landing and more — and click any card to drop it on the page. Search finds anything across all sections.' },
   { target: '.canvas-wrap', place: 'center',
-    title: '2 · The page', text: 'Everything you add lives here. Drag an element to move it. Drag empty space (or hold Space) to pan, Ctrl + scroll to zoom. Right-click an element for its code, AI edits, duplicate and delete.' },
+    title: '2 · The page', text: 'Everything you add lives here. Drag an element to move it. Drag empty space (or hold Space) to pan, Ctrl + scroll to zoom. Right-click an element for its code, AI edits and ⚗ Fusion — breed two elements: one's purpose in the other's style.' },
   { target: '.canvas-toolbar', place: 'bottom',
-    title: '3 · Page settings', text: 'Switch between desktop, laptop, tablet and phone sizes, and pick the page background.' },
+    title: '3 · Page settings', text: 'Switch between desktop, laptop, tablet and phone sizes. Pick a background or press ✎ to design your own: gradients, mesh, patterns.' },
   { target: '#chatPanel', before: () => window.dispatchEvent(new CustomEvent('oc:open-chat')), place: 'left',
     title: '4 · AI assistant', text: 'Describe what you want — “a pricing section with three plans” — and the AI builds it on the page. Select an element first to change only that one.' },
   { target: '#settingsButton', place: 'right',
     title: '5 · Connect an AI', text: 'The assistant needs a key from an AI provider. Google Gemini and Groq take about a minute to set up. Keys stay in your browser.' },
   { target: '#export', place: 'bottom',
-    title: '6 · Export', text: 'Done? Download the page as a single HTML file you can host anywhere. Undo is Ctrl+Z.' },
+    title: '6 · Export', text: 'Done? Export to HTML, React, Vue, Svelte — or straight into a Roblox game (Luau) or LÖVE (Lua). Undo is Ctrl+Z.' },
 ];
 
 let i = 0, root = null, hole = null, card = null;

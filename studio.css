@@ -499,3 +499,34 @@ body.resizing iframe { pointer-events: none; }
 }
 .auth-legal a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 
+
+/* ── Background editor ──────────────────────────────────── */
+.bg-edit { display: grid; place-items: center; width: 22px; height: 22px; padding: 0; margin-left: 2px; border: 1px dashed var(--border-2); border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; transition: color .15s, border-color .15s; }
+.bg-edit:hover { color: var(--accent); border-color: var(--accent); }
+.bg-edit svg { width: 12px; height: 12px; }
+.bg-panel { position: fixed; z-index: 65; width: 300px; padding: 12px; background: var(--panel-2); border: 1px solid var(--border-2); border-radius: 6px; box-shadow: 0 20px 50px #000c; animation: pop-in .16s var(--ease-out); transform-origin: top left; }
+.bg-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; color: var(--text-2); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; }
+.bg-presets { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-bottom: 12px; }
+.bg-presets button { aspect-ratio: 1; border: 1px solid var(--border-2); border-radius: 5px; cursor: pointer; transition: transform .15s var(--ease-spring), border-color .15s; }
+.bg-presets button:hover { transform: scale(1.08); border-color: var(--accent); }
+.bg-tabs { display: flex; gap: 2px; padding: 2px; margin-bottom: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 5px; }
+.bg-tabs button { flex: 1; height: 24px; border: 0; border-radius: 3px; background: transparent; color: var(--muted); font-size: 11.5px; cursor: pointer; }
+.bg-tabs button.active { background: var(--panel-2); color: var(--accent); box-shadow: 0 0 0 1px var(--border-2); }
+.bg-tabs.small button { font-size: 11px; }
+.bg-row { display: flex; gap: 8px; margin-bottom: 10px; }
+.bg-field { display: grid; gap: 4px; margin-bottom: 10px; color: var(--muted); font-size: 11px; }
+.bg-row .bg-field { flex: 1; margin: 0; }
+.bg-field b { color: var(--text); font-weight: 500; }
+.bg-field input[type=color] { width: 100%; height: 28px; padding: 2px; border: 1px solid var(--border-2); border-radius: 4px; background: var(--panel); cursor: pointer; }
+.bg-field input[type=range] { width: 100%; accent-color: var(--accent); }
+.bg-css summary { color: var(--muted); font-size: 11px; cursor: pointer; }
+.bg-css textarea { width: 100%; height: 80px; margin: 6px 0; box-sizing: border-box; padding: 6px; border: 1px solid var(--border-2); border-radius: 4px; background: var(--panel); color: var(--text); font: 11px/1.5 'JetBrains Mono', monospace; resize: vertical; }
+
+/* ── Fusion mode ────────────────────────────────────────── */
+.canvas.fusing .node { cursor: crosshair; }
+.canvas.fusing .node:not(.fuse-source):hover { outline: calc(2px * var(--inv)) solid var(--accent); box-shadow: 0 0 0 calc(6px * var(--inv)) #e4572e33; }
+.node.fuse-source { outline: calc(2px * var(--inv)) dashed var(--accent); animation: fuse-pulse 1.2s ease-in-out infinite; }
+@keyframes fuse-pulse { 50% { box-shadow: 0 0 0 calc(10px * var(--inv)) #e4572e22; } }
+
+/* catalog: a small "motion" mark on cards that animate on hover */
+.component.animated .component-info > span:first-child::after { content: " ◦"; color: var(--accent); }
