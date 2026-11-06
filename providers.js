@@ -1,7 +1,7 @@
 // AI providers. All are CORS-checked: requests go straight from the browser with the user's key.
 // Once there is a server, this same module will be called through a proxy (keys will move to the server).
 export const PROVIDERS = [
-  { id: 'openrouter', name: 'OpenRouter', logo: 'openrouter', base: 'https://openrouter.ai/api/v1', free: true, keyUrl: 'https://openrouter.ai/keys', hint: 'sk-or-…', note: 'many models, including free ones', publicModels: true },
+  { id: 'openrouter', name: 'OpenRouter', logo: 'openrouter', base: 'https://openrouter.ai/api/v1', free: true, keyUrl: 'https://openrouter.ai/keys', hint: 'sk-or-…', note: '300+ models in one key: Claude, GPT, Gemini, Llama and more', publicModels: true },
   { id: 'gemini', name: 'Google Gemini', logo: 'gemini-color', base: 'https://generativelanguage.googleapis.com/v1beta/openai', free: true, keyUrl: 'https://aistudio.google.com/apikey', hint: 'AIza…', note: 'free tier, strong Flash models' },
   { id: 'groq', name: 'Groq', logo: 'groq', base: 'https://api.groq.com/openai/v1', free: true, keyUrl: 'https://console.groq.com/keys', hint: 'gsk_…', note: 'generous free tier, very fast' },
   { id: 'cerebras', name: 'Cerebras', logo: 'cerebras-color', base: 'https://api.cerebras.ai/v1', free: true, keyUrl: 'https://cloud.cerebras.ai', hint: 'csk-…', note: 'free tier, fast generation' },
@@ -30,16 +30,20 @@ export async function listModels(p, key){
     name: m.display_name || m.name || m.id,
     ctx: m.context_length || m.context_window || m.max_context_length || m.inputTokenLimit || 0,
     out: m.architecture?.output_modalities,
+    // OpenRouter returns prices in $ per token; convert to $ per 1M tokens [input, output]
+    price: m.pricing ? [+m.pricing.prompt * 1e6, +m.pricing.completion * 1e6] : null,
   }));
   list = list.filter(m => m.id && !NOT_CHAT.test(m.id));
-  if (p.id === 'openrouter') list = list.filter(m => m.id.endsWith(':free') && (!m.out || m.out.includes('text')));
+  // Paid models are shown too; skip router meta-models and variable-price entries (negative price)
+  if (p.id === 'openrouter') list = list.filter(m => (!m.out || m.out.includes('text')) && !m.id.startsWith('openrouter/') && !(m.price && (m.price[0] < 0 || m.price[1] < 0)));
   if (p.id === 'gemini') list = list.filter(m => /gemini|gemma/i.test(m.id));
   if (p.id === 'openai') list = list.filter(m => /^(gpt|o\d|chatgpt)/i.test(m.id));
   return list.map(m => {
     const clean = String(m.name).replace(/\s*\(free\)\s*/i, '').replace(/^models\//, '').trim();
     const [vendor, ...rest] = clean.split(': ');
-    return { id: m.id, name: rest.length ? rest.join(': ') : clean, vendor: rest.length ? vendor : '', ctx: m.ctx };
-  }).sort((a, b) => a.name.localeCompare(b.name));
+    const paid = !!(m.price && (m.price[0] > 0 || m.price[1] > 0));
+    return { id: m.id, name: rest.length ? rest.join(': ') : clean, vendor: rest.length ? vendor : '', ctx: m.ctx, paid, price: paid ? m.price : null };
+  }).sort((a, b) => (a.paid - b.paid) || a.name.localeCompare(b.name));
 }
 
 export async function chat(p, key, model, system, user){
@@ -51,7 +55,7 @@ export async function chat(p, key, model, system, user){
   }
   const headers = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key };
   if (p.id === 'openrouter') headers['X-Title'] = 'openconstructor';
-  const r = await fetch(`${p.base}/chat/completions`, { method: 'POST', headers, body: JSON.stringify({ model, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }) });
+  const r = await fetch(`${p.base}/chat/completions`, { method: 'POST', headers, body: JSON.stringify({ model, ...(p.id === 'openrouter' ? { max_tokens: 8000 } : {}), messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }) });
   if (!r.ok) throw Error(await errorText(r));
   const d = await r.json();
   const c = d.choices?.[0]?.message?.content;

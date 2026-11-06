@@ -115,12 +115,20 @@ body.resizing iframe { pointer-events: none; }
 .search-wrap:focus-within { border-color: var(--accent); }
 .search-wrap input { width: 100%; border: 0; outline: 0; background: none; color: var(--text); font-size: 12px; }
 .search-wrap input::placeholder { color: var(--subtle); }
-.categories { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 10px 10px; border-bottom: 1px solid var(--border); }
-.categories button { height: 22px; padding: 0 8px; border: 1px solid transparent; border-radius: 3px; background: transparent; color: var(--muted); font-size: 11.5px; }
-.categories button:hover { color: var(--text); }
-.categories button.active { border-color: var(--border-2); background: var(--panel-2); color: var(--accent); }
 
-.library { flex: 1; min-height: 0; overflow: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); grid-auto-rows: max-content; align-content: start; gap: 8px; padding: 10px; }
+/* Catalog: collapsible sections */
+.library { flex: 1; min-height: 0; overflow: auto; padding: 4px 0 10px; border-top: 1px solid var(--border); }
+.cat-body { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); grid-auto-rows: max-content; gap: 8px; padding: 4px 10px 12px; }
+.cat-head { position: sticky; top: -4px; z-index: 2; display: flex; align-items: center; gap: 8px; width: 100%; height: 32px; padding: 0 12px 0 8px; border: 0; background: var(--panel); color: var(--text-2); font-size: 12px; text-align: left; cursor: pointer; }
+.cat-head:hover { color: var(--text); background: var(--panel-2); }
+.cat-chevron { width: 14px; height: 14px; flex: none; color: var(--subtle); transition: transform .15s; }
+.cat.open .cat-chevron { transform: rotate(90deg); color: var(--accent); }
+.cat-icon { width: 15px; height: 15px; flex: none; color: var(--muted); }
+.cat.open .cat-icon { color: var(--accent); }
+.cat.open .cat-head { color: var(--text); }
+.cat-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-count { color: var(--subtle); font-size: 11px; font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { .cat-chevron { transition: none; } }
 .component-preview, .component-info { flex: none; }
 .component { display: flex; flex-direction: column; padding: 0; overflow: hidden; text-align: left; background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px; transition: border-color .12s, transform .12s; }
 .component:hover { border-color: #54443f; }
@@ -423,3 +431,8 @@ body.resizing iframe { pointer-events: none; }
 .tour-dots i.on { background: var(--accent); }
 .tour-foot .btn:disabled { opacity: .4; cursor: default; }
 @media (prefers-reduced-motion: reduce) { .tour-hole, .tour-card { transition: none; } }
+
+/* ── Model prices ───────────────────────────────────────── */
+.model-price { flex: none; margin-left: auto; padding-left: 8px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.model-option.active .model-price { color: var(--text-2); }
+.model-sub { margin: 6px 4px 2px; padding: 6px 8px 4px; border-top: 1px dashed var(--border-2); color: var(--muted); font-size: 10.5px; letter-spacing: .04em; }

@@ -3,7 +3,7 @@
 
 const STEPS = [
   { target: '#sidePanel', before: () => window.dispatchEvent(new CustomEvent('oc:show-view', { detail: 'library' })), place: 'right',
-    title: '1 · Components', text: 'Your building blocks. Click any card to drop it on the page. Use the tabs or search to find buttons, inputs, whole sections and effects.' },
+    title: '1 · Components', text: 'Your building blocks. Open a section — AI & Chat, Forms, Dashboard, Landing and more — and click any card to drop it on the page. Search finds anything across all sections.' },
   { target: '.canvas-wrap', place: 'center',
     title: '2 · The page', text: 'Everything you add lives here. Drag an element to move it. Drag empty space (or hold Space) to pan, Ctrl + scroll to zoom. Right-click an element for its code, AI edits, duplicate and delete.' },
   { target: '.canvas-toolbar', place: 'bottom',

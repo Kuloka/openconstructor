@@ -1,4 +1,5 @@
 import {presets} from './presets.js';
+import {CATEGORIES} from './categories.js';
 import logoSvg from './src/logo.svg?raw';
 import { PROVIDERS, byId, listModels, chat } from './providers.js';
 import { signOut, user as authUser } from './auth.js';
@@ -310,21 +311,42 @@ document.addEventListener('keydown', e => {
 });
 
 /* ── Catalog ─────────────────────────────────────────────── */
-let category = 'All';
+// Sections are a collapsible list; only open sections render their previews.
+// While searching, every section with a match is shown expanded.
+const openCats = new Set(store.get('oc-cats-open', [CATEGORIES[0].id]));
+const catChevron = '<svg class="cat-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>';
+const catIcon = c => `<svg class="cat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${c.icon || ''}</svg>`;
+const card = p => `<button class="component${p.full ? ' wide' : ''}" data-add="${p.index}" title="Add: ${escapeHTML(p.name)}"><span class="component-preview"><iframe title="${escapeHTML(p.name)}" sandbox tabindex="-1" data-preset="${p.index}"></iframe></span><span class="component-info"><span>${escapeHTML(p.name)}</span><span class="component-plus">+</span></span></button>`;
 function renderLibrary(){
   const query = $('catalogSearch').value.trim().toLocaleLowerCase();
-  const matching = presets.map((p, i) => ({ ...p, index: i })).filter(p => (category === 'All' || p.category === category) && (p.name + ' ' + p.category).toLocaleLowerCase().includes(query));
-  $('library').innerHTML = matching.length ? matching.map(p => `<button class="component${p.full ? ' wide' : ''}" data-add="${p.index}" title="Add: ${escapeHTML(p.name)}"><span class="component-preview"><iframe title="${escapeHTML(p.name)}" sandbox tabindex="-1" data-preset="${p.index}"></iframe></span><span class="component-info"><span>${escapeHTML(p.name)}</span><span class="component-plus">+</span></span></button>`).join('') : '<div class="catalog-empty">nothing found</div>';
+  const indexed = presets.map((p, i) => ({ ...p, index: i }));
+  const known = new Set(CATEGORIES.map(c => c.id));
+  const cats = [...CATEGORIES, ...[...new Set(indexed.map(p => p.category))].filter(c => !known.has(c)).map(id => ({ id }))];
+  const html = cats.map(c => {
+    const list = indexed.filter(p => p.category === c.id && (p.name + ' ' + p.category).toLocaleLowerCase().includes(query));
+    if (!list.length) return '';
+    const open = query ? true : openCats.has(c.id);
+    return `<section class="cat${open ? ' open' : ''}"><button class="cat-head" data-cat="${escapeHTML(c.id)}" aria-expanded="${open}">${catChevron}${catIcon(c)}<span class="cat-name">${escapeHTML(c.id)}</span><span class="cat-count">${list.length}</span></button>${open ? `<div class="cat-body">${list.map(card).join('')}</div>` : ''}</section>`;
+  }).join('');
+  $('library').innerHTML = html || '<div class="catalog-empty">nothing found</div>';
   document.querySelectorAll('[data-preset]').forEach(f => { const p = presets[+f.dataset.preset]; f.srcdoc = previewDoc(p.code, p.full); });
   scaleWidePreviews();
 }
 // Sections render at 1280px wide and scale down to the card size
 function scaleWidePreviews(){ document.querySelectorAll('.component.wide .component-preview').forEach(pv => { const f = pv.querySelector('iframe'); f.style.transform = `scale(${pv.clientWidth / 1280})`; }); }
 addEventListener('resize', scaleWidePreviews);
-document.querySelectorAll('[data-category]').forEach(b => b.onclick = () => { category = b.dataset.category; document.querySelectorAll('[data-category]').forEach(x => x.classList.toggle('active', x === b)); renderLibrary(); });
 $('catalogSearch').oninput = renderLibrary;
 renderLibrary();
-$('library').onclick = e => { const b = e.target.closest('[data-add]'); if (b) { const p = presets[+b.dataset.add]; add(p.name, p.code, { full: p.full }); } };
+$('library').onclick = e => {
+  const h = e.target.closest('[data-cat]');
+  if (h) {
+    if ($('catalogSearch').value.trim()) return;
+    const id = h.dataset.cat; openCats.has(id) ? openCats.delete(id) : openCats.add(id);
+    store.set('oc-cats-open', [...openCats]); renderLibrary();
+    if (openCats.has(id)) $('library').querySelector(`[data-cat="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    return;
+  }
+  const b = e.target.closest('[data-add]'); if (b) { const p = presets[+b.dataset.add]; add(p.name, p.code, { full: p.full }); } };
 
 /* ── Modals and code ─────────────────────────────────────── */
 function showModal(id){ $(id).classList.remove('hidden'); }
@@ -375,6 +397,8 @@ function modelLogo(m){
   return svg ? `<span class="model-logo">${svg}</span>` : `<span class="model-logo letter">${escapeHTML((m.vendor || m.name || '?')[0].toUpperCase())}</span>`;
 }
 const providerLogo = p => `<span class="model-logo">${logo(p.logo)}</span>`;
+const fmtUsd = v => '$' + (v >= 10 ? Math.round(v) : v >= 1 ? +v.toFixed(2) : +v.toFixed(3));
+const fmtPrice = pr => `${fmtUsd(pr[0])} · ${fmtUsd(pr[1])}`;
 const fmtCtx = n => !n ? '' : n >= 1e6 ? (n / 1e6).toFixed(n % 1e6 ? 1 : 0) + 'M' : Math.round(n / 1e3) + 'K';
 
 // Keys live until the tab is closed by default; the "remember" checkbox stores them in localStorage
@@ -413,7 +437,8 @@ function renderPicker(){
     const list = providerModels(pr).filter(x => `${x.name} ${x.vendor || ''} ${x.id} ${pr.name}`.toLocaleLowerCase().includes(q));
     if (!list.length && q) return '';
     const status = !keys[pr.id] ? ' · key required' : loading[pr.id] ? ' · loading…' : modelErr[pr.id] ? ' · error' : '';
-    return `<div class="model-group">${providerLogo(pr)}${escapeHTML(pr.name)}<span>${status}</span></div>` + list.map(x => `<button type="button" role="option" class="model-option${x.key === currentModel ? ' active' : ''}" data-model="${escapeHTML(x.key)}" aria-selected="${x.key === currentModel}">${modelLogo(x)}<span class="model-text"><span class="model-title">${escapeHTML(x.name)}</span><span class="model-meta">${escapeHTML(x.vendor || pr.name)}${x.ctx ? ' · ' + fmtCtx(x.ctx) + ' context' : ''}${x.note ? ' · ' + escapeHTML(x.note) : ''}</span></span>${x.key === currentModel ? '<span class="model-check">✓</span>' : ''}</button>`).join('');
+    const firstPaid = list.find(x => x.paid);
+    return `<div class="model-group">${providerLogo(pr)}${escapeHTML(pr.name)}<span>${status}</span></div>` + list.map(x => (x === firstPaid ? '<div class="model-sub">pay per use · $ per 1M tokens in · out</div>' : '') + `<button type="button" role="option" class="model-option${x.key === currentModel ? ' active' : ''}" data-model="${escapeHTML(x.key)}" aria-selected="${x.key === currentModel}">${modelLogo(x)}<span class="model-text"><span class="model-title">${escapeHTML(x.name)}</span><span class="model-meta">${escapeHTML(x.vendor || pr.name)}${x.ctx ? ' · ' + fmtCtx(x.ctx) + ' context' : ''}${x.note ? ' · ' + escapeHTML(x.note) : ''}</span></span>${x.price ? `<span class="model-price" title="price per 1M tokens: input · output">${fmtPrice(x.price)}</span>` : ''}${x.key === currentModel ? '<span class="model-check">✓</span>' : ''}</button>`).join('');
   }).join('');
   picker.querySelector('.model-list').innerHTML = groups || '<div class="model-empty">nothing found</div>';
   const connected = PROVIDERS.filter(pr => keys[pr.id]).length;

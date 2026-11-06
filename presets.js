@@ -1,5 +1,8 @@
 import {more} from './presets-more.js';
 import {extra} from './presets-extra.js';
+import {ai} from './presets-ai.js';
+import {shop} from './presets-shop.js';
+import {categorize} from './categories.js'; // moves each component into its catalog section
 // shadcn / 21st.dev style buttons. Each one is self-contained HTML+CSS with unique classes.
 const RM = sel => `@media(prefers-reduced-motion:reduce){${sel}{animation:none!important;transition:none!important}}`;
 const I = {
@@ -24,7 +27,7 @@ const buttons = [
 {name:'Button group',category:'Buttons',code:`<style>.b-group{display:inline-flex;padding:3px;border:1px solid #27272a;border-radius:11px;background:#18181b}.b-group button{height:32px;padding:0 14px;border:0;border-radius:8px;background:transparent;color:#a1a1aa;font:500 13px/1 system-ui;cursor:pointer;transition:color .15s,background .15s}.b-group button:hover{color:#fafafa}.b-group .on{background:#27272a;color:#fafafa;box-shadow:0 1px 2px #0006,inset 0 1px 0 #ffffff0f}</style><div class="b-group"><button class="on">Day</button><button>Week</button><button>Month</button></div>`},
 ];
 
-export const presets=[
+export const presets=categorize([
 ...buttons,
 {name:'Search',category:'Inputs',code:'<style>.ui-search{display:flex;align-items:center;gap:9px;width:240px;padding:10px 13px;background:#242526;border:1px solid #44474a;border-radius:9px;color:#aeb2b3;font:13px system-ui}.ui-search input{width:100%;background:none;border:0;outline:0;color:white;font:inherit}</style><label class="ui-search">⌕<input placeholder="Search..."></label>'},
 {name:'Text field',category:'Inputs',code:'<style>.ui-field{display:grid;gap:7px;color:#ddd;font:12px system-ui}.ui-field input{width:235px;box-sizing:border-box;background:#202122;border:1px solid #47494b;color:white;border-radius:8px;padding:10px 12px}.ui-field input:focus{outline:2px solid #a998ff}</style><label class="ui-field">Project name<input placeholder="Enter a name"></label>'},
@@ -39,4 +42,6 @@ export const presets=[
 {name:'Pulsing dot',category:'Effects',code:'<style>.ui-pulse{width:14px;height:14px;border-radius:50%;background:#a6f3c5;box-shadow:0 0 0 0 #85f0ac88;animation:ui-pulse 2s infinite}@keyframes ui-pulse{70%{box-shadow:0 0 0 18px #85f0ac00}100%{box-shadow:0 0 0 0 #85f0ac00}}@media(prefers-reduced-motion:reduce){.ui-pulse{animation:none}}</style><div class="ui-pulse"></div>'}
 ,...more
 ,...extra
-];
+,...ai
+,...shop
+]);
