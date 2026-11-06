@@ -46,20 +46,41 @@ export async function listModels(p, key){
   }).sort((a, b) => (a.paid - b.paid) || a.name.localeCompare(b.name));
 }
 
+// One request. Returns { text, cut } — `cut` is true when the model stopped because it hit the length limit.
 // `images` are data: URLs (screenshots). Each API wants them in its own message format.
-export async function chat(p, key, model, system, user, images = []){
+async function once(p, key, model, system, messages){
   if (p.kind === 'anthropic') {
-    const content = images.length ? [...images.map(url => { const [, type, data] = url.match(/^data:([^;]+);base64,(.*)$/) || []; return { type: 'image', source: { type: 'base64', media_type: type, data } }; }), { type: 'text', text: user }] : user;
-    const r = await fetch(`${p.base}/messages`, { method: 'POST', headers: anthropicHeaders(key), body: JSON.stringify({ model, max_tokens: 8000, system, messages: [{ role: 'user', content }] }) });
+    const r = await fetch(`${p.base}/messages`, { method: 'POST', headers: anthropicHeaders(key), body: JSON.stringify({ model, max_tokens: 8000, system, messages }) });
     if (!r.ok) throw Error(await errorText(r));
     const d = await r.json();
-    return (d.content || []).map(c => c.text || '').join('');
+    return { text: (d.content || []).map(c => c.text || '').join(''), cut: d.stop_reason === 'max_tokens' };
   }
   const headers = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key };
   if (p.id === 'openrouter') headers['X-Title'] = 'openconstructor';
-  const r = await fetch(`${p.base}/chat/completions`, { method: 'POST', headers, body: JSON.stringify({ model, ...(p.id === 'openrouter' ? { max_tokens: 8000 } : {}), messages: [{ role: 'system', content: system }, { role: 'user', content: images.length ? [{ type: 'text', text: user }, ...images.map(url => ({ type: 'image_url', image_url: { url } }))] : user }] }) });
+  // OpenRouter reserves credit for max_tokens, so cap it; reasoning models get a modest effort so thinking doesn't eat the answer
+  const extra = p.id === 'openrouter' ? { max_tokens: 12000 } : {};
+  if (/gpt-oss|^o\d|reason/i.test(model)) extra.reasoning_effort = 'low';
+  let r = await fetch(`${p.base}/chat/completions`, { method: 'POST', headers, body: JSON.stringify({ model, ...extra, messages: [{ role: 'system', content: system }, ...messages] }) });
+  // some providers reject reasoning_effort for some models — retry once without it
+  if (!r.ok && r.status === 400 && extra.reasoning_effort) { delete extra.reasoning_effort; r = await fetch(`${p.base}/chat/completions`, { method: 'POST', headers, body: JSON.stringify({ model, ...extra, messages: [{ role: 'system', content: system }, ...messages] }) }); }
   if (!r.ok) throw Error(await errorText(r));
   const d = await r.json();
-  const c = d.choices?.[0]?.message?.content;
-  return Array.isArray(c) ? c.map(x => x.text || '').join('') : c;
+  const ch = d.choices?.[0], c = ch?.message?.content;
+  return { text: Array.isArray(c) ? c.map(x => x.text || '').join('') : (c || ''), cut: ch?.finish_reason === 'length' };
+}
+
+// Full answer: if the model is cut off by its output limit, ask it to continue (up to 3 times) and glue the parts.
+export async function chat(p, key, model, system, user, images = []){
+  const content = !images.length ? user
+    : p.kind === 'anthropic' ? [...images.map(url => { const [, type, data] = url.match(/^data:([^;]+);base64,(.*)$/) || []; return { type: 'image', source: { type: 'base64', media_type: type, data } }; }), { type: 'text', text: user }]
+    : [{ type: 'text', text: user }, ...images.map(url => ({ type: 'image_url', image_url: { url } }))];
+  const messages = [{ role: 'user', content }];
+  let out = '';
+  for (let i = 0; i < 4; i++) {
+    const { text, cut } = await once(p, key, model, system, messages);
+    out += text;
+    if (!cut || !text) break;
+    messages.push({ role: 'assistant', content: text }, { role: 'user', content: 'You were cut off. Continue EXACTLY where you stopped — no repetition, no preamble, no code fence reopening.' });
+  }
+  return out;
 }

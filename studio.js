@@ -746,12 +746,64 @@ function thinking(){
   return () => { clearInterval(timer); node.remove(); };
 }
 
-// Models sometimes double-escape code (\\n instead of a newline) or wrap the JSON in text
+// Answer format: a one-line JSON header (no code) followed by the code in a ```html block.
+// Code outside JSON can't break on escaping, and a missing closing fence (cut-off answer) is tolerated.
+// Older JSON-with-"code" answers and bare HTML are still understood.
+function firstJSON(text){
+  const a = text.indexOf('{'); if (a < 0) return null;
+  let depth = 0, inStr = false, esc = false;
+  for (let i = a; i < text.length; i++) {
+    const ch = text[i];
+    if (inStr) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false; continue; }
+    if (ch === '"') inStr = true; else if (ch === '{') depth++; else if (ch === '}' && --depth === 0) return { json: text.slice(a, i + 1), end: i + 1 };
+  }
+  return null;
+}
+// Models often put raw line breaks / tabs inside JSON strings; escape control characters that sit inside strings.
+function looseJSON(text){
+  try { return JSON.parse(text); } catch {}
+  let out = '', inStr = false, esc = false;
+  for (const ch of text) {
+    if (inStr) {
+      if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false;
+      else if (ch === '\n') { out += '\\n'; continue; } else if (ch === '\r') continue; else if (ch === '\t') { out += '\\t'; continue; }
+    } else if (ch === '"') inStr = true;
+    out += ch;
+  }
+  return JSON.parse(out);
+}
+const HTML_START = /<(style|div|section|header|main|button|form|nav|article|aside|footer|ul|h1|a)\b/i;
 function parseAnswer(content){
-  let text = content.replace(/^\s*```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
-  const a = text.indexOf('{'), b = text.lastIndexOf('}');
-  if (a > 0 || (b >= 0 && b < text.length - 1)) text = text.slice(a, b + 1);
-  const result = JSON.parse(text);
+  const raw = String(content).replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  const fence = raw.match(/```(?:html|HTML)?[ \t]*\r?\n([\s\S]*?)(?:\r?\n```|$)/);
+  if (fence && /<[a-z!]/i.test(fence[1])) {
+    const before = raw.slice(0, fence.index);
+    let head = {};
+    try { const j = firstJSON(before); if (j) head = looseJSON(j.json); } catch {}
+    return { action: 'add', ...head, code: fence[1].replace(/```\s*$/, '').trim() };
+  }
+  let text = raw.replace(/^\s*```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+  const bare = () => HTML_START.test(text) ? { action: 'add', name: 'New element', code: text.slice(text.search(HTML_START)) } : null;
+  // JSON must start before any markup, otherwise the first "{" is CSS
+  const j = text.search(HTML_START) >= 0 && text.indexOf('{') > text.search(HTML_START) ? null : firstJSON(text);
+  if (!j) {
+    // an old-style {"code":"…"} answer that was cut off: unescape what arrived
+    const cut = text.match(/^\s*\{[\s\S]*?"code"\s*:\s*"([\s\S]*)$/);
+    if (cut) { try { return { action: 'add', name: (text.match(/"name"\s*:\s*"([^"]*)"/) || [])[1] || 'New element', code: looseJSON('"' + cut[1].replace(/\\+$/, '').replace(/"\s*,\s*"(reply|name|full|action)"[\s\S]*$/, '') + '"') }; } catch {} }
+    // no JSON at all: accept plain HTML/CSS, or plain text as a chat reply
+    const b = bare(); if (b) return b;
+    if (text && !/[{}<>]/.test(text)) return { action: 'reply', reply: text };
+    throw Error('The model answered in an unexpected format');
+  }
+  text = j.json;
+  let result;
+  try { result = looseJSON(text); }
+  catch (e) {
+    // legacy format cut mid-string: salvage the "code" value as far as it goes
+    const m = text.match(/"code"\s*:\s*"([\s\S]*)/);
+    if (!m) throw e;
+    result = { action: 'add', code: looseJSON('"' + m[1].replace(/"\s*[,}][\s\S]*$/, '').replace(/\\?$/, '') + '"') };
+  }
   if (typeof result.code === 'string') {
     let code = result.code;
     for (let i = 0; i < 2 && /\\[nt"]/.test(code) && !/\n/.test(code.replace(/\\n/g, '')); i++) {
@@ -773,7 +825,13 @@ async function runAI(request, custom = {}){
   const target = custom.user ? null : items.find(x => x.id === selected);
   message(request, 'user'); $('send').disabled = true; $('chatStatus').textContent = '';
   const stop = thinking();
-  const system = `You are openconstructor AI, you build interfaces. Return ONLY JSON, no markdown and no explanations: {"action":"add|update|reply","full":true|false,"name":"short element name","code":"HTML and CSS","reply":"short reply to the user"}.
+  const system = `You are openconstructor AI, you build interfaces. Answer in EXACTLY this format and nothing else:
+line 1 — a one-line JSON header WITHOUT the code: {"action":"add|update|reply","full":true|false,"name":"short element name","reply":"short reply to the user"}
+then, unless action is "reply", the HTML and CSS in ONE fenced block:
+\`\`\`html
+<style>…</style>
+<markup>…</markup>
+\`\`\`
 Rules:
 - If the message is just conversation or a question (a greeting, thanks, "what can you do", how-to) and does not ask to build or change something, use action "reply" with only the "reply" field — do NOT create an element.
 - If the user asks to change the selected element, use action "update"; if they ask to build something, "add".
@@ -782,7 +840,7 @@ Rules:
 - Do not style html or body; use unique class names with a shared prefix.
 - Clean, modern design: spacing, heading hierarchy, rounded corners, shadows, hover states. Respect prefers-reduced-motion for animations.
 - Write all UI text in the components in the same language as the user's request.
-- In the code field, encode regular line breaks as \\n exactly once; do not double-escape.`;
+- Keep the code compact (no comments, no repeated boilerplate) so the answer fits in one response.`;
   const user = custom.user || ('Selected element: ' + JSON.stringify(target ? { name: target.name, code: target.code } : null) + '\nOther elements: ' + JSON.stringify(items.map(x => ({ name: x.name }))) + '\nRequest: ' + request);
   try {
     const content = await chat(p, key, m.id, system, user, custom.images || []);
