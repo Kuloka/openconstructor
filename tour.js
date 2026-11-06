@@ -5,7 +5,7 @@ const STEPS = [
   { target: '#sidePanel', before: () => window.dispatchEvent(new CustomEvent('oc:show-view', { detail: 'library' })), place: 'right',
     title: '1 · Components', text: 'Your building blocks. Open a section — AI & Chat, Forms, Dashboard, Landing and more — and click any card to drop it on the page. Search finds anything across all sections.' },
   { target: '.canvas-wrap', place: 'center',
-    title: '2 · The page', text: 'Everything you add lives here. Drag an element to move it. Drag empty space (or hold Space) to pan, Ctrl + scroll to zoom. Right-click an element for its code, AI edits and ⚗ Fusion — breed two elements: one's purpose in the other's style.' },
+    title: '2 · The page', text: 'Everything you add lives here. Drag an element to move it. Drag empty space (or hold Space) to pan, Ctrl + scroll to zoom. Right-click an element for its code, AI edits and ⚗ Fusion — breed two elements: the purpose of one in the style of the other.' },
   { target: '.canvas-toolbar', place: 'bottom',
     title: '3 · Page settings', text: 'Switch between desktop, laptop, tablet and phone sizes. Pick a background or press ✎ to design your own: gradients, mesh, patterns.' },
   { target: '#chatPanel', before: () => window.dispatchEvent(new CustomEvent('oc:open-chat')), place: 'left',
