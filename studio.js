@@ -616,7 +616,8 @@ async function loadProvider(p){
 function autoPick(){
   if (keys[current().pid]) return;
   const pr = PROVIDERS.find(x => keys[x.id] && providerModels(x).length);
-  if (pr) { currentModel = providerModels(pr)[0].key; store.set('form-model', currentModel); }
+  // pick the provider's recommended model when it's available, otherwise the first one
+  if (pr) { const list = providerModels(pr); const best = (pr.prefer || []).map(id => list.find(x => x.id === id)).find(Boolean); currentModel = (best || list[0]).key; store.set('form-model', currentModel); }
 }
 function loadModels(){ PROVIDERS.forEach(loadProvider); }
 
@@ -689,9 +690,10 @@ async function runAI(request, custom = {}){
   const target = custom.user ? null : items.find(x => x.id === selected);
   message(request, 'user'); $('send').disabled = true; $('chatStatus').textContent = '';
   const stop = thinking();
-  const system = `You are openconstructor AI, you build interfaces. Return ONLY JSON, no markdown and no explanations: {"action":"add|update","full":true|false,"name":"short element name","code":"HTML and CSS","reply":"short reply to the user"}.
+  const system = `You are openconstructor AI, you build interfaces. Return ONLY JSON, no markdown and no explanations: {"action":"add|update|reply","full":true|false,"name":"short element name","code":"HTML and CSS","reply":"short reply to the user"}.
 Rules:
-- If the user asks to change the selected element, use action "update", otherwise "add".
+- If the message is just conversation or a question (a greeting, thanks, "what can you do", how-to) and does not ask to build or change something, use action "reply" with only the "reply" field — do NOT create an element.
+- If the user asks to change the selected element, use action "update"; if they ask to build something, "add".
 - Page: ${page.w}×${page.h}px, ${isLightPage() ? 'light' : 'dark'} background. If the user asks for a website, landing page, page or section, set "full": true and build a complete full-width layout (header, hero, content blocks, footer) with a root element of width:100%. For a standalone component (button, card, form), set "full": false, width up to 360px.
 - Self-contained HTML and CSS only: one <style> plus markup. No JavaScript, external links, images or fonts. Icons as inline SVG.
 - Do not style html or body; use unique class names with a shared prefix.
@@ -703,6 +705,9 @@ Rules:
     const content = await chat(p, key, m.id, system, user);
     if (typeof content !== 'string' || !content.trim()) throw Error('Empty model response');
     const result = parseAnswer(content);
+    if (result.action === 'reply' || (!result.code && result.reply)) {
+      stop(); setState('ready'); message(String(result.reply || '…'), 'assistant'); $('prompt').value = ''; return;
+    }
     if (typeof result.code !== 'string' || !result.code.trim() || result.code.length > 200000) throw Error('Invalid code');
     const full = result.full === true || result.full === 'true';
     if (result.action === 'update' && target) {
