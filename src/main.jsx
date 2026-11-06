@@ -7,6 +7,8 @@ import '../layout.js';
 import {canSend} from '../studio.js';
 import '../inline-edit.js';
 import '../publish.js';
+import '../remix.js';
+import '../versions.js';
 import '../projects.js';
 import '../theme.js';
 import Welcome from './Welcome';

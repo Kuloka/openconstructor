@@ -40,3 +40,9 @@
 .pub-listed input { margin-top: 3px; accent-color: var(--accent); }
 .pub-listed b { color: var(--text); font-weight: 600; }
 .pub-listed a { color: var(--accent); }
+
+/* Embed code in the success panel */
+.pub-embed { margin: 8px 0 4px; }
+.pub-embed-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; color: var(--text-2); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+.pub-embed textarea { display: block; width: 100%; box-sizing: border-box; resize: none; padding: 8px 10px; border: 1px solid var(--border-2); border-radius: 4px; background: var(--bg); color: var(--text); font: 11px/1.5 var(--mono); }
+.pub-embed textarea:focus { outline: none; border-color: var(--accent); }

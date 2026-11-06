@@ -33,6 +33,11 @@
   .gal-meta span { flex: none; color: #8f837e; font-size: 12px; }
   .gal-foot { display: flex; justify-content: space-between; padding: 0 14px 12px; font-size: 12px; }
   .gal-foot a { color: #8f837e; }
+  .gal-foot > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .gal-foot nav { display: flex; flex: none; gap: 12px; margin-left: 12px; }
+  .gal-foot a.gal-remix { color: #e4572e; font-weight: 600; }
+  .gal-credit { margin: -4px 14px 10px; color: #8f837e; font-size: 12px; }
+  .gal-credit a { color: #b3a6a0; }
   .gal-empty { padding: 60px 20px; border: 1px dashed #3a302d; border-radius: 10px; text-align: center; color: #9c8f8a; }
   .gal-more { display: flex; margin: 28px auto 0; border: 0; cursor: pointer; font: inherit; font-weight: 700; }
   .gal-more[hidden], .gal-empty[hidden] { display: none; }
@@ -54,7 +59,7 @@
   <div class="gal-head">
     <div>
       <h1>What people built</h1>
-      <p>Pages published by the community. Click one to open it — then <a href="/">build your own</a> and tick <i>“show in the community gallery”</i> when you publish.</p>
+      <p>Pages published by the community. Click one to open it, hit <b>remix</b> to build on it in the editor — or <a href="/">start your own</a> and tick <i>“show in the community gallery”</i> when you publish.</p>
     </div>
     <input class="gal-search" id="q" type="search" placeholder="search by title or link" aria-label="Search the gallery">
   </div>
@@ -74,14 +79,24 @@
   const grid = document.getElementById('grid'), empty = document.getElementById('empty'), more = document.getElementById('more'), q = document.getElementById('q');
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   let offset = 0, query = '', seq = 0;
+  let withCredit = true; // false once the database turns out not to have `remixed_from` yet (supabase/remix.sql)
 
   async function load(reset){
     const my = ++seq;
     if (reset) { offset = 0; grid.innerHTML = ''; }
-    let url = `${SB}/rest/v1/pages?select=slug,title,updated_at&listed=eq.true&hidden=eq.false&order=updated_at.desc&limit=${PAGE}&offset=${offset}`;
-    if (query) { const t = query.replace(/[%,()*]/g, ' ').trim(); url += `&or=(title.ilike.*${encodeURIComponent(t)}*,slug.ilike.*${encodeURIComponent(t)}*)`; }
+    const build = cols => {
+      let url = `${SB}/rest/v1/pages?select=${cols}&listed=eq.true&hidden=eq.false&order=updated_at.desc&limit=${PAGE}&offset=${offset}`;
+      if (query) { const t = query.replace(/[%,()*]/g, ' ').trim(); url += `&or=(title.ilike.*${encodeURIComponent(t)}*,slug.ilike.*${encodeURIComponent(t)}*)`; }
+      return url;
+    };
+    const get = url => fetch(url, { headers: { apikey: KEY, Authorization: 'Bearer ' + KEY } });
     let rows = [];
-    try { const r = await fetch(url, { headers: { apikey: KEY, Authorization: 'Bearer ' + KEY } }); if (r.ok) rows = await r.json(); } catch {}
+    try {
+      let r = await get(build(withCredit ? 'slug,title,updated_at,remixed_from' : 'slug,title,updated_at'));
+      // column not there yet (or not readable): fall back to the basic listing
+      if (withCredit && (r.status === 400 || r.status === 401 || r.status === 403)) { withCredit = false; r = await get(build('slug,title,updated_at')); }
+      if (r.ok) rows = await r.json();
+    } catch {}
     if (my !== seq) return;
     grid.insertAdjacentHTML('beforeend', rows.map((p, i) => `
       <article style="animation-delay:${Math.min(i, 12) * 40}ms">
@@ -89,7 +104,8 @@
           <div class="gal-shot"><iframe src="/p/${esc(p.slug)}" loading="lazy" sandbox="" tabindex="-1" title="${esc(p.title)}"></iframe></div>
           <div class="gal-meta"><b>${esc(p.title || p.slug)}</b><span>${new Date(p.updated_at).toLocaleDateString()}</span></div>
         </a>
-        <div class="gal-foot"><span>/p/${esc(p.slug)}</span><a href="https://github.com/Kuloka/openconstructor/issues/new?title=${encodeURIComponent('Report: /p/' + p.slug)}&body=${encodeURIComponent('Page: https://openconstructor.pw/p/' + p.slug + '\nReason: ')}" target="_blank" rel="noopener">report</a></div>
+        ${p.remixed_from ? `<div class="gal-credit">remix of <a href="/p/${esc(p.remixed_from)}" target="_blank" rel="noopener">/p/${esc(p.remixed_from)}</a></div>` : ''}
+        <div class="gal-foot"><span>/p/${esc(p.slug)}</span><nav><a class="gal-remix" href="/?remix=${encodeURIComponent(p.slug)}" title="Open a copy of this page in the editor and build on it">remix</a><a href="https://github.com/Kuloka/openconstructor/issues/new?title=${encodeURIComponent('Report: /p/' + p.slug)}&body=${encodeURIComponent('Page: https://openconstructor.pw/p/' + p.slug + '\nReason: ')}" target="_blank" rel="noopener">report</a></nav></div>
       </article>`).join(''));
     fit();
     offset += rows.length;

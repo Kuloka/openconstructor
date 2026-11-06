@@ -1,10 +1,10 @@
 import {presets} from './presets.js';
 import {CATEGORIES} from './categories.js';
-import { TARGETS, snapshot, toRobloxLuau, toLoveLua, toReact, toVue, toSvelte } from './exporters.js';
+import { TARGETS, snapshot, toRobloxLuau, toRobloxModel, toLoveLua, toReact, toVue, toSvelte } from './exporters.js';
 import { PRESETS as BG_PRESETS, DEFAULT_SPEC as BG_DEFAULT, toCSS as bgCSS, luminance as bgLum, mountBackgroundEditor } from './background.js';
 import logoSvg from './src/logo.svg?raw';
-import { PROVIDERS, byId, listModels, chat } from './providers.js';
-import { signOut, user as authUser } from './auth.js';
+import { PROVIDERS, byId, listModels, chat, freeQuota } from './providers.js';
+import { signOut, user as authUser, openAuth } from './auth.js';
 import './donate.js';
 import './tour.js';
 
@@ -118,13 +118,14 @@ function render(){
     if (el._key !== key) { el._key = key; frame.title = item.name; frame.srcdoc = nodeDoc(item); }
     el.querySelector('.node-tag').textContent = item.name;
     el.style.left = item.x + 'px'; el.style.top = item.y + 'px'; el.style.zIndex = i + 1;
-    el.classList.toggle('selected', selected === item.id);
+    el.classList.toggle('selected', picked.has(item.id) || selected === item.id);
     el.classList.toggle('full', !!item.full);
   });
   $('canvasEmpty').classList.toggle('hidden', items.length > 0);
   renderLayers();
   layout();
 }
+function pageHeightNow(){ const b = contentBottom(); return b > page.h ? b + 48 : page.h; }
 function contentBottom(){ let h = 0; for (const el of nodes.values()) h = Math.max(h, el.offsetTop + el.offsetHeight); return h; }
 /* ── Stack layout: blocks flow top to bottom (order = vertical position), components are centered.
    The same order drives a responsive export, so the page adapts to phones and tablets. ── */
@@ -155,7 +156,8 @@ document.querySelectorAll('[data-layout]').forEach(b => b.setAttribute('aria-che
 // The page grows downward when elements extend past its height, like a real web page
 function layout(){
   restack();
-  const h = Math.max(page.h, contentBottom() + 48);
+  // the page only grows (with a 48px margin) when content really goes past its height — exact sizes stay exact
+  const h = pageHeightNow();
   board.style.width = page.w + 'px'; board.style.height = h + 'px';
   board.style.background = page.bg;
   board.style.transform = `scale(${zoom})`;
@@ -291,7 +293,80 @@ function isLightPage(){ return page.bgSpec?.c1 && !page.bgSpec.css ? bgLum(page.
 addEventListener('resize', layout);
 
 /* ── Element operations ──────────────────────────────────── */
-function select(id){ selected = id; for (const [nid, el] of nodes) el.classList.toggle('selected', nid === id); renderLayers(); }
+// Selection: `selected` is the primary element (AI edits, layers); `picked` holds every selected element (multi-select).
+const picked = new Set();
+function paintSelection(){ for (const [nid, el] of nodes) el.classList.toggle('selected', picked.has(nid)); try { updateAlignBar(); } catch {} }
+function select(id){ selected = id; picked.clear(); if (id) picked.add(id); paintSelection(); renderLayers(); }
+function toggleSelect(id){
+  if (picked.has(id)) { picked.delete(id); if (selected === id) selected = [...picked].pop() || null; }
+  else { picked.add(id); selected = id; }
+  paintSelection(); renderLayers();
+}
+function selectMany(ids){ picked.clear(); ids.forEach(id => picked.add(id)); selected = ids[ids.length - 1] || null; paintSelection(); renderLayers(); }
+const pickedItems = () => items.filter(x => picked.has(x.id));
+
+/* ── Align & distribute bar (2+ elements selected) ── */
+const alignBar = document.createElement('div');
+alignBar.className = 'align-bar hidden';
+const AL = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">${d}</svg>`;
+alignBar.innerHTML = `<span class="ab-count"></span>
+  <button data-al="left" title="Align left">${AL('<path d="M4 3v18"/><rect x="7" y="6" width="12" height="4" rx="1"/><rect x="7" y="14" width="7" height="4" rx="1"/>')}</button>
+  <button data-al="hcenter" title="Align centers horizontally">${AL('<path d="M12 3v18"/><rect x="5" y="6" width="14" height="4" rx="1"/><rect x="8" y="14" width="8" height="4" rx="1"/>')}</button>
+  <button data-al="right" title="Align right">${AL('<path d="M20 3v18"/><rect x="5" y="6" width="12" height="4" rx="1"/><rect x="10" y="14" width="7" height="4" rx="1"/>')}</button>
+  <i></i>
+  <button data-al="top" title="Align top">${AL('<path d="M3 4h18"/><rect x="6" y="7" width="4" height="12" rx="1"/><rect x="14" y="7" width="4" height="7" rx="1"/>')}</button>
+  <button data-al="vcenter" title="Align middles">${AL('<path d="M3 12h18"/><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="8" width="4" height="8" rx="1"/>')}</button>
+  <button data-al="bottom" title="Align bottom">${AL('<path d="M3 20h18"/><rect x="6" y="5" width="4" height="12" rx="1"/><rect x="14" y="10" width="4" height="7" rx="1"/>')}</button>
+  <i></i>
+  <button data-al="hdist" title="Distribute horizontally (3+)">${AL('<path d="M3 4v16M21 4v16"/><rect x="9" y="8" width="6" height="8" rx="1"/>')}</button>
+  <button data-al="vdist" title="Distribute vertically (3+)">${AL('<path d="M4 3h16M4 21h16"/><rect x="8" y="9" width="8" height="6" rx="1"/>')}</button>
+  <i></i>
+  <button data-al="dup" title="Duplicate (Ctrl+D)">${AL('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/>')}</button>
+  <button data-al="del" class="danger" title="Delete (Del)">${AL('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>')}</button>`;
+document.querySelector('.canvas-wrap').append(alignBar);
+function updateAlignBar(){
+  const n = picked.size;
+  alignBar.classList.toggle('hidden', n < 2);
+  alignBar.querySelector('.ab-count').textContent = n + ' selected';
+  alignBar.querySelectorAll('[data-al$="dist"]').forEach(b => b.disabled = n < 3);
+}
+function box(it){ const el = nodes.get(it.id); return { x: it.x, y: it.y, w: el?.offsetWidth || 0, h: el?.offsetHeight || 0 }; }
+function alignPicked(kind){
+  const list = pickedItems(); if (list.length < 2 && !['dup', 'del'].includes(kind)) return;
+  if (kind === 'del') { checkpoint(); items = items.filter(x => !picked.has(x.id)); select(null); render(); return; }
+  if (kind === 'dup') {
+    checkpoint();
+    const copies = list.map(x => ({ ...x, id: crypto.randomUUID(), x: x.full ? 0 : x.x + 24, y: x.y + 24 }));
+    items.push(...copies); render(); selectMany(copies.map(c => c.id)); return;
+  }
+  checkpoint();
+  const bs = list.map(it => ({ it, ...box(it) })), movable = bs.filter(b => !b.it.full);
+  const L = Math.min(...bs.map(b => b.x)), R = Math.max(...bs.map(b => b.x + b.w)), T = Math.min(...bs.map(b => b.y)), B = Math.max(...bs.map(b => b.y + b.h));
+  if (kind === 'left') movable.forEach(b => b.it.x = L);
+  if (kind === 'right') movable.forEach(b => b.it.x = R - b.w);
+  if (kind === 'hcenter') movable.forEach(b => b.it.x = Math.round((L + R) / 2 - b.w / 2));
+  if (kind === 'top') bs.forEach(b => b.it.y = T);
+  if (kind === 'bottom') bs.forEach(b => b.it.y = B - b.h);
+  if (kind === 'vcenter') bs.forEach(b => b.it.y = Math.round((T + B) / 2 - b.h / 2));
+  if (kind === 'hdist' && movable.length > 2) {
+    const s = [...movable].sort((a, b) => a.x - b.x), total = s.reduce((t, b) => t + b.w, 0);
+    const gap = (s[s.length - 1].x + s[s.length - 1].w - s[0].x - total) / (s.length - 1);
+    let x = s[0].x; s.forEach(b => { b.it.x = Math.round(x); x += b.w + gap; });
+  }
+  if (kind === 'vdist' && bs.length > 2) {
+    const s = [...bs].sort((a, b) => a.y - b.y), total = s.reduce((t, b) => t + b.h, 0);
+    const gap = (s[s.length - 1].y + s[s.length - 1].h - s[0].y - total) / (s.length - 1);
+    let y = s[0].y; s.forEach(b => { b.it.y = Math.round(y); y += b.h + gap; });
+  }
+  items.forEach(it => { if (!it.full) it.x = Math.max(0, it.x); it.y = Math.max(0, it.y); });
+  render();
+}
+alignBar.addEventListener('click', e => { const k = e.target.closest('[data-al]')?.dataset.al; if (k) alignPicked(k); });
+
+/* ── Marquee: Shift + drag on empty space selects everything it touches ── */
+const marquee = document.createElement('div'); marquee.className = 'marquee hidden'; board.append(marquee);
+let lasso = null;
+function boardPoint(e){ const r = board.getBoundingClientRect(); return { x: (e.clientX - r.left) / zoom, y: (e.clientY - r.top) / zoom }; }
 function freeSpot(w = 280, h = 140){
   const GAP = 24;
   const rects = [...nodes.values()].map(el => ({ x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth || 240, h: el.offsetHeight || 100 }));
@@ -360,8 +435,12 @@ board.addEventListener('pointerdown', e => {
   if (e.button !== 0 || !el || spaceDown) return;
   const item = items.find(x => x.id === el.dataset.id); if (!item) return;
   e.stopPropagation(); closeCtx();
-  select(item.id);
-  drag = { el, item, sx: e.clientX, sy: e.clientY, ox: item.x, oy: item.y, moved: false, snapshot: JSON.stringify(items) };
+  // Shift/Ctrl+click adds or removes from the selection; clicking inside a group keeps the group for dragging
+  if (e.shiftKey || e.ctrlKey || e.metaKey) { toggleSelect(item.id); if (!picked.has(item.id)) return; }
+  else if (!picked.has(item.id) || picked.size < 2) select(item.id);
+  else { selected = item.id; renderLayers(); }
+  const group = pickedItems().filter(x => x.id !== item.id).map(x => ({ item: x, el: nodes.get(x.id), ox: x.x, oy: x.y }));
+  drag = { el, item, group, sx: e.clientX, sy: e.clientY, ox: item.x, oy: item.y, moved: false, snapshot: JSON.stringify(items) };
   el.setPointerCapture(e.pointerId);
 });
 board.addEventListener('pointermove', e => {
@@ -377,6 +456,12 @@ board.addEventListener('pointermove', e => {
   showGuides(g?.lines || []);
   drag.item.x = x; drag.item.y = y;
   drag.el.style.left = drag.item.x + 'px'; drag.el.style.top = drag.item.y + 'px';
+  // the rest of a multi-selection moves by the same amount
+  const mx = x - drag.ox, my = y - drag.oy;
+  for (const g2 of drag.group || []) {
+    g2.item.x = g2.item.full ? 0 : Math.max(0, g2.ox + mx); g2.item.y = Math.max(0, g2.oy + my);
+    if (g2.el) { g2.el.style.left = g2.item.x + 'px'; g2.el.style.top = g2.item.y + 'px'; }
+  }
 });
 /* ── Roblox safe zones: areas the Roblox client draws on top of your UI ──
    Top bar (menu, chat, backpack…) along the top; on touch screens the thumbstick (bottom-left)
@@ -402,7 +487,7 @@ function smartSnap(item, x, y, w, h){
   const tol = 6 / zoom;
   const xs = [{ v: 0 }, { v: page.w / 2 }, { v: page.w }], ys = [{ v: 0 }, { v: page.h / 2 }];
   for (const it of items) {
-    if (it.id === item.id) continue;
+    if (it.id === item.id || picked.has(it.id)) continue; // don't snap to elements that move along
     const el = nodes.get(it.id); if (!el) continue;
     const L = el.offsetLeft, T = el.offsetTop, W = el.offsetWidth, H = el.offsetHeight;
     xs.push({ v: L }, { v: L + W / 2 }, { v: L + W });
@@ -442,17 +527,31 @@ canvas.addEventListener('pointerdown', e => {
   if (e.button !== 0 && e.button !== 1) return;
   if (e.button === 1) e.preventDefault();
   closeCtx();
-  pan = { sx: e.clientX, sy: e.clientY, sl: canvas.scrollLeft, st: canvas.scrollTop, moved: false, id: e.pointerId };
+  if (e.button === 0 && e.shiftKey && !e.target.closest('.node, .page-handle')) {
+    const p0 = boardPoint(e);
+    lasso = { x0: p0.x, y0: p0.y, base: new Set(picked), id: e.pointerId };
+    canvas.setPointerCapture(e.pointerId); return;
+  }
+  pan ={ sx: e.clientX, sy: e.clientY, sl: canvas.scrollLeft, st: canvas.scrollTop, moved: false, id: e.pointerId };
   canvas.setPointerCapture(e.pointerId);
 });
 canvas.addEventListener('pointermove', e => {
+  if (lasso) {
+    const p1 = boardPoint(e), x = Math.min(lasso.x0, p1.x), y = Math.min(lasso.y0, p1.y), w = Math.abs(p1.x - lasso.x0), h = Math.abs(p1.y - lasso.y0);
+    Object.assign(marquee.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' }); marquee.classList.remove('hidden');
+    const hit = items.filter(it => { const b = box(it); return b.x < x + w && b.x + b.w > x && b.y < y + h && b.y + b.h > y; }).map(it => it.id);
+    selectMany([...new Set([...lasso.base, ...hit])]);
+    return;
+  }
   if (!pan) return;
   const dx = e.clientX - pan.sx, dy = e.clientY - pan.sy;
   if (!pan.moved && Math.hypot(dx, dy) < 3) return;
   pan.moved = true; canvas.classList.add('panning');
   canvas.scrollLeft = pan.sl - dx; canvas.scrollTop = pan.st - dy;
 });
-const endPan = () => { if (!pan) return; if (!pan.moved) select(null); canvas.classList.remove('panning'); pan = null; };
+const endPan = () => {
+  if (lasso) { lasso = null; marquee.classList.add('hidden'); if (picked.size > 1) setState(`${picked.size} selected · drag to move together · align with the bar below`, 'ok'); return; }
+  if (!pan) return; if (!pan.moved) select(null); canvas.classList.remove('panning'); pan = null; };
 canvas.addEventListener('pointerup', endPan);
 canvas.addEventListener('pointercancel', endPan);
 canvas.addEventListener('auxclick', e => { if (e.button === 1) e.preventDefault(); });
@@ -537,6 +636,24 @@ document.addEventListener('keydown', e => {
   if (mod && (e.key === '=' || e.key === '+')) { e.preventDefault(); setZoom(zoom + .1); return; }
   if (mod && e.key === '-') { e.preventDefault(); setZoom(zoom - .1); return; }
   if (mod && e.key === '0') { e.preventDefault(); fitZoom(); return; }
+  if (mod && e.key.toLowerCase() === 'a') { e.preventDefault(); selectMany(items.map(x => x.id)); setState(`${items.length} selected`, 'ok'); return; }
+  if (picked.size > 1) {
+    if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); alignPicked('del'); }
+    else if (mod && e.key.toLowerCase() === 'd') { e.preventDefault(); alignPicked('dup'); }
+    else if (e.key === 'Escape') select(null);
+    else if (e.key.startsWith('Arrow')) {
+      e.preventDefault(); checkpoint();
+      const step = e.shiftKey ? GRID * 4 : GRID;
+      for (const it of pickedItems()) {
+        if (e.key === 'ArrowLeft' && !it.full) it.x = Math.max(0, it.x - step);
+        if (e.key === 'ArrowRight' && !it.full) it.x += step;
+        if (e.key === 'ArrowUp') it.y = Math.max(0, it.y - step);
+        if (e.key === 'ArrowDown') it.y += step;
+      }
+      render();
+    }
+    return;
+  }
   if (!selected) return;
   const item = items.find(x => x.id === selected); if (!item) return;
   if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); remove(item.id); }
@@ -647,10 +764,12 @@ function exportTo(t){
   const title = nameEl.textContent.trim() || 'My interface';
   const withH = items.map(it => ({ ...it, h: nodes.get(it.id)?.offsetHeight || 0 }));
   try {
-    if (t.id === 'luau' || t.id === 'love') {
+    if (['luau', 'luau-scale', 'rbxmx', 'love'].includes(t.id)) {
       const frames = items.map(it => ({ doc: nodes.get(it.id)?.querySelector('iframe')?.contentDocument, x: it.x, y: it.y, name: it.name })).filter(f => f.doc);
       const snap = snapshot(frames);
-      download(t.id === 'luau' ? toRobloxLuau(snap, page, title) : toLoveLua(snap, page, title), t.id === 'luau' ? fileBase() + t.ext : 'main.lua');
+      if (t.id === 'love') download(toLoveLua(snap, page, title), 'main.lua');
+      else if (t.id === 'rbxmx') download(toRobloxModel(snap, page, title), fileBase() + t.ext, 'application/xml');
+      else download(toRobloxLuau(snap, page, title, { scale: t.id === 'luau-scale' }), fileBase() + (t.id === 'luau-scale' ? '.scale' : '') + t.ext);
     }
     else if (t.id === 'react') download(toReact(withH, page, title), fileBase() + t.ext);
     else if (t.id === 'vue') download(toVue(withH, page, title), fileBase() + t.ext);
@@ -684,7 +803,7 @@ $('export').onclick = () => {
 };
 function buildHTML(){
   if (isStack()) return buildStackHTML();
-  const H = Math.max(page.h, contentBottom() + 48);
+  const H = pageHeightNow();
   const body = items.map(it => it.full
     ? `<div style="position:absolute;left:0;top:${it.y}px;width:${page.w}px">\n${it.code}\n</div>`
     : `<div style="position:absolute;left:${it.x}px;top:${it.y}px;padding:${PAD}px">\n${it.code}\n</div>`).join('\n');
@@ -762,11 +881,12 @@ const logo = name => logoFiles[`./src/logos/${name}.svg`] || '';
 // Pick the model logo from its name (Llama → Meta, Qwen → Qwen…), otherwise use the provider logo
 const VENDOR_LOGOS = [[/llama|meta-/i, 'meta-color'], [/gemma/i, 'gemma-color'], [/gemini|google/i, 'gemini-color'], [/qwen|qwq/i, 'qwen-color'], [/mistral|mixtral|codestral|devstral|magistral|ministral|pixtral/i, 'mistral-color'], [/deepseek/i, 'deepseek-color'], [/claude/i, 'claude-color'], [/gpt|^o\d|openai|chatgpt/i, 'openai'], [/grok|x-ai/i, 'xai'], [/kimi|moonshot/i, 'kimi-color'], [/nemotron|nvidia/i, 'nvidia-color'], [/glm|z-ai|zhipu/i, 'zai'], [/minimax/i, 'minimax-color'], [/phi-|microsoft/i, 'microsoft-color'], [/cohere|command|north/i, 'cohere-color'], [/hermes|nous/i, 'nousresearch'], [/liquid|lfm/i, 'liquid'], [/arcee/i, 'arcee-color']];
 function modelLogo(m){
+  if (m.pid === 'oc') return `<span class="model-logo">${logoSvg}</span>`;
   const hit = VENDOR_LOGOS.find(([re]) => re.test(`${m.id} ${m.name} ${m.vendor || ''}`));
   const svg = logo(hit ? hit[1] : byId(m.pid)?.logo);
   return svg ? `<span class="model-logo">${svg}</span>` : `<span class="model-logo letter">${escapeHTML((m.vendor || m.name || '?')[0].toUpperCase())}</span>`;
 }
-const providerLogo = p => `<span class="model-logo">${logo(p.logo)}</span>`;
+const providerLogo = p => `<span class="model-logo">${p.kind === 'proxy' ? logoSvg : logo(p.logo)}</span>`;
 const fmtUsd = v => '$' + (v >= 10 ? Math.round(v) : v >= 1 ? +v.toFixed(2) : +v.toFixed(3));
 const fmtPrice = pr => `${fmtUsd(pr[0])} · ${fmtUsd(pr[1])}`;
 const fmtCtx = n => !n ? '' : n >= 1e6 ? (n / 1e6).toFixed(n % 1e6 ? 1 : 0) + 'M' : Math.round(n / 1e3) + 'K';
@@ -779,7 +899,8 @@ function saveKeys(){ try { const s = JSON.stringify(keys); (remember ? localStor
 
 const AUTO = { id: 'openrouter/free', name: 'Auto', vendor: 'OpenRouter', note: 'best available model' };
 const modelsBy = {}, modelErr = {}, loading = {};
-let currentModel = store.get('form-model', 'openrouter::openrouter/free');
+// new visitors start on the free openconstructor AI (no key, sign-in required)
+let currentModel = store.get('form-model', 'oc::openai/gpt-oss-120b');
 if (!currentModel.includes('::')) currentModel = 'openrouter::' + currentModel;
 const providerModels = p => (p.id === 'openrouter' ? [AUTO, ...(modelsBy.openrouter || [])] : (modelsBy[p.id] || [])).map(m => ({ ...m, pid: p.id, key: `${p.id}::${m.id}` }));
 const allModels = () => PROVIDERS.flatMap(providerModels);
@@ -789,7 +910,13 @@ function current(){
   const [pid, ...rest] = currentModel.split('::');
   return { pid, id: rest.join('::'), name: rest.join('::'), key: currentModel };
 }
-export const canSend = () => !!keys[current().pid];
+// the free proxy needs no key (it asks to sign in when used); others need their key
+const usable = pid => byId(pid)?.kind === 'proxy' || !!keys[pid];
+export const canSend = () => usable(current().pid);
+let quota = null; // { used, limit } for the free AI
+const quotaText = () => !authUser ? ' · sign in to use' : quota ? ` · ${quota.used}/${quota.limit} today` : ' · 20 free a day';
+window.addEventListener('oc-quota', e => { quota = e.detail; renderPicker(); });
+window.addEventListener('oc:auth', () => { quota = null; if (authUser) freeQuota().catch(() => {}); renderPicker(); renderProviders(); });
 
 const picker = document.createElement('div');
 picker.className = 'model-picker';
@@ -806,13 +933,13 @@ function renderPicker(){
   const groups = PROVIDERS.filter(pr => keys[pr.id] || pr.publicModels).map(pr => {
     const list = providerModels(pr).filter(x => `${x.name} ${x.vendor || ''} ${x.id} ${pr.name}`.toLocaleLowerCase().includes(q));
     if (!list.length && q) return '';
-    const status = !keys[pr.id] ? ' · key required' : loading[pr.id] ? ' · loading…' : modelErr[pr.id] ? ' · error' : '';
+    const status = pr.kind === 'proxy' ? quotaText() : !keys[pr.id] ? ' · key required' : loading[pr.id] ? ' · loading…' : modelErr[pr.id] ? ' · error' : '';
     const firstPaid = list.find(x => x.paid);
     return `<div class="model-group">${providerLogo(pr)}${escapeHTML(pr.name)}<span>${status}</span></div>` + list.map(x => (x === firstPaid ? '<div class="model-sub">pay per use · $ per 1M tokens in · out</div>' : '') + `<button type="button" role="option" class="model-option${x.key === currentModel ? ' active' : ''}" data-model="${escapeHTML(x.key)}" aria-selected="${x.key === currentModel}">${modelLogo(x)}<span class="model-text"><span class="model-title">${escapeHTML(x.name)}</span><span class="model-meta">${escapeHTML(x.vendor || pr.name)}${x.ctx ? ' · ' + fmtCtx(x.ctx) + ' context' : ''}${x.note ? ' · ' + escapeHTML(x.note) : ''}</span></span>${x.price ? `<span class="model-price" title="price per 1M tokens: input · output">${fmtPrice(x.price)}</span>` : ''}${x.key === currentModel ? '<span class="model-check">✓</span>' : ''}</button>`).join('');
   }).join('');
   picker.querySelector('.model-list').innerHTML = groups || '<div class="model-empty">nothing found</div>';
-  const connected = PROVIDERS.filter(pr => keys[pr.id]).length;
-  picker.querySelector('.model-add').textContent = `+ connect providers (${connected} of ${PROVIDERS.length})`;
+  const connected = PROVIDERS.filter(pr => keys[pr.id]).length, total = PROVIDERS.filter(pr => pr.kind !== 'proxy').length;
+  picker.querySelector('.model-add').textContent = `+ connect your own keys (${connected} of ${total})`;
 }
 function toggleMenu(open = menu.classList.contains('hidden')){
   menu.classList.toggle('hidden', !open); trigger.setAttribute('aria-expanded', open);
@@ -839,7 +966,9 @@ async function loadProvider(p){
 // If the selected model has no key, fall back to the first model of a connected provider
 function autoPick(){
   if (keys[current().pid]) return;
+  // someone who connected their own key probably wants to use it instead of the free quota
   const pr = PROVIDERS.find(x => keys[x.id] && providerModels(x).length);
+  if (!pr && usable(current().pid)) return;
   // pick the provider's recommended model when it's available, otherwise the first one
   if (pr) { const list = providerModels(pr); const best = (pr.prefer || []).map(id => list.find(x => x.id === id)).find(Boolean); currentModel = (best || list[0]).key; store.set('form-model', currentModel); }
 }
@@ -850,6 +979,7 @@ function renderProviders(){
   const box = $('providers'); if (!box) return;
   const focused = document.activeElement?.dataset?.key;
   box.innerHTML = PROVIDERS.map(p => {
+    if (p.kind === 'proxy') return `<div class="prov on prov-free">${providerLogo(p)}<div class="prov-info"><div class="prov-name">${escapeHTML(p.name)}</div><div class="prov-note">${escapeHTML(p.note)}</div></div>${authUser ? `<span class="prov-st ok">✓ signed in${quota ? ` · ${quota.used}/${quota.limit} used today` : ''}</span>` : '<button class="btn primary" type="button" data-free-signin>sign in to use</button>'}</div>`;
     const k = keys[p.id] || '';
     const st = !k ? '' : loading[p.id] ? '<span class="prov-st">checking…</span>' : modelErr[p.id] ? `<span class="prov-st err" title="${escapeHTML(modelErr[p.id])}">✗ ${escapeHTML(String(modelErr[p.id]).slice(0, 60))}</span>` : `<span class="prov-st ok">✓ ${(modelsBy[p.id] || []).length} models</span>`;
     return `<div class="prov${k ? ' on' : ''}">${providerLogo(p)}<div class="prov-info"><div class="prov-name">${escapeHTML(p.name)}</div><div class="prov-note">${escapeHTML(p.note)} · <a href="${p.keyUrl}" target="_blank" rel="noreferrer">get a key ↗</a></div></div><input type="password" data-key="${p.id}" value="${escapeHTML(k)}" placeholder="${escapeHTML(p.hint || 'API key')}" autocomplete="off" spellcheck="false">${st}</div>`;
@@ -857,6 +987,7 @@ function renderProviders(){
   if (focused) { const el = box.querySelector(`[data-key="${focused}"]`); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }
 }
 function openSettings(){ $('rememberKeys').checked = remember; renderProviders(); showModal('settings'); }
+$('providers').addEventListener('click', e => { if (e.target.closest('[data-free-signin]')) { $('settings').classList.add('hidden'); openAuth('signup'); } });
 $('providers').addEventListener('change', e => {
   const pid = e.target.dataset.key; if (!pid) return;
   const v = e.target.value.trim();
@@ -962,7 +1093,8 @@ $('send').onclick = () => { const request = $('prompt').value.trim(); if (reques
 async function runAI(request, custom = {}){
   const m = current(), p = byId(m.pid), key = keys[m.pid];
   if (!p) { $('chatStatus').textContent = 'Pick a model from the list below the input.'; return; }
-  if (!key) { $('chatStatus').textContent = `Add a ${p.name} key to use this model.`; openSettings(); return; }
+  if (p.kind === 'proxy') { if (!authUser) { $('chatStatus').textContent = 'Sign in (free) to use openconstructor AI — or connect your own key in ⚙.'; openAuth('signup'); return; } }
+  else if (!key) { $('chatStatus').textContent = `Add a ${p.name} key to use this model.`; openSettings(); return; }
   const target = custom.user ? null : items.find(x => x.id === selected);
   message(request, 'user'); $('send').disabled = true; $('chatStatus').textContent = '';
   const stop = thinking();
@@ -1023,6 +1155,7 @@ async function fromScreenshot(file){
   if (!file || !file.type.startsWith('image/')) return;
   if (file.size > 15e6) { setState('image is too large (max 15 MB)', 'warn'); return; }
   window.dispatchEvent(new CustomEvent('oc:open-chat'));
+  if (byId(current().pid)?.kind === 'proxy') { message('Screenshots need a model that can see images. Pick Gemini, Claude or GPT in the model list (connect a key in ⚙) and try again.', 'assistant'); return; }
   try {
     const { data, w, h } = await shrinkImage(file);
     const note = $('prompt').value.trim();

@@ -1,6 +1,7 @@
 {
   // Cloudflare deploy: `npm run deploy` builds and uploads dist/.
-  // worker.js serves published pages at /p/<slug>; everything else is the static site.
+  // worker.js serves published pages at /p/<slug> and the free AI at /api/ai; everything else is the static site.
+  // Secret (kept out of this file): GROQ_API_KEY, set once with `npx wrangler secret put GROQ_API_KEY`.
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "openconstructor",
   "main": "worker.js",
@@ -12,7 +13,7 @@
     "directory": "./dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/p/*"]
+    "run_worker_first": ["/p/*", "/api/*"]
   },
   // Public values (the anon key is safe to expose; access is governed by RLS)
   "vars": {

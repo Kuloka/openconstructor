@@ -7,14 +7,24 @@ import './publish.css';
 
 const ORIGIN = 'https://openconstructor.pw';
 const MAX_HTML = 1_000_000;
+const MAX_SOURCE = 1_400_000; // supabase/remix.sql caps the stored project at ~1.5 MB
+const REMIX_KEY = 'oc-remixed-from'; // set by remix.js: { slug, name }
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{2,47}$/;
 const STORE_KEY = 'oc-published';
 const pageUrl = slug => `${ORIGIN}/p/${slug}`;
+const embedCode = (slug, title) => `<iframe src="${pageUrl(slug)}" width="100%" height="600" style="border:0;border-radius:12px" loading="lazy" title="${esc(title || slug)}"></iframe>`;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // ── remembered slug per project name ──
 function memory(){ try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch { return {}; } }
 function remember(name, slug){ try { const m = memory(); if (slug) m[name] = slug; else delete m[name]; localStorage.setItem(STORE_KEY, JSON.stringify(m)); } catch {} }
+// The page this project was remixed from (only while the project keeps the name remix.js gave it)
+function remixedFrom(){
+  try {
+    const r = JSON.parse(localStorage.getItem(REMIX_KEY) || sessionStorage.getItem(REMIX_KEY) || 'null');
+    return r && SLUG_RE.test(r.slug) && r.name === studio.name() ? r.slug : null;
+  } catch { return null; }
+}
 function forget(slug){ try { const m = memory(); for (const k of Object.keys(m)) if (m[k] === slug) delete m[k]; localStorage.setItem(STORE_KEY, JSON.stringify(m)); } catch {} }
 
 export function slugify(text){
@@ -58,6 +68,10 @@ modal.innerHTML = `<div class="modal-card pub-card" role="dialog" aria-labelledb
   <div class="pub-result hidden" id="pubResult">
     <a id="pubLink" target="_blank" rel="noopener"></a>
     <div class="pub-result-actions"><button class="btn" type="button" id="pubCopy">copy</button><button class="btn" type="button" id="pubOpen">open ↗</button></div>
+  </div>
+  <div class="pub-embed hidden" id="pubEmbed">
+    <div class="pub-embed-head"><span>embed on your site</span><button class="btn" type="button" id="pubEmbedCopy">copy</button></div>
+    <textarea id="pubEmbedCode" readonly rows="3" spellcheck="false" aria-label="Embed code"></textarea>
   </div>
   <div class="pub-list-head"><span>your published pages</span><span class="pub-count" id="pubCount"></span></div>
   <ul class="pub-list" id="pubList"><li class="pub-empty">loading…</li></ul>
@@ -143,10 +157,20 @@ $('#pubForm').addEventListener('submit', async e => {
   if (html.length > MAX_HTML) { setHint(`the page is too large to publish (${Math.round(html.length / 1000)} KB, max 1000 KB). Large inline images are the usual cause.`, 'err'); return; }
 
   const row = { title: titleOf(html), html, listed: $('#pubListed').checked };
+  // The editable project, so others can remix it (see remix.js / supabase/remix.sql)
+  const extra = {};
+  const source = { items: studio.items(), page: studio.page(), name: studio.name() };
+  if (JSON.stringify(source).length <= MAX_SOURCE) extra.source = source;
+  const from = state === 'mine' ? null : remixedFrom();
+  if (from && from !== slug) extra.remixed_from = from;
+
   goBtn.disabled = true; studio.status(state === 'mine' ? 'updating published page…' : 'publishing…', 'busy');
-  const res = state === 'mine'
-    ? await supabase.from('pages').update(row).eq('slug', slug).eq('owner', me.id).select('slug').maybeSingle()
-    : await supabase.from('pages').insert({ slug, ...row }).select('slug').maybeSingle();
+  const send = fields => state === 'mine'
+    ? supabase.from('pages').update(fields).eq('slug', slug).eq('owner', me.id).select('slug').maybeSingle()
+    : supabase.from('pages').insert({ slug, ...fields }).select('slug').maybeSingle();
+  let res = await send({ ...row, ...extra });
+  // Database without supabase/remix.sql yet (unknown column / no column grant): publish without the project
+  if (res.error && Object.keys(extra).length && ['PGRST204', '42703', '42501'].includes(res.error.code)) res = await send(row);
   goBtn.disabled = false;
 
   if (res.error || !res.data) {
@@ -158,21 +182,30 @@ $('#pubForm').addEventListener('submit', async e => {
   }
   const updated = state === 'mine';
   remember(studio.name(), slug);
-  showResult(slug);
+  showResult(slug, row.title);
   state = 'mine'; goBtn.textContent = 'update';
   setHint(updated ? 'updated. changes may take up to a minute to appear.' : 'published.', 'ok');
   studio.status(updated ? `updated ${pageUrl(slug)}` : `published at ${pageUrl(slug)}`, 'ok');
   loadList();
 });
 
-function showResult(slug){
+function showResult(slug, title){
   lastUrl = pageUrl(slug);
   const a = $('#pubLink'); a.href = lastUrl; a.textContent = lastUrl.replace(/^https:\/\//, '');
   $('#pubResult').classList.remove('hidden');
+  $('#pubEmbedCode').value = embedCode(slug, title);
+  $('#pubEmbed').classList.remove('hidden');
 }
+function hideResult(){ $('#pubResult').classList.add('hidden'); $('#pubEmbed').classList.add('hidden'); }
 $('#pubCopy').onclick = async () => {
   try { await navigator.clipboard.writeText(lastUrl); studio.status('link copied', 'ok'); $('#pubCopy').textContent = 'copied'; setTimeout(() => $('#pubCopy').textContent = 'copy', 1400); }
   catch { studio.status('copy failed — select the link and copy it manually', 'error'); }
+};
+$('#pubEmbedCode').addEventListener('focus', e => e.target.select());
+$('#pubEmbedCopy').onclick = async () => {
+  const b = $('#pubEmbedCopy'), code = $('#pubEmbedCode');
+  try { await navigator.clipboard.writeText(code.value); studio.status('embed code copied', 'ok'); b.textContent = 'copied'; setTimeout(() => b.textContent = 'copy', 1400); }
+  catch { code.focus(); code.select(); studio.status('copy failed — the code is selected, press Ctrl+C', 'error'); }
 };
 $('#pubOpen').onclick = () => window.open(lastUrl, '_blank', 'noopener');
 
@@ -198,7 +231,7 @@ $('#pubList').addEventListener('click', async e => {
   if (error) { studio.status(`unpublish failed: ${error.message}`, 'error'); return; }
   forget(slug);
   studio.status(`unpublished /p/${slug}`, 'ok');
-  if (lastUrl === pageUrl(slug)) $('#pubResult').classList.add('hidden');
+  if (lastUrl === pageUrl(slug)) hideResult();
   if (slugInput.value === slug) check();
   loadList();
 });
@@ -223,7 +256,7 @@ export async function openPublish(){
   if (!me) { askSignIn(); return; }
   const remembered = memory()[studio.name()];
   slugInput.value = remembered || slugify(studio.name());
-  $('#pubResult').classList.add('hidden');
+  hideResult();
   modal.classList.remove('hidden');
   setTimeout(() => slugInput.focus(), 50);
   check();

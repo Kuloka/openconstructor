@@ -604,3 +604,18 @@ body.resizing iframe { pointer-events: none; }
 .rbx-zone.stick, .rbx-zone.jump { border-radius: 50%; }
 .rbx-zone span { padding: 2px 8px; border-radius: 4px; background: #0c0a09cc; color: #ffb59c; font: 600 calc(11px * var(--inv)) / 1.4 'JetBrains Mono', monospace; white-space: nowrap; }
 #zonesToggle[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: #e4572e14; }
+
+/* ── Multi-select: marquee + align bar ─────────────────── */
+.marquee { position: absolute; z-index: 9996; pointer-events: none; border: calc(1px * var(--inv)) solid var(--accent); background: #e4572e14; }
+.marquee.hidden { display: none; }
+.align-bar { position: absolute; left: 50%; bottom: 18px; z-index: 30; display: flex; align-items: center; gap: 2px; padding: 4px 6px; transform: translateX(-50%); background: var(--panel-2); border: 1px solid var(--border-2); border-radius: 8px; box-shadow: 0 16px 40px #000c; animation: pop-in .16s var(--ease-out); }
+.align-bar.hidden { display: none; }
+.align-bar .ab-count { padding: 0 8px 0 4px; color: var(--accent); font-size: 11px; white-space: nowrap; }
+.align-bar button { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--text-2); cursor: pointer; transition: background .12s, color .12s; }
+.align-bar button:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+.align-bar button:disabled { opacity: .3; cursor: default; }
+.align-bar button.danger:hover { color: #ff8a6b; }
+.align-bar svg { width: 16px; height: 16px; }
+.align-bar i { width: 1px; height: 18px; margin: 0 4px; background: var(--border-2); }
+.prov-free { border-color: #e4572e66 !important; background: linear-gradient(90deg, #e4572e12, transparent 60%); }
+.prov-free .btn { flex: none; }

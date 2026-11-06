@@ -1,5 +1,6 @@
 // Cloudflare Worker for openconstructor.pw
 // /p/<slug> -> a page published from the editor (Supabase table `pages`, see supabase/publish.sql)
+// /api/ai, /api/ai/quota -> free AI without a key for signed-in users (Groq, quota in supabase/ai.sql)
 // everything else -> the static site (assets binding, SPA fallback)
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{2,47}$/;
@@ -26,7 +27,34 @@ function badge(slug){
   return `\n<div data-oc-badge style="${box}"><a href="${HOME}" target="_blank" rel="noopener" style="${link}">Made with <b style="all:unset;color:#e4572e;font-weight:600">openconstructor</b></a><a href="${esc(report)}" target="_blank" rel="noopener" style="${muted}">report</a></div>\n`;
 }
 
-function inject(html, slug){
+// Social preview tags (each skipped when the page already declares its own)
+function ogTags(html, slug, title){
+  const t = String(title || '').trim() || 'Made with openconstructor';
+  const has = k => new RegExp(`<meta[^>]+(?:property|name)\\s*=\\s*["']?${k.replace(/[.:]/g, '\\$&')}["'\\s/>]`, 'i').test(html);
+  return [
+    ['property', 'og:title', t],
+    ['property', 'og:description', 'Made with openconstructor'],
+    ['property', 'og:image', `${HOME}/og.png`],
+    ['property', 'og:url', `${HOME}/p/${slug}`],
+    ['property', 'og:type', 'website'],
+    ['name', 'twitter:card', 'summary_large_image'],
+  ].filter(([, k]) => !has(k)).map(([a, k, v]) => `<meta ${a}="${k}" content="${esc(v)}">`).join('\n');
+}
+
+function inject(html, slug, title){
+  const meta = ogTags(html, slug, title);
+  if (meta) {
+    const h = /<head\b[^>]*>/i.exec(html);
+    if (h) {
+      const at = h.index + h[0].length;
+      html = html.slice(0, at) + '\n' + meta + html.slice(at);
+    } else {
+      // no <head>: put one right after <!doctype>/<html> if present, else at the very start
+      const lead = /^\s*(?:<!doctype[^>]*>\s*)?(?:<html\b[^>]*>)?/i.exec(html);
+      const at = lead ? lead[0].length : 0;
+      html = html.slice(0, at) + `\n<head>\n${meta}\n</head>\n` + html.slice(at);
+    }
+  }
   const i = html.toLowerCase().lastIndexOf('</body>');
   return i === -1 ? html + badge(slug) : html.slice(0, i) + badge(slug) + html.slice(i);
 }
@@ -67,15 +95,131 @@ async function servePage(request, env, ctx, slug){
     if (!row || typeof row.html !== 'string') {
       return notice(404, 'page not found', 'This page does not exist or was unpublished by its author.');
     }
-    res = new Response(inject(row.html, slug), { status: 200, headers: { ...PAGE_HEADERS, 'Cache-Control': 'public, max-age=60' } });
+    res = new Response(inject(row.html, slug, row.title), { status: 200, headers: { ...PAGE_HEADERS, 'Cache-Control': 'public, max-age=60' } });
     ctx.waitUntil(cache.put(key, res.clone()));
   }
   return request.method === 'HEAD' ? new Response(null, res) : res;
 }
 
+// ---------- free AI (no key): signed-in users, AI_DAILY generations a day via our Groq key ----------
+const AI_DAILY = 20;
+const AI_GLOBAL = 900; // keep both <= the ceilings in supabase/ai.sql
+const AI_MODELS = ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile', 'openai/gpt-oss-20b'];
+const AI_MAX_BODY = 200_000;
+const AI_MAX_TOKENS = 8000;
+const GROQ = 'https://api.groq.com/openai/v1/chat/completions';
+
+const json = (status, data, headers = {}) => new Response(JSON.stringify(data), {
+  status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers },
+});
+const fail = (status, message, headers) => json(status, { error: { message } }, headers);
+
+function bearer(request){
+  const m = /^Bearer\s+(\S+)$/i.exec(request.headers.get('Authorization') || '');
+  return m && m[1].split('.').length === 3 ? m[1] : null;
+}
+const sbHeaders = (env, token) => ({ apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' });
+
+// Validate and normalize { model?, messages, max_tokens? }. Returns { body } or { error: Response }.
+function parseAiBody(raw){
+  let d;
+  try { d = JSON.parse(raw); } catch { return { error: fail(400, 'Request body must be JSON.') }; }
+  if (!d || !Array.isArray(d.messages) || !d.messages.length || d.messages.length > 50) return { error: fail(400, '`messages` must be a non-empty array.') };
+  const messages = [];
+  for (const m of d.messages) {
+    if (!m || !['system', 'user', 'assistant'].includes(m.role)) return { error: fail(400, 'Each message needs a role: system, user or assistant.') };
+    let content = m.content;
+    if (Array.isArray(content)) {
+      if (content.some(c => c && (c.type === 'image_url' || c.type === 'image' || c.image_url))) {
+        return { error: fail(400, 'The free openconstructor AI is text-only: screenshots need a vision model. Connect Gemini or OpenAI with your own key.') };
+      }
+      content = content.map(c => (typeof c === 'string' ? c : c?.text || '')).join('');
+    }
+    if (typeof content !== 'string') return { error: fail(400, 'Message content must be text.') };
+    messages.push({ role: m.role, content });
+  }
+  const model = AI_MODELS.includes(d.model) ? d.model : AI_MODELS[0];
+  const max = Number.isFinite(+d.max_tokens) && +d.max_tokens > 0 ? Math.min(Math.floor(+d.max_tokens), AI_MAX_TOKENS) : AI_MAX_TOKENS;
+  const body = { model, messages, max_tokens: max };
+  if (model.startsWith('openai/gpt-oss')) body.reasoning_effort = 'low';
+  return { body };
+}
+
+async function aiChat(request, env){
+  if (request.method !== 'POST') return fail(405, 'Method not allowed', { Allow: 'POST' });
+  const token = bearer(request);
+  if (!token) return fail(401, 'Sign in to use the free openconstructor AI.');
+  if (!env.GROQ_API_KEY) return fail(503, 'The free openconstructor AI is not configured yet. Add your own key to keep going.');
+
+  const tooBig = () => fail(413, 'Request is too large for the free AI (200 KB max).');
+  if ((+request.headers.get('Content-Length') || 0) > AI_MAX_BODY) return tooBig();
+  const raw = await request.text();
+  if (raw.length > AI_MAX_BODY) return tooBig();
+  const parsed = parseAiBody(raw);
+  if (parsed.error) return parsed.error;
+
+  // Called with the user's JWT: PostgREST rejects bad tokens, and auth.uid() is the user whose quota is counted
+  let q;
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/consume_ai_quota`, {
+      method: 'POST', headers: sbHeaders(env, token), body: JSON.stringify({ daily_limit: AI_DAILY, global_limit: AI_GLOBAL }),
+    });
+    if (r.status === 401 || r.status === 403) return fail(401, 'Your session has expired. Sign in again to use the free AI.');
+    if (!r.ok) throw new Error(`supabase ${r.status}`);
+    q = await r.json();
+  } catch (err) {
+    console.error('ai: quota check failed', err?.message);
+    return fail(502, 'Could not check the free AI quota right now. Try again in a minute or add your own key.');
+  }
+  if (!q || typeof q !== 'object') return fail(502, 'Unexpected quota response.');
+  const limit = q.limit ?? AI_DAILY;
+  const quota = { 'X-OC-Quota': `${q.used ?? 0}/${limit}` };
+  if (!q.ok) {
+    if (q.reason === 'auth') return fail(401, 'Sign in to use the free openconstructor AI.');
+    if (q.reason === 'global') return fail(429, 'The free AI has reached its limit for today. Add your own key for unlimited use.', quota);
+    return fail(429, `Daily free limit reached (${limit}/day). Add your own key for unlimited use.`, quota);
+  }
+
+  let g;
+  try {
+    g = await fetch(GROQ, { method: 'POST', headers: { Authorization: `Bearer ${env.GROQ_API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify(parsed.body) });
+  } catch (err) {
+    console.error('ai: groq unreachable', err?.message);
+    return fail(502, 'The free AI is unreachable right now. Try again in a minute.', quota);
+  }
+  const text = await g.text();
+  if (!g.ok) {
+    console.error('ai: groq error', g.status, text.slice(0, 300));
+    if (g.status === 429) return fail(503, 'The free AI is busy right now. Try again in a minute or add your own key.', quota);
+    if (g.status === 413 || (g.status === 400 && /context|too long|too large|tokens/i.test(text))) return fail(413, 'This request is too long for the free AI. Try a shorter prompt or add your own key.', quota);
+    return fail(502, `The free AI failed (upstream ${g.status}). Try again or add your own key.`, quota);
+  }
+  return new Response(text, { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...quota } });
+}
+
+async function aiQuota(request, env){
+  if (request.method !== 'GET') return fail(405, 'Method not allowed', { Allow: 'GET' });
+  const token = bearer(request);
+  if (!token) return fail(401, 'Sign in to use the free openconstructor AI.');
+  const day = new Date().toISOString().slice(0, 10); // Supabase current_date is UTC
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/ai_usage?day=eq.${day}&select=count`, { headers: sbHeaders(env, token) });
+    if (r.status === 401 || r.status === 403) return fail(401, 'Your session has expired. Sign in again.');
+    if (!r.ok) throw new Error(`supabase ${r.status}`);
+    const rows = await r.json();
+    return json(200, { used: (Array.isArray(rows) && rows[0]?.count) || 0, limit: AI_DAILY });
+  } catch (err) {
+    console.error('ai: quota read failed', err?.message);
+    return fail(502, 'Could not read the free AI quota right now.');
+  }
+}
+
 export default {
   async fetch(request, env, ctx){
     const url = new URL(request.url);
+    if (url.pathname === '/api/ai' || url.pathname === '/api/ai/') return aiChat(request, env);
+    if (url.pathname === '/api/ai/quota') return aiQuota(request, env);
+    if (url.pathname.startsWith('/api/')) return fail(404, 'Not found');
     const m = /^\/p\/([^/]+)\/?$/.exec(url.pathname);
     if (m) { let slug = ''; try { slug = decodeURIComponent(m[1]); } catch {} return servePage(request, env, ctx, slug); }
     if (url.pathname === '/p/' || url.pathname.startsWith('/p/')) return notice(404, 'page not found', 'There is no published page at this address.');

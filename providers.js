@@ -1,6 +1,7 @@
 // AI providers. All are CORS-checked: requests go straight from the browser with the user's key.
 // Once there is a server, this same module will be called through a proxy (keys will move to the server).
 export const PROVIDERS = [
+  { id: 'oc', name: 'openconstructor AI', logo: '', base: '/api', free: true, keyUrl: '', hint: '', note: 'no key needed — 20 free generations a day when signed in (GPT-OSS 120B via Groq)', kind: 'proxy', publicModels: true },
   { id: 'openrouter', name: 'OpenRouter', logo: 'openrouter', base: 'https://openrouter.ai/api/v1', free: true, keyUrl: 'https://openrouter.ai/keys', hint: 'sk-or-…', note: '300+ models in one key: Claude, GPT, Gemini and more — a dozen at no cost (Gemma 4, Nemotron), GPT-OSS from $0.02/M', publicModels: true },
   { id: 'gemini', name: 'Google Gemini', logo: 'gemini-color', base: 'https://generativelanguage.googleapis.com/v1beta/openai', free: true, keyUrl: 'https://aistudio.google.com/apikey', hint: 'AIza…', note: 'no-cost tier with Flash models, strong at layout', prefer: ['gemini-2.5-flash', 'gemini-flash-latest'] },
   { id: 'groq', name: 'Groq', logo: 'groq', base: 'https://api.groq.com/openai/v1', free: true, keyUrl: 'https://console.groq.com/keys', hint: 'gsk_…', note: 'no-cost plan with GPT-OSS 120B and Llama, very fast (about 1K requests a day)', prefer: ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile'] },
@@ -20,7 +21,39 @@ const NOT_CHAT = /embed|whisper|tts|audio|image|dall-e|moderation|guard|transcri
 const anthropicHeaders = key => ({ 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true', 'content-type': 'application/json' });
 async function errorText(r){ try { const d = await r.json(); return d.error?.message || d.error || d.message || `HTTP ${r.status}`; } catch { return `HTTP ${r.status}`; } }
 
+const PROXY_MODELS = [
+  { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B', vendor: 'openconstructor' },
+  { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B', vendor: 'openconstructor' },
+];
+
+// Supabase access token of the signed-in user (for the free openconstructor AI), or null
+async function sessionToken(){
+  const { supabase } = await import('./auth.js');
+  const { data } = (await supabase?.auth.getSession()) || {};
+  return data?.session?.access_token || null;
+}
+
+const quotaEvent = (used, limit) => { try { window.dispatchEvent(new CustomEvent('oc-quota', { detail: { used, limit } })); } catch {} };
+function readQuota(r){
+  const m = /^(\d+)\/(\d+)$/.exec(r.headers.get('X-OC-Quota') || '');
+  if (m) quotaEvent(+m[1], +m[2]);
+}
+
+// Free openconstructor AI usage for today: { used, limit }, or null when signed out / unavailable.
+export async function freeQuota(){
+  const token = await sessionToken();
+  if (!token) return null;
+  try {
+    const r = await fetch('/api/ai/quota', { headers: { Authorization: 'Bearer ' + token } });
+    if (!r.ok) return null;
+    const q = await r.json();
+    quotaEvent(q.used, q.limit);
+    return q;
+  } catch { return null; }
+}
+
 export async function listModels(p, key){
+  if (p.kind === 'proxy') return PROXY_MODELS.map(m => ({ ...m, ctx: 0, paid: false, price: null }));
   const headers = p.kind === 'anthropic' ? anthropicHeaders(key) : key ? { Authorization: 'Bearer ' + key } : {};
   const r = await fetch(`${p.base}/models${p.kind === 'anthropic' ? '?limit=100' : ''}`, { headers });
   if (!r.ok) throw Error(await errorText(r));
@@ -49,6 +82,20 @@ export async function listModels(p, key){
 // One request. Returns { text, cut } — `cut` is true when the model stopped because it hit the length limit.
 // `images` are data: URLs (screenshots). Each API wants them in its own message format.
 async function once(p, key, model, system, messages){
+  if (p.kind === 'proxy') {
+    const token = await sessionToken();
+    if (!token) throw Error('Sign in to use the free openconstructor AI');
+    const r = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ model, messages: [{ role: 'system', content: system }, ...messages] }) });
+    readQuota(r);
+    if (!r.ok) {
+      const e = Error(await errorText(r));
+      e.status = r.status; // 401 sign in, 429 daily limit, 503 not configured / busy
+      throw e;
+    }
+    const d = await r.json();
+    const ch = d.choices?.[0];
+    return { text: ch?.message?.content || '', cut: ch?.finish_reason === 'length' };
+  }
   if (p.kind === 'anthropic') {
     const r = await fetch(`${p.base}/messages`, { method: 'POST', headers: anthropicHeaders(key), body: JSON.stringify({ model, max_tokens: 8000, system, messages }) });
     if (!r.ok) throw Error(await errorText(r));
@@ -71,6 +118,7 @@ async function once(p, key, model, system, messages){
 
 // Full answer: if the model is cut off by its output limit, ask it to continue (up to 3 times) and glue the parts.
 export async function chat(p, key, model, system, user, images = []){
+  if (p.kind === 'proxy' && images.length) throw Error('Screenshots need a vision model — connect Gemini or OpenAI with your own key');
   const content = !images.length ? user
     : p.kind === 'anthropic' ? [...images.map(url => { const [, type, data] = url.match(/^data:([^;]+);base64,(.*)$/) || []; return { type: 'image', source: { type: 'base64', media_type: type, data } }; }), { type: 'text', text: user }]
     : [{ type: 'text', text: user }, ...images.map(url => ({ type: 'image_url', image_url: { url } }))];

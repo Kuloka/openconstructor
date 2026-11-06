@@ -6,6 +6,8 @@
 
 export const TARGETS = [
   { id: 'luau', label: 'Roblox (Luau)', ext: '.client.lua' },
+  { id: 'luau-scale', label: 'Roblox (Luau, scale)', ext: '.client.lua' },
+  { id: 'rbxmx', label: 'Roblox model (.rbxmx)', ext: '.rbxmx' },
   { id: 'love', label: 'LÖVE 2D (Lua)', ext: '.lua' },
   { id: 'react', label: 'React (JSX)', ext: '.jsx' },
   { id: 'vue', label: 'Vue SFC', ext: '.vue' },
@@ -300,7 +302,9 @@ export function snapshot(frames) {
           const role = (el.getAttribute('role') || '').toLowerCase();
           const isButton = tag === 'BUTTON' || role === 'button' || (tag === 'A' && hasBox);
           if (visible && hasSize && isButton) {
-            push({ ...base, kind: 'button', text, seq: seq++, z });
+            // label = all text inside (incl. child spans) or aria-label/title — used to name the Roblox button
+            const label = (el.innerText || el.textContent || '').replace(/s+/g, ' ').trim().slice(0, 40) || el.getAttribute('aria-label') || el.getAttribute('title') || '';
+            push({ ...base, kind: 'button', text, label, seq: seq++, z });
             text = '';
           } else if (visible && hasSize && MEDIA.has(tag)) {
             descend = false;
@@ -351,7 +355,8 @@ const isMono = fam => /mono|consol|courier|menlo|monaco|code/i.test(String(fam |
 function pageHeight(nodes, page) {
   let bottom = 0;
   for (const n of nodes || []) bottom = Math.max(bottom, (+n.y || 0) + (+n.h || 0));
-  return Math.ceil(Math.max(+page.h || 0, bottom ? bottom + 48 : 0)) || 900;
+  const H = +page.h || 0;
+  return Math.ceil(bottom > H ? bottom + 48 : H) || 900; // grow only when content overflows the page
 }
 // widen single-line labels a little so a wider fallback font doesn't wrap the last word
 function slack(n) {
@@ -378,7 +383,27 @@ function luauGradientStops(g, opacity = 1) {
 }
 const luauRotation = angle => num(((angle - 90) % 360 + 360) % 360); // CSS 90deg (to right) = Roblox 0
 
-export function toRobloxLuau(nodes, page, title) {
+// scale-mode helpers: fractions of the page with enough precision for 4K screens
+const frac = (v, of) => { const s = (Math.round((+v || 0) / (of || 1) * 1e5) / 1e5).toString(); return s === '-0' ? '0' : s; };
+const fontWeightBold = n => (+n.fontWeight || 400) >= 600;
+const bgFill = (n, op) => n.gradient ? { color: { r: 255, g: 255, b: 255 }, t: 1 - op } : n.bg ? { color: n.bg, t: 1 - n.bg.a * op } : null;
+// unique button names from labels ("Buy", "Buy 2", …)
+function buttonNamer() {
+  const used = new Map(), names = [];
+  const next = text => {
+    // control chars can't live in an XML model, so keep names clean everywhere; cut by code point
+    const clean = String(text).replace(/[\u0000-\u001F\u007F￾￿]/g, ' ').replace(/\s+/g, ' ').trim();
+    const base = [...clean].slice(0, 40).join('').trim() || 'Button';
+    const n = (used.get(base) || 0) + 1; used.set(base, n);
+    const name = n === 1 ? base : `${base} ${n}`; names.push(name); return name;
+  };
+  return { next, names };
+}
+
+// opts.scale: positions/sizes as UDim2.fromScale relative to the page, TextScaled text,
+// root fills the screen with a UIAspectRatioConstraint. Default: pixel offsets + UIScale fit.
+export function toRobloxLuau(nodes, page, title, opts = {}) {
+  const S = !!opts?.scale;
   const list = safeNodes(nodes);
   const W = Math.round(+page?.w || 1440), H = pageHeight(list, page || {});
   const pbg = parseBackground(page?.bg);
@@ -390,7 +415,9 @@ export function toRobloxLuau(nodes, page, title) {
     ``,
     `  How to use: in Roblox Studio create a LocalScript in`,
     `  StarterPlayer > StarterPlayerScripts (or StarterGui) and paste this file into it.`,
-    `  It builds the UI at runtime and scales the ${W}x${H} design to fit the screen.`,
+    S ? `  It builds the UI at runtime; the ${W}x${H} design uses scale (fractions of the screen),`
+      : `  It builds the UI at runtime and scales the ${W}x${H} design to fit the screen.`,
+    ...(S ? [`  keeps its aspect ratio and the text resizes itself (TextScaled).`] : []),
     `  Every button is named after its label and collected in the \`buttons\` table;`,
     `  click handlers with TODOs are at the bottom of the file — put your game logic there.`,
     `]]`,
@@ -419,14 +446,25 @@ export function toRobloxLuau(nodes, page, title) {
     `local function pad(o, t, r, b, l)`,
     `\tmake("UIPadding", {PaddingTop = UDim.new(0, t), PaddingRight = UDim.new(0, r), PaddingBottom = UDim.new(0, b), PaddingLeft = UDim.new(0, l)}, o)`,
     `end`,
+    ...(S ? [
+      `local function padS(o, r, l) -- scale padding: fraction of the element's own width`,
+      `\tmake("UIPadding", {PaddingRight = UDim.new(r, 0), PaddingLeft = UDim.new(l, 0)}, o)`,
+      `end`,
+      `local function maxText(o, size) make("UITextSizeConstraint", {MaxTextSize = size, MinTextSize = 1}, o) end`,
+    ] : []),
     `local buttons = {} -- every TextButton by name`,
     ``,
     `local W, H = ${W}, ${H}`,
     `local gui = make("ScreenGui", {Name = ${luaStr(title || 'Interface')}, ResetOnSpawn = false, IgnoreGuiInset = true, ZIndexBehavior = Enum.ZIndexBehavior.Sibling}, playerGui)`,
-    `local root = make("Frame", {Name = "Page", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(W, H), BackgroundColor3 = ${pbg.gradient ? 'Color3.new(1, 1, 1)' : rgb3(pbg.color)}, BackgroundTransparency = ${transp(pbg.gradient ? 1 : pbg.color.a)}, BorderSizePixel = 0, ClipsDescendants = true}, gui)`,
+    `local root = make("Frame", {Name = "Page", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = ${S ? 'UDim2.fromScale(1, 1)' : 'UDim2.fromOffset(W, H)'}, BackgroundColor3 = ${pbg.gradient ? 'Color3.new(1, 1, 1)' : rgb3(pbg.color)}, BackgroundTransparency = ${transp(pbg.gradient ? 1 : pbg.color.a)}, BorderSizePixel = 0, ClipsDescendants = true}, gui)`,
   );
   if (pbg.gradient) L.push(`gradient(root, ${luauRotation(pbg.gradient.angle)}, ${luauGradientStops(pbg.gradient)})`);
-  L.push(
+  if (S) L.push(
+    `make("UIAspectRatioConstraint", {AspectRatio = W / H, AspectType = Enum.AspectType.FitWithinMaxSize, DominantAxis = Enum.DominantAxis.Width}, root)`,
+    ``,
+    `local o`,
+  );
+  else L.push(
     `local scale = make("UIScale", {}, root)`,
     `local function fit()`,
     `\tlocal vp = workspace.CurrentCamera.ViewportSize`,
@@ -438,22 +476,20 @@ export function toRobloxLuau(nodes, page, title) {
     `local o`,
   );
 
-  // button names: from the label, unique ("Buy", "Buy 2", …)
-  const used = new Map(), btnNames = [];
-  const uniqueName = text => {
-    const base = String(text).replace(/\s+/g, ' ').trim().slice(0, 40) || 'Button';
-    const n = (used.get(base) || 0) + 1; used.set(base, n);
-    const name = n === 1 ? base : `${base} ${n}`; btnNames.push(name); return name;
-  };
+  const namer = buttonNamer(), uniqueName = namer.next, btnNames = namer.names;
 
   for (const n of list) {
     const op = clamp(+n.opacity || 1, 0, 1);
     const color = n.color || { r: 238, g: 238, b: 238, a: 1 };
     const font = isMono(n.fontFamily) ? 'Enum.Font.Code' : (+n.fontWeight || 400) >= 600 ? 'Enum.Font.GothamBold' : 'Enum.Font.Gotham';
     const xa = n.align === 'center' ? 'Center' : n.align === 'right' ? 'Right' : 'Left';
-    const textProps = t => `Text = ${luaStr(t)}, TextColor3 = ${rgb3(color)}, TextTransparency = ${transp(color.a * op)}, TextSize = ${int(n.fontSize || 14)}, Font = ${font}, TextXAlignment = Enum.TextXAlignment.${xa}, TextWrapped = true`;
+    const textProps = t => `Text = ${luaStr(t)}, TextColor3 = ${rgb3(color)}, TextTransparency = ${transp(color.a * op)}, TextSize = ${int(n.fontSize || 14)}, Font = ${font}, TextXAlignment = Enum.TextXAlignment.${xa}, TextWrapped = true` + (S ? ', TextScaled = true' : '');
     const { x, w } = slack(n);
-    const geo = `Name = ${luaStr(n.name || n.kind)}, Position = UDim2.fromOffset(${num(x)}, ${num(n.y)}), Size = UDim2.fromOffset(${num(w)}, ${num(n.h)}), ZIndex = ${int(n.zIndex) || 1}, BorderSizePixel = 0`;
+    const geo = S
+      ? `Name = ${luaStr(n.name || n.kind)}, Position = UDim2.fromScale(${frac(x, W)}, ${frac(n.y, H)}), Size = UDim2.fromScale(${frac(w, W)}, ${frac(n.h, H)}), ZIndex = ${int(n.zIndex) || 1}, BorderSizePixel = 0`
+      : `Name = ${luaStr(n.name || n.kind)}, Position = UDim2.fromOffset(${num(x)}, ${num(n.y)}), Size = UDim2.fromOffset(${num(w)}, ${num(n.h)}), ZIndex = ${int(n.zIndex) || 1}, BorderSizePixel = 0`;
+    const maxT = S ? ` maxText(o, ${int(n.fontSize || 14)})` : '';
+    const padLR = () => S ? ` padS(o, ${frac(Math.max(0, +n.pad[1] || 0), w)}, ${frac(Math.max(0, +n.pad[3] || 0), w)})` : ` pad(o, 0, ${p[1]}, 0, ${p[3]})`;
     const bgProps = () => n.gradient
       ? `BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = ${transp(op)}`
       : n.bg ? `BackgroundColor3 = ${rgb3(n.bg)}, BackgroundTransparency = ${transp(n.bg.a * op)}` : `BackgroundTransparency = 1`;
@@ -467,13 +503,14 @@ export function toRobloxLuau(nodes, page, title) {
     const p = Array.isArray(n.pad) ? n.pad.map(v => num(Math.max(0, +v || 0))) : null;
     if (n.kind === 'text') {
       const multi = n.h > (n.fontSize || 14) * 1.9;
-      L.push(`make("TextLabel", {${geo}, BackgroundTransparency = 1, ${textProps(n.text)}, TextYAlignment = Enum.TextYAlignment.${multi ? 'Top' : 'Center'}}, root)`);
+      const label = `make("TextLabel", {${geo}, BackgroundTransparency = 1, ${textProps(n.text)}, TextYAlignment = Enum.TextYAlignment.${multi ? 'Top' : 'Center'}}, root)`;
+      L.push(S ? `o = ${label}${maxT}` : label);
     } else if (n.kind === 'button') {
-      const bname = uniqueName(n.text || 'Button');
-      L.push(`o = make("TextButton", {${geo}, ${bgProps()}, AutoButtonColor = true, ${textProps(n.text || '')}}, root)` + decorate() + (p && n.align !== 'center' ? ` pad(o, 0, ${p[1]}, 0, ${p[3]})` : '') + ` o.Name = ${luaStr(bname)} buttons[${luaStr(bname)}] = o`);
+      const bname = uniqueName(n.text || n.label || 'Button');
+      L.push(`o = make("TextButton", {${geo}, ${bgProps()}, AutoButtonColor = true, ${textProps(n.text || '')}}, root)` + maxT + decorate() + (p && n.align !== 'center' ? padLR() : '') + ` o.Name = ${luaStr(bname)} buttons[${luaStr(bname)}] = o`);
     } else if (n.kind === 'input') {
       const ph = { r: color.r * 0.6, g: color.g * 0.6, b: color.b * 0.6 }; // Color3 has no alpha: dim instead
-      L.push(`o = make("TextBox", {${geo}, ${bgProps()}, ClearTextOnFocus = false, PlaceholderText = ${luaStr(n.placeholder || '')}, PlaceholderColor3 = ${rgb3(ph)}, ${textProps(n.text || '')}}, root)` + decorate() + (p ? ` pad(o, 0, ${p[1]}, 0, ${p[3]})` : ''));
+      L.push(`o = make("TextBox", {${geo}, ${bgProps()}, ClearTextOnFocus = false, PlaceholderText = ${luaStr(n.placeholder || '')}, PlaceholderColor3 = ${rgb3(ph)}, ${textProps(n.text || '')}}, root)` + maxT + decorate() + (p ? padLR() : ''));
     } else {
       // box / icon
       L.push(`o = make("Frame", {${geo}, ${bgProps()}}, root)` + decorate());
@@ -485,6 +522,184 @@ export function toRobloxLuau(nodes, page, title) {
   }
   L.push('');
   return L.join('\n');
+}
+
+/* ── 2b. Roblox XML model (.rbxmx) ───────────────────────── */
+// XML text: drop characters XML 1.0 forbids (even as references), escape the rest
+const xmlText = s => String(s ?? '')
+  .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g, '')
+  .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '$1')
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\r/g, '&#13;');
+const xf = v => { const n = +v; if (!isFinite(n)) return '0'; const s = (Math.round(n * 1e6) / 1e6).toString(); return s === '-0' ? '0' : s; };
+const c01 = c => ({ r: clamp((+c.r || 0) / 255, 0, 1), g: clamp((+c.g || 0) / 255, 0, 1), b: clamp((+c.b || 0) / 255, 0, 1) });
+// enum token values (Roblox Enum.*.Value)
+const TOKEN = {
+  TextXAlignment: { Left: 0, Right: 1, Center: 2 },
+  TextYAlignment: { Top: 0, Center: 1, Bottom: 2 },
+  ApplyStrokeMode: { Contextual: 0, Border: 1 },
+  ZIndexBehavior: { Global: 0, Sibling: 1 },
+  AspectType: { FitWithinMaxSize: 0, ScaleWithParentSize: 1 },
+  DominantAxis: { Width: 0, Height: 1 },
+};
+
+// property builders → [xmlTypeTag, name, innerXml]
+const P = {
+  str: (name, v) => ['string', name, xmlText(v)],
+  bool: (name, v) => ['bool', name, v ? 'true' : 'false'],
+  int: (name, v) => ['int', name, String(int(v))],
+  float: (name, v) => ['float', name, xf(v)],
+  token: (name, v) => ['token', name, String(int(v))],
+  color: (name, c) => { const k = c01(c); return ['Color3', name, `<R>${xf(k.r)}</R><G>${xf(k.g)}</G><B>${xf(k.b)}</B>`]; },
+  udim2: (name, xs, xo, ys, yo) => ['UDim2', name, `<XS>${xf(xs)}</XS><XO>${int(xo)}</XO><YS>${xf(ys)}</YS><YO>${int(yo)}</YO>`],
+  udim: (name, s, o) => ['UDim', name, `<S>${xf(s)}</S><O>${int(o)}</O>`],
+  vec2: (name, x, y) => ['Vector2', name, `<X>${xf(x)}</X><Y>${xf(y)}</Y>`],
+  font: (name, mono, bold) => ['Font', name,
+    `<Family><url>${mono ? 'rbxasset://fonts/families/RobotoMono.json' : 'rbxasset://fonts/families/GothamSSm.json'}</url></Family><Weight>${bold ? 700 : 400}</Weight><Style>Normal</Style>`],
+  source: (name, code) => ['ProtectedString', name, `<![CDATA[${String(code).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g, '').replace(/\]\]>/g, ']]]]><![CDATA[>')}]]>`],
+};
+
+// same stop normalisation as luauGradientStops, as data
+function gradientKeypoints(g, opacity = 1) {
+  let stops = g.stops.slice(0, 20).map(s => ({ ...s, pos: clamp(s.pos, 0, 1) }));
+  if (stops[0].pos > 0) stops.unshift({ ...stops[0], pos: 0 });
+  if (stops[stops.length - 1].pos < 1) stops.push({ ...stops[stops.length - 1], pos: 1 });
+  if (stops.length > 20) stops = [...stops.slice(0, 19), stops[stops.length - 1]];
+  for (let i = 1; i < stops.length; i++) if (stops[i].pos <= stops[i - 1].pos) stops[i].pos = Math.min(1, stops[i - 1].pos + 0.001);
+  stops[0].pos = 0; stops[stops.length - 1].pos = 1;
+  for (let i = stops.length - 2; i > 0; i--) if (stops[i].pos >= stops[i + 1].pos) stops[i].pos = stops[i + 1].pos - 0.001;
+  return stops.map(s => ({ t: Math.round(s.pos * 1000) / 1000, c: c01(s), tr: clamp(1 - s.a * opacity, 0, 1) }));
+}
+const gradientItem = (g, opacity = 1) => {
+  const k = gradientKeypoints(g, opacity);
+  return { cls: 'UIGradient', props: [P.str('Name', 'UIGradient'), P.float('Rotation', ((g.angle - 90) % 360 + 360) % 360),
+    ['ColorSequence', 'Color', k.map(p => `${xf(p.t)} ${xf(p.c.r)} ${xf(p.c.g)} ${xf(p.c.b)} 0`).join(' ') + ' '],
+    ['NumberSequence', 'Transparency', k.map(p => `${xf(p.t)} ${xf(p.tr)} 0`).join(' ') + ' ']] };
+};
+
+export function toRobloxModel(nodes, page, title, opts = {}) {
+  const S = !!opts?.scale;
+  const list = safeNodes(nodes);
+  const W = Math.round(+page?.w || 1440), H = pageHeight(list, page || {});
+  const pbg = parseBackground(page?.bg);
+  const namer = buttonNamer();
+
+  const rootProps = [
+    P.str('Name', 'Page'), P.vec2('AnchorPoint', 0.5, 0.5), P.udim2('Position', 0.5, 0, 0.5, 0),
+    S ? P.udim2('Size', 1, 0, 1, 0) : P.udim2('Size', 0, W, 0, H),
+    P.color('BackgroundColor3', pbg.gradient ? { r: 255, g: 255, b: 255 } : pbg.color),
+    P.float('BackgroundTransparency', clamp(1 - (pbg.gradient ? 1 : pbg.color.a), 0, 1)),
+    P.int('BorderSizePixel', 0), P.bool('ClipsDescendants', true),
+  ];
+  const rootKids = [];
+  if (pbg.gradient) rootKids.push(gradientItem(pbg.gradient));
+  rootKids.push(S
+    ? { cls: 'UIAspectRatioConstraint', props: [P.str('Name', 'UIAspectRatioConstraint'), P.float('AspectRatio', W / H), P.token('AspectType', TOKEN.AspectType.FitWithinMaxSize), P.token('DominantAxis', TOKEN.DominantAxis.Width)] }
+    : { cls: 'UIScale', props: [P.str('Name', 'UIScale'), P.float('Scale', 1)] });
+
+  for (const n of list) {
+    const op = clamp(+n.opacity || 1, 0, 1);
+    const color = n.color || { r: 238, g: 238, b: 238, a: 1 };
+    const { x, w } = slack(n);
+    const props = [
+      P.str('Name', n.name || n.kind),
+      S ? P.udim2('Position', +frac(x, W), 0, +frac(n.y, H), 0) : P.udim2('Position', 0, Math.round(x), 0, Math.round(n.y)),
+      S ? P.udim2('Size', +frac(w, W), 0, +frac(n.h, H), 0) : P.udim2('Size', 0, Math.round(w), 0, Math.round(n.h)),
+      P.int('ZIndex', int(n.zIndex) || 1), P.int('BorderSizePixel', 0),
+    ];
+    const kids = [];
+    const fill = bgFill(n, op);
+    const addBg = () => {
+      if (fill) props.push(P.color('BackgroundColor3', fill.color), P.float('BackgroundTransparency', clamp(fill.t, 0, 1)));
+      else props.push(P.float('BackgroundTransparency', 1));
+    };
+    const addText = t => {
+      const xa = n.align === 'center' ? 'Center' : n.align === 'right' ? 'Right' : 'Left';
+      props.push(P.str('Text', t), P.color('TextColor3', color), P.float('TextTransparency', clamp(1 - color.a * op, 0, 1)),
+        P.float('TextSize', int(n.fontSize || 14)), P.font('FontFace', isMono(n.fontFamily), !isMono(n.fontFamily) && fontWeightBold(n)),
+        P.token('TextXAlignment', TOKEN.TextXAlignment[xa]), P.bool('TextWrapped', true), P.bool('TextScaled', S));
+      if (S) kids.push({ cls: 'UITextSizeConstraint', props: [P.str('Name', 'UITextSizeConstraint'), P.int('MaxTextSize', int(n.fontSize || 14)), P.int('MinTextSize', 1)] });
+    };
+    const decorate = () => {
+      if (n.radius > 0) kids.push({ cls: 'UICorner', props: [P.str('Name', 'UICorner'), P.udim('CornerRadius', 0, Math.round(n.radius))] });
+      if (n.border && n.border.w > 0) kids.push({ cls: 'UIStroke', props: [P.str('Name', 'UIStroke'), P.float('Thickness', n.border.w), P.color('Color', n.border.color),
+        P.float('Transparency', clamp(1 - n.border.color.a * op, 0, 1)), P.token('ApplyStrokeMode', TOKEN.ApplyStrokeMode.Border)] });
+      if (n.gradient && n.gradient.stops?.length) kids.push(gradientItem(n.gradient));
+    };
+    const addPad = () => {
+      if (!Array.isArray(n.pad)) return;
+      const r = Math.max(0, +n.pad[1] || 0), l = Math.max(0, +n.pad[3] || 0);
+      kids.push({ cls: 'UIPadding', props: [P.str('Name', 'UIPadding'),
+        P.udim('PaddingTop', 0, 0), P.udim('PaddingBottom', 0, 0),
+        S ? P.udim('PaddingRight', +frac(r, w), 0) : P.udim('PaddingRight', 0, Math.round(r)),
+        S ? P.udim('PaddingLeft', +frac(l, w), 0) : P.udim('PaddingLeft', 0, Math.round(l))] });
+    };
+    let cls;
+    if (n.kind === 'text') {
+      cls = 'TextLabel';
+      props.push(P.float('BackgroundTransparency', 1));
+      addText(n.text);
+      props.push(P.token('TextYAlignment', n.h > (n.fontSize || 14) * 1.9 ? TOKEN.TextYAlignment.Top : TOKEN.TextYAlignment.Center));
+    } else if (n.kind === 'button') {
+      cls = 'TextButton';
+      props[0] = P.str('Name', namer.next(n.text || n.label || 'Button'));
+      addBg(); props.push(P.bool('AutoButtonColor', true)); addText(n.text || '');
+      decorate(); if (n.align !== 'center') addPad();
+    } else if (n.kind === 'input') {
+      cls = 'TextBox';
+      addBg();
+      props.push(P.bool('ClearTextOnFocus', false), P.str('PlaceholderText', n.placeholder || ''), P.color('PlaceholderColor3', { r: color.r * 0.6, g: color.g * 0.6, b: color.b * 0.6 }));
+      addText(n.text || ''); decorate(); addPad();
+    } else {
+      cls = 'Frame'; addBg(); decorate();
+    }
+    rootKids.push({ cls, props, kids });
+  }
+
+  // drag-and-drop script: only wiring (plus the UIScale fit in offset mode)
+  const src = [
+    `-- ${luaComment(title || 'My interface')}: button handlers (generated by openconstructor).`,
+    `-- The UI is already built in this ScreenGui; put your game logic in the handlers below.`,
+    `local gui = script.Parent`,
+    `local root = gui:WaitForChild("Page")`,
+    ...(S ? [] : [
+      `local W, H = ${W}, ${H}`,
+      `local scale = root:WaitForChild("UIScale")`,
+      `local function fit()`,
+      `\tlocal vp = workspace.CurrentCamera.ViewportSize`,
+      `\tscale.Scale = math.min(vp.X / W, vp.Y / H)`,
+      `end`,
+      `fit()`,
+      `workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fit)`,
+    ]),
+    ``,
+    `local buttons = {} -- every TextButton by name`,
+    `for _, d in ipairs(root:GetDescendants()) do`,
+    `\tif d:IsA("TextButton") then buttons[d.Name] = d end`,
+    `end`,
+  ];
+  for (const b of namer.names) src.push(``, `buttons[${luaStr(b)}].MouseButton1Click:Connect(function()`, `\t-- TODO: what happens when ${luaComment(b)} is clicked`, `\tprint("clicked", ${luaStr(b)})`, `end)`);
+  src.push('');
+
+  const tree = { cls: 'ScreenGui', props: [P.str('Name', title || 'Interface'), P.bool('ResetOnSpawn', false), P.bool('IgnoreGuiInset', true), P.token('ZIndexBehavior', TOKEN.ZIndexBehavior.Sibling)],
+    kids: [{ cls: 'Frame', props: rootProps, kids: rootKids }, { cls: 'LocalScript', props: [P.str('Name', 'Buttons'), P.source('Source', src.join('\n'))] }] };
+
+  let ref = 0;
+  const out = [
+    `<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4">`,
+    `\t<External>null</External>`,
+    `\t<External>nil</External>`,
+  ];
+  const emit = (item, depth) => {
+    const ind = '\t'.repeat(depth);
+    out.push(`${ind}<Item class="${item.cls}" referent="RBX${(++ref).toString(16).toUpperCase().padStart(32, '0')}">`, `${ind}\t<Properties>`);
+    for (const [type, name, inner] of item.props) out.push(`${ind}\t\t<${type} name="${name}">${inner}</${type}>`);
+    out.push(`${ind}\t</Properties>`);
+    for (const k of item.kids || []) emit(k, depth + 1);
+    out.push(`${ind}</Item>`);
+  };
+  emit(tree, 1);
+  out.push(`</roblox>`, '');
+  return out.join('\n');
 }
 
 /* ── 3. LÖVE 2D ──────────────────────────────────────────── */

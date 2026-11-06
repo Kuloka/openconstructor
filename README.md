@@ -16,10 +16,14 @@ Drop ready-made components onto one shared canvas, move them around freely, and 
 - **Free-form canvas** — drag, pan, zoom, desktop / laptop / tablet / phone sizes.
 - **Background editor** — solid, linear, radial and mesh gradients, dot / grid / line / noise patterns, or raw CSS.
 - **⚗ Fusion** — right-click an element → *fuse with…* → click another: the AI breeds a new component that does the first one's job in the second one's visual style.
-- **AI assistant** — bring your own key for OpenRouter, Google Gemini, Groq, Cerebras, Mistral, DeepSeek, OpenAI, Anthropic, xAI or Together. Keys stay in your browser and go only to the provider you choose.
+- **AI assistant** — 20 free generations a day when signed in (GPT-OSS 120B via a small server proxy), or bring your own key for OpenRouter, Google Gemini, Groq, Cerebras, Mistral, DeepSeek, OpenAI, Anthropic, xAI or Together — those keys stay in your browser and go only to the provider you choose. Paste a screenshot to rebuild it with a vision model.
+- **Edit without code** — double-click to edit text in place, restyle any part, swap in your own image, tune every animation (speed, direction, repeats).
+- **Multi-select** — Shift-click or Shift-drag a box, move together, align & distribute; smart guides while dragging.
+- **Game UI for Roblox** — 25 HUD components and 5 full screens (simulator, tycoon shop, shooter, obby, mobile RPG), Roblox safe-zone overlay, any page size from all four edges.
+- **Publish & share** — one-click public link, community gallery with **remix**, embed code, cloud projects, version history.
 - **VS Code–style layout** — resizable, movable, collapsible panels.
 - **Safe previews** — every element renders in a sandboxed iframe with scripts and network requests disabled.
-- **Export anywhere** — HTML, React, Vue, Svelte, plus **Roblox (Luau)** and **LÖVE 2D (Lua)**: the rendered layout is converted into native UI code (ScreenGui/Frames/TextLabels or love.graphics calls). AI-assisted ports to Flutter, SwiftUI, Jetpack Compose and Tailwind.
+- **Export anywhere** — HTML, React, Vue, Svelte, plus **Roblox** (Luau LocalScript in pixel or scale mode, or a drag-and-drop **.rbxmx model** with named buttons and click handlers) and **LÖVE 2D (Lua)**: the rendered layout is converted into native UI code. AI-assisted ports to Flutter, SwiftUI, Jetpack Compose and Tailwind.
 - Optional sign-in with Google, GitHub or email (Supabase).
 
 ## Quick start
