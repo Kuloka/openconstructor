@@ -83,6 +83,7 @@ export default function Welcome(){
         <nav>
           <button onClick={() => go('wl-how')}>How it works</button>
           <button onClick={() => go('wl-templates')}>Templates</button>
+          <a className="wl-gh" href="/gallery">Gallery</a>
           <a className="wl-gh" href="https://github.com/Kuloka/openconstructor" target="_blank" rel="noreferrer" title="Source code on GitHub"><svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.6 22.4c.6.1.8-.2.8-.6v-2.1c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.2 1.2a11 11 0 0 1 5.8 0c2.2-1.5 3.2-1.2 3.2-1.2.6 1.6.2 2.8.1 3.1.8.8 1.2 1.9 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A11.5 11.5 0 0 0 12 .5z"/></svg>GitHub</a>
         </nav>
         {!authUser && <button className="wl-btn ghost" onClick={() => openAuth('signup')}>Sign up</button>}
@@ -152,6 +153,7 @@ export default function Welcome(){
 
       <nav className="wl-guides" aria-label="Guides">
         <span>guides</span>
+        <a href="/gallery">Gallery: what people built</a>
         <a href="/roblox-ui-builder">Roblox UI builder (Luau)</a>
         <a href="/html-to-react-vue-svelte">Export to React, Vue &amp; Svelte</a>
         <a href="/ai-ui-generator">AI UI generator</a>

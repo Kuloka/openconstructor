@@ -52,6 +52,7 @@ modal.innerHTML = `<div class="modal-card pub-card" role="dialog" aria-labelledb
       <span class="pub-slug"><span class="pub-prefix">openconstructor.pw/p/</span><input id="pubSlug" maxlength="48" spellcheck="false" required></span>
     </label>
     <div class="pub-hint" id="pubHint"></div>
+    <label class="pub-listed"><input type="checkbox" id="pubListed"> <span><b>Show in the community gallery</b> — let others discover it at <a href="/gallery" target="_blank">openconstructor.pw/gallery</a></span></label>
     <div class="modal-actions"><button class="btn primary" type="submit" id="pubGo">publish</button></div>
   </form>
   <div class="pub-result hidden" id="pubResult">
@@ -77,6 +78,8 @@ let lastUrl = '';
 
 function setHint(text, kind = ''){ hint.innerHTML = text; hint.className = 'pub-hint ' + kind; }
 
+// Names that belong to the site itself (mirrored by a check constraint in supabase/gallery.sql)
+const RESERVED = new Set(['gallery', 'admin', 'api', 'app', 'auth', 'login', 'signup', 'settings', 'help', 'about', 'docs', 'blog', 'pricing', 'terms', 'privacy', 'support', 'openconstructor', 'official', 'staff', 'team', 'www', 'mail', 'root', 'null', 'undefined']);
 async function check(){
   const seq = ++checkSeq;
   const slug = slugInput.value.trim();
@@ -85,12 +88,13 @@ async function check(){
     setHint('3–48 characters: lowercase letters, digits and dashes; must start with a letter or digit.', 'err');
     return;
   }
+  if (RESERVED.has(slug)) { state = 'taken'; goBtn.textContent = 'publish'; setHint('this name is reserved, try another one.', 'err'); return; }
   setHint('checking…');
-  const { data, error } = await supabase.from('pages').select('slug, owner').eq('slug', slug).maybeSingle();
+  const { data, error } = await supabase.from('pages').select('slug, owner, listed').eq('slug', slug).maybeSingle();
   if (seq !== checkSeq) return;
   if (error) { state = 'unknown'; goBtn.textContent = 'publish'; setHint(`couldn't check this link: ${esc(error.message)}`, 'err'); return; }
   if (!data) { state = 'new'; goBtn.textContent = 'publish'; setHint('this link is free.', 'ok'); return; }
-  if (data.owner === me?.id) { state = 'mine'; goBtn.textContent = 'update'; setHint('you already published here — this will update the page.', 'ok'); return; }
+  if (data.owner === me?.id) { state = 'mine'; goBtn.textContent = 'update'; $('#pubListed').checked = !!data.listed; setHint('you already published here — this will update the page.', 'ok'); return; }
   state = 'taken'; goBtn.textContent = 'publish';
   const alt = await suggest(slug);
   if (seq !== checkSeq) return;
@@ -138,7 +142,7 @@ $('#pubForm').addEventListener('submit', async e => {
   if (!html || !studio.items().length) { setHint('the page is empty — add some blocks first.', 'err'); return; }
   if (html.length > MAX_HTML) { setHint(`the page is too large to publish (${Math.round(html.length / 1000)} KB, max 1000 KB). Large inline images are the usual cause.`, 'err'); return; }
 
-  const row = { title: titleOf(html), html };
+  const row = { title: titleOf(html), html, listed: $('#pubListed').checked };
   goBtn.disabled = true; studio.status(state === 'mine' ? 'updating published page…' : 'publishing…', 'busy');
   const res = state === 'mine'
     ? await supabase.from('pages').update(row).eq('slug', slug).eq('owner', me.id).select('slug').maybeSingle()

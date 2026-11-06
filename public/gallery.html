@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gallery — what people built with openconstructor</title>
+<meta name="description" content="Pages and interfaces made by the community with openconstructor, the open-source AI interface builder. Open any of them, or build your own in the browser.">
+<link rel="canonical" href="https://openconstructor.pw/gallery">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="manifest" href="/site.webmanifest">
+<meta name="theme-color" content="#0c0a09">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="openconstructor">
+<meta property="og:title" content="Gallery — what people built with openconstructor">
+<meta property="og:description" content="Pages and interfaces made by the community with the open-source AI interface builder.">
+<meta property="og:url" content="https://openconstructor.pw/gallery">
+<meta property="og:image" content="https://openconstructor.pw/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="/pages.css">
+<style>
+  main.gal { max-width: 1240px; }
+  .gal-head { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 26px; }
+  .gal-head p { margin: 6px 0 0; color: #9c8f8a; }
+  .gal-search { width: min(320px, 100%); height: 38px; padding: 0 12px; border: 1px solid #2a2321; border-radius: 6px; background: #121010; color: #f2ece9; font: inherit; }
+  .gal-search:focus { outline: none; border-color: #e4572e; }
+  .gal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; }
+  .gal-card { display: block; overflow: hidden; border: 1px solid #2a2321; border-radius: 10px; background: #121010; color: inherit; text-decoration: none; transition: transform .25s cubic-bezier(.22,1,.36,1), border-color .2s, box-shadow .25s; animation: rise .5s cubic-bezier(.22,1,.36,1) both; }
+  .gal-card:hover { transform: translateY(-4px); border-color: #e4572e88; box-shadow: 0 18px 40px -20px #e4572e66; }
+  .gal-shot { position: relative; height: 200px; overflow: hidden; background: #0c0a09; border-bottom: 1px solid #2a2321; }
+  .gal-shot iframe { position: absolute; left: 0; top: 0; width: 1440px; height: 1000px; border: 0; transform-origin: 0 0; pointer-events: none; }
+  .gal-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; }
+  .gal-meta b { overflow: hidden; color: #f2ece9; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+  .gal-meta span { flex: none; color: #8f837e; font-size: 12px; }
+  .gal-foot { display: flex; justify-content: space-between; padding: 0 14px 12px; font-size: 12px; }
+  .gal-foot a { color: #8f837e; }
+  .gal-empty { padding: 60px 20px; border: 1px dashed #3a302d; border-radius: 10px; text-align: center; color: #9c8f8a; }
+  .gal-more { display: flex; margin: 28px auto 0; border: 0; cursor: pointer; font: inherit; font-weight: 700; }
+  .gal-more[hidden], .gal-empty[hidden] { display: none; }
+  @keyframes rise { from { opacity: 0; transform: translateY(12px); } }
+  @media (prefers-reduced-motion: reduce) { .gal-card { animation: none; transition: none; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="home" href="/"><img src="/favicon.svg" alt="" width="24" height="24"><span><i>open</i>constructor</span></a>
+  <nav aria-label="Guides">
+    <a href="/gallery" aria-current="page">Gallery</a>
+    <a href="/components">Components</a>
+    <a href="/ai-ui-generator">AI generator</a>
+    <a href="/roblox-ui-builder">Roblox UI</a>
+  </nav>
+</header>
+<main class="gal">
+  <div class="gal-head">
+    <div>
+      <h1>What people built</h1>
+      <p>Pages published by the community. Click one to open it — then <a href="/">build your own</a> and tick <i>“show in the community gallery”</i> when you publish.</p>
+    </div>
+    <input class="gal-search" id="q" type="search" placeholder="search by title or link" aria-label="Search the gallery">
+  </div>
+  <div class="gal-grid" id="grid" aria-live="polite"></div>
+  <div class="gal-empty" id="empty" hidden></div>
+  <button class="cta gal-more" id="more" hidden>load more</button>
+</main>
+<footer>
+  <a href="/">openconstructor</a><a href="https://github.com/Kuloka/openconstructor">GitHub</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a>
+  <p>Pages are made by users. See something wrong? Use “report” under it.</p>
+</footer>
+<script type="module">
+  // Public values (same as the app's VITE_SUPABASE_URL / anon key). Only listed, non-hidden pages are shown.
+  const SB = 'https://cxzdfjccdggeudsjxjbp.supabase.co';
+  const KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4emRmamNjZGdnZXVkc2p4amJwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM5ODY5MDcsImV4cCI6MjEwOTU2MjkwN30.5hP7ZGisLhXKGrxc2598Jhn9BuKsaraRMYNcmx9ldRY';
+  const PAGE = 24;
+  const grid = document.getElementById('grid'), empty = document.getElementById('empty'), more = document.getElementById('more'), q = document.getElementById('q');
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  let offset = 0, query = '', seq = 0;
+
+  async function load(reset){
+    const my = ++seq;
+    if (reset) { offset = 0; grid.innerHTML = ''; }
+    let url = `${SB}/rest/v1/pages?select=slug,title,updated_at&listed=eq.true&hidden=eq.false&order=updated_at.desc&limit=${PAGE}&offset=${offset}`;
+    if (query) { const t = query.replace(/[%,()*]/g, ' ').trim(); url += `&or=(title.ilike.*${encodeURIComponent(t)}*,slug.ilike.*${encodeURIComponent(t)}*)`; }
+    let rows = [];
+    try { const r = await fetch(url, { headers: { apikey: KEY, Authorization: 'Bearer ' + KEY } }); if (r.ok) rows = await r.json(); } catch {}
+    if (my !== seq) return;
+    grid.insertAdjacentHTML('beforeend', rows.map((p, i) => `
+      <article style="animation-delay:${Math.min(i, 12) * 40}ms">
+        <a class="gal-card" href="/p/${esc(p.slug)}" target="_blank" rel="noopener">
+          <div class="gal-shot"><iframe src="/p/${esc(p.slug)}" loading="lazy" sandbox="" tabindex="-1" title="${esc(p.title)}"></iframe></div>
+          <div class="gal-meta"><b>${esc(p.title || p.slug)}</b><span>${new Date(p.updated_at).toLocaleDateString()}</span></div>
+        </a>
+        <div class="gal-foot"><span>/p/${esc(p.slug)}</span><a href="https://github.com/Kuloka/openconstructor/issues/new?title=${encodeURIComponent('Report: /p/' + p.slug)}&body=${encodeURIComponent('Page: https://openconstructor.pw/p/' + p.slug + '\nReason: ')}" target="_blank" rel="noopener">report</a></div>
+      </article>`).join(''));
+    fit();
+    offset += rows.length;
+    more.hidden = rows.length < PAGE;
+    const none = !grid.children.length;
+    empty.hidden = !none;
+    if (none) empty.innerHTML = query ? 'Nothing matches that search.' : 'No pages yet — <a href="/">build one</a>, publish it and tick “show in the community gallery” to be the first here.';
+  }
+  // previews are full 1440px pages scaled down to the card width
+  function fit(){ grid.querySelectorAll('.gal-shot').forEach(s => { s.firstElementChild.style.transform = `scale(${s.clientWidth / 1440})`; }); }
+  addEventListener('resize', fit);
+  let t; q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => { query = q.value.trim(); load(true); }, 250); });
+  more.addEventListener('click', () => load(false));
+  load(true);
+</script>
+</body>
+</html>

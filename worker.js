@@ -52,9 +52,11 @@ async function servePage(request, env, ctx, slug){
   if (!res) {
     let rows;
     try {
-      const api = await fetch(`${env.SUPABASE_URL}/rest/v1/pages?slug=eq.${encodeURIComponent(slug)}&select=html,title`, {
-        headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${env.SUPABASE_ANON_KEY}`, Accept: 'application/json' },
-      });
+      const headers = { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${env.SUPABASE_ANON_KEY}`, Accept: 'application/json' };
+      const base = `${env.SUPABASE_URL}/rest/v1/pages?slug=eq.${encodeURIComponent(slug)}&select=html,title`;
+      // moderated pages (hidden = true) disappear; fall back if the gallery migration hasn't been run yet
+      let api = await fetch(base + '&hidden=eq.false', { headers });
+      if (api.status === 400) api = await fetch(base, { headers });
       if (!api.ok) throw new Error(`supabase ${api.status}`);
       rows = await api.json();
     } catch (err) {
