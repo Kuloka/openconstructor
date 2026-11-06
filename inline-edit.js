@@ -23,6 +23,7 @@ panel.innerHTML = `
     <label>fill<input type="color" data-p="backgroundColor"></label>
     <label>border<input type="color" data-p="borderColor"></label>
   </div>
+  <label class="ins-link">link <span>where this button or text leads</span><input type="text" id="insLink" placeholder="https://… or #pricing" spellcheck="false"></label>
   <label class="ins-row">size <b data-v="fontSize"></b><input type="range" min="8" max="96" data-p="fontSize" data-unit="px"></label>
   <label class="ins-row">weight <b data-v="fontWeight"></b><input type="range" min="100" max="900" step="100" data-p="fontWeight"></label>
   <label class="ins-row">radius <b data-v="borderRadius"></b><input type="range" min="0" max="48" data-p="borderRadius" data-unit="px"></label>
@@ -35,8 +36,30 @@ panel.innerHTML = `
   </div>`;
 document.body.append(panel);
 
+// Links: an <a> gets its href; a <button> is turned into an <a> with the same classes and content
+// (exported and published pages have no scripts, so a link is the only way a button can "work").
+const linkOf = el => el?.closest('a');
+$('insLink').addEventListener('change', e => {
+  const el = session?.picked; if (!el) return;
+  let url = e.target.value.trim();
+  if (url && !/^(https?:|mailto:|tel:|#|\/)/i.test(url)) url = 'https://' + url;
+  if (/^\s*javascript:/i.test(url)) url = '';
+  let a = linkOf(el);
+  if (!a && url) {
+    const btn = el.closest('button') || el;
+    a = session.doc.createElement('a');
+    for (const { name, value } of [...btn.attributes]) if (name !== 'type' && name !== 'disabled') a.setAttribute(name, value);
+    a.innerHTML = btn.innerHTML;
+    if (btn.tagName === 'BUTTON') a.style.cssText += ';text-decoration:none;cursor:pointer;display:inline-flex;align-items:center;justify-content:center';
+    btn.replaceWith(a); session.picked = a;
+  }
+  if (a) { if (url) { a.setAttribute('href', url); if (/^https?:/i.test(url)) a.setAttribute('target', '_blank'), a.setAttribute('rel', 'noopener'); else a.removeAttribute('target'); } else a.removeAttribute('href'); }
+  e.target.value = url; session.dirty = true; outline(); fill();
+});
+
 function fill(){
   const el = session?.picked; if (!el) return;
+  $('insLink').value = linkOf(el)?.getAttribute('href') || '';
   const cs = session.doc.defaultView.getComputedStyle(el);
   $('insTag').textContent = '<' + el.tagName.toLowerCase() + (el.classList[0] ? '.' + el.classList[0] : '') + '>';
   panel.querySelectorAll('[data-p]').forEach(inp => {

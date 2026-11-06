@@ -56,7 +56,8 @@ function previewDoc(code, wide){
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 function nodeDoc(item){
   const root = item.full ? `width:${page.w}px;padding:0` : `width:max-content;max-width:${page.w - 2 * PAD}px;padding:${PAD}px`;
-  return `<!doctype html><html><head>${CSP}<meta name="color-scheme" content="dark"><style>:root{color-scheme:dark}html,body{margin:0;background:transparent;color:#eee;font-family:system-ui;overflow:hidden}button{white-space:nowrap}#__root{display:inline-block;box-sizing:border-box;${root}}</style>${page.themeCss ? `<style id="__theme">${page.themeCss}</style>` : ''}</head><body><div id="__root">${item.code}</div></body></html>`;
+  // <base target=_blank> + no allow-popups in the sandbox = links never navigate the canvas frame away
+  return `<!doctype html><html><head>${CSP}<base target="_blank"><meta name="color-scheme" content="dark"><style>:root{color-scheme:dark}html,body{margin:0;background:transparent;color:#eee;font-family:system-ui;overflow:hidden}button{white-space:nowrap}#__root{display:inline-block;box-sizing:border-box;${root}}</style>${page.themeCss ? `<style id="__theme">${page.themeCss}</style>` : ''}</head><body><div id="__root">${item.code}</div></body></html>`;
 }
 
 // Animated components (typewriter, expanding bars…) change size while they play, so the frame
@@ -261,6 +262,7 @@ addEventListener('keydown', e => { if (e.key === 'Escape' && fusing) cancelFusio
 
 board.addEventListener('pointerdown', e => {
   const el = e.target.closest('.node');
+  if (canvas.classList.contains('playing')) return;
   if (fusing && e.button === 0) {
     e.stopPropagation(); e.preventDefault();
     if (!el) return cancelFusion();
@@ -573,17 +575,33 @@ function openDevicePreview(){
   const devices = [{ name: 'phone', w: 390, h: 844 }, { name: 'tablet', w: 834, h: 1112 }, { name: 'desktop', w: 1440, h: 900 }];
   let m = $('previewModal');
   if (!m) { m = document.createElement('div'); m.className = 'modal hidden'; m.id = 'previewModal'; document.body.append(m); m.onclick = e => { if (e.target === m || e.target.closest('[data-close]')) m.classList.add('hidden'); }; }
-  m.innerHTML = `<div class="modal-card preview-card"><div class="modal-head"><h2>preview · ${isStack() ? 'responsive (stack)' : 'free layout — switch to stack to adapt to small screens'}</h2><button class="btn icon" data-close>×</button></div><div class="devices">${devices.map(d => `<figure class="device" style="--w:${d.w};--h:${d.h}"><div class="device-screen"><iframe sandbox title="${d.name}" tabindex="-1"></iframe></div><figcaption>${d.name} · ${d.w}px</figcaption></figure>`).join('')}</div></div>`;
+  const stack = isStack();
+  m.innerHTML = `<div class="modal-card preview-card"><div class="modal-head"><h2>preview · ${stack ? 'responsive' : 'fixed width'}</h2><button class="btn icon" data-close>×</button></div>
+    ${stack ? '<p class="preview-note">Blocks reflow to fit each screen. Links open in a new tab; hover and toggles work.</p>'
+      : `<div class="preview-banner"><span><b>This page has a fixed ${page.w}px layout</b>, so phones and tablets just shrink it — text gets tiny. Make it responsive: blocks will stack top to bottom and adapt to any screen.</span><button class="btn primary" data-make-stack>make responsive</button></div>`}
+    <div class="devices">${devices.map(d => `<figure class="device"><div class="device-screen"><iframe sandbox="allow-popups allow-popups-to-escape-sandbox" title="${d.name}"></iframe></div><figcaption>${d.name} · ${d.w}px</figcaption></figure>`).join('')}</div></div>`;
   m.classList.remove('hidden');
-  const CSPmeta = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:">`;
+  m.querySelector('[data-make-stack]')?.addEventListener('click', () => { setLayoutMode('stack'); requestAnimationFrame(() => requestAnimationFrame(openDevicePreview)); });
+  // dark scrollbars, links open in a new tab, scripts stay off
+  const head = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:"><base target="_blank"><style>:root{color-scheme:dark}html{scrollbar-width:thin;scrollbar-color:#3a302d transparent}</style>`;
   m.querySelectorAll('.device').forEach((fig, i) => {
     const d = devices[i], f = fig.querySelector('iframe'), screen = fig.querySelector('.device-screen');
-    f.style.width = d.w + 'px'; f.style.height = d.h + 'px';
-    const fit = () => { const k = screen.clientWidth / d.w; f.style.transform = `scale(${k})`; screen.style.height = d.h * k + 'px'; };
-    f.srcdoc = html.replace('<head>', '<head>' + CSPmeta); requestAnimationFrame(fit);
+    // a fixed-width page is laid out at its own width and scaled to the device, like a phone does with width=1440
+    const vw = stack ? d.w : Math.max(d.w, page.w);
+    const fit = () => { const k = screen.clientWidth / vw; f.style.width = vw + 'px'; f.style.height = d.h * (vw / d.w) + 'px'; f.style.transform = `scale(${k})`; screen.style.height = d.h * (screen.clientWidth / d.w) + 'px'; };
+    f.srcdoc = html.replace('<head>', '<head>' + head); requestAnimationFrame(fit);
   });
 }
 $('devicePreview').onclick = openDevicePreview;
+// ▶ play: let the mouse reach the elements so CSS interactions work; editing/dragging pauses meanwhile
+let playing = false;
+function setPlaying(on){
+  playing = on; canvas.classList.toggle('playing', on); $('playToggle').setAttribute('aria-pressed', on);
+  $('playToggle').textContent = on ? '■ stop' : '▶ play';
+  if (on) { select(null); setState('play mode: try hover, toggles, tabs · press P or ■ stop to edit again', 'busy'); } else setState('ready');
+}
+$('playToggle').onclick = () => setPlaying(!playing);
+addEventListener('keydown', e => { if (e.key.toLowerCase() === 'p' && !e.ctrlKey && !e.metaKey && !e.target.closest('input, textarea, select, [contenteditable]') && !document.querySelector('.modal:not(.hidden)')) setPlaying(!playing); });
 function exportHTML(){
   if (!items.length) { setState('nothing to export: the page is empty', 'warn'); return; }
   download(buildHTML(), fileBase() + '.html', 'text/html');

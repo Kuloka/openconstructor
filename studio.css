@@ -548,3 +548,19 @@ body.resizing iframe { pointer-events: none; }
 .device iframe { position: absolute; left: 0; top: 0; border: 0; transform-origin: 0 0; }
 .device figcaption { margin-top: 8px; color: var(--muted); font-size: 11px; text-align: center; }
 @media (max-width: 900px) { .devices { grid-template-columns: 1fr; } }
+.preview-note { margin: 6px 0 0; font-size: 12px; }
+.preview-banner { display: flex; align-items: center; gap: 14px; margin-top: 12px; padding: 10px 14px; border: 1px solid #e4572e55; border-radius: 6px; background: #e4572e12; color: var(--text-2); font-size: 12.5px; line-height: 1.55; }
+.preview-banner b { color: var(--text); }
+.preview-banner .btn { flex: none; }
+
+/* ▶ play mode: elements on the canvas react to the mouse (hover, toggles, tabs, accordions); dragging is off */
+.canvas.playing .node { cursor: default; }
+.canvas.playing .node iframe { pointer-events: auto; }
+.canvas.playing .node:hover { outline-color: transparent; }
+#playToggle[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: #e4572e14; }
+/* toolbar: groups never overlap; on narrow canvases it scrolls sideways instead */
+.canvas-toolbar { overflow-x: auto; scrollbar-width: none; }
+.canvas-toolbar::-webkit-scrollbar { display: none; }
+.canvas-toolbar .toolbar-group { flex: none; }
+.canvas-toolbar .tab-label { display: none; }
+@media (max-width: 1500px) { .swatches button[data-bg="5"], .swatches button[data-bg="6"] { display: none; } }

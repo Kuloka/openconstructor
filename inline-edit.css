@@ -18,3 +18,7 @@
 .ins-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
 .ins-actions .btn { flex: 1; height: 24px; padding: 0 6px; font-size: 11px; }
 .ins-actions .btn.danger { color: #ff8a6b; }
+.ins-link { display: grid; gap: 3px; margin-bottom: 8px; color: var(--muted); font-size: 11px; }
+.ins-link span { color: var(--subtle); font-size: 10.5px; }
+.ins-link input { height: 26px; padding: 0 8px; border: 1px solid var(--border-2); border-radius: 4px; background: var(--panel); color: var(--text); font: 11.5px 'JetBrains Mono', monospace; }
+.ins-link input:focus { outline: none; border-color: var(--accent); }
