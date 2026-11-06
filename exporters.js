@@ -391,7 +391,8 @@ export function toRobloxLuau(nodes, page, title) {
     `  How to use: in Roblox Studio create a LocalScript in`,
     `  StarterPlayer > StarterPlayerScripts (or StarterGui) and paste this file into it.`,
     `  It builds the UI at runtime and scales the ${W}x${H} design to fit the screen.`,
-    `  This is a visual snapshot: buttons and text boxes are not wired to any logic yet.`,
+    `  Every button is named after its label and collected in the \`buttons\` table;`,
+    `  click handlers with TODOs are at the bottom of the file — put your game logic there.`,
     `]]`,
     ``,
     `local Players = game:GetService("Players")`,
@@ -418,6 +419,7 @@ export function toRobloxLuau(nodes, page, title) {
     `local function pad(o, t, r, b, l)`,
     `\tmake("UIPadding", {PaddingTop = UDim.new(0, t), PaddingRight = UDim.new(0, r), PaddingBottom = UDim.new(0, b), PaddingLeft = UDim.new(0, l)}, o)`,
     `end`,
+    `local buttons = {} -- every TextButton by name`,
     ``,
     `local W, H = ${W}, ${H}`,
     `local gui = make("ScreenGui", {Name = ${luaStr(title || 'Interface')}, ResetOnSpawn = false, IgnoreGuiInset = true, ZIndexBehavior = Enum.ZIndexBehavior.Sibling}, playerGui)`,
@@ -435,6 +437,14 @@ export function toRobloxLuau(nodes, page, title) {
     ``,
     `local o`,
   );
+
+  // button names: from the label, unique ("Buy", "Buy 2", …)
+  const used = new Map(), btnNames = [];
+  const uniqueName = text => {
+    const base = String(text).replace(/\s+/g, ' ').trim().slice(0, 40) || 'Button';
+    const n = (used.get(base) || 0) + 1; used.set(base, n);
+    const name = n === 1 ? base : `${base} ${n}`; btnNames.push(name); return name;
+  };
 
   for (const n of list) {
     const op = clamp(+n.opacity || 1, 0, 1);
@@ -459,7 +469,8 @@ export function toRobloxLuau(nodes, page, title) {
       const multi = n.h > (n.fontSize || 14) * 1.9;
       L.push(`make("TextLabel", {${geo}, BackgroundTransparency = 1, ${textProps(n.text)}, TextYAlignment = Enum.TextYAlignment.${multi ? 'Top' : 'Center'}}, root)`);
     } else if (n.kind === 'button') {
-      L.push(`o = make("TextButton", {${geo}, ${bgProps()}, AutoButtonColor = true, ${textProps(n.text || '')}}, root)` + decorate() + (p && n.align !== 'center' ? ` pad(o, 0, ${p[1]}, 0, ${p[3]})` : ''));
+      const bname = uniqueName(n.text || 'Button');
+      L.push(`o = make("TextButton", {${geo}, ${bgProps()}, AutoButtonColor = true, ${textProps(n.text || '')}}, root)` + decorate() + (p && n.align !== 'center' ? ` pad(o, 0, ${p[1]}, 0, ${p[3]})` : '') + ` o.Name = ${luaStr(bname)} buttons[${luaStr(bname)}] = o`);
     } else if (n.kind === 'input') {
       const ph = { r: color.r * 0.6, g: color.g * 0.6, b: color.b * 0.6 }; // Color3 has no alpha: dim instead
       L.push(`o = make("TextBox", {${geo}, ${bgProps()}, ClearTextOnFocus = false, PlaceholderText = ${luaStr(n.placeholder || '')}, PlaceholderColor3 = ${rgb3(ph)}, ${textProps(n.text || '')}}, root)` + decorate() + (p ? ` pad(o, 0, ${p[1]}, 0, ${p[3]})` : ''));
@@ -467,6 +478,10 @@ export function toRobloxLuau(nodes, page, title) {
       // box / icon
       L.push(`o = make("Frame", {${geo}, ${bgProps()}}, root)` + decorate());
     }
+  }
+  if (btnNames.length) {
+    L.push('', '-- ── Buttons: put your game logic in these handlers ──');
+    for (const b of btnNames) L.push(`buttons[${luaStr(b)}].MouseButton1Click:Connect(function()`, `\t-- TODO: what happens when ${luaComment(b)} is clicked`, `\tprint("clicked", ${luaStr(b)})`, `end)`);
   }
   L.push('');
   return L.join('\n');

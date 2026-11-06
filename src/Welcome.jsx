@@ -157,7 +157,7 @@ export default function Welcome(){
         <a href="/roblox-ui-builder">Roblox UI builder (Luau)</a>
         <a href="/html-to-react-vue-svelte">Export to React, Vue &amp; Svelte</a>
         <a href="/ai-ui-generator">AI UI generator</a>
-        <a href="/components">145 components</a>
+        <a href="/components">200 components</a>
         <a href="/love2d-ui">LÖVE 2D UI</a>
         <a href="https://github.com/Kuloka/openconstructor" target="_blank" rel="noreferrer">GitHub</a>
       </nav>

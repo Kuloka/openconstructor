@@ -2,6 +2,8 @@ import {more} from './presets-more.js';
 import {extra} from './presets-extra.js';
 import {ai} from './presets-ai.js';
 import {shop} from './presets-shop.js';
+import {game} from './presets-game.js';
+import {more2} from './presets-more2.js';
 import {categorize} from './categories.js'; // moves each component into its catalog section
 // shadcn / 21st.dev style buttons. Each one is self-contained HTML+CSS with unique classes.
 const RM = sel => `@media(prefers-reduced-motion:reduce){${sel}{animation:none!important;transition:none!important}}`;
@@ -44,4 +46,6 @@ export const presets=categorize([
 ,...extra
 ,...ai
 ,...shop
+,...game
+,...more2
 ]);

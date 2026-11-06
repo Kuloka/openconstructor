@@ -164,7 +164,7 @@ function layout(){
   stage.style.width = page.w * zoom + STAGE_PAD * 2 + 'px';
   stage.style.height = h * zoom + STAGE_PAD * 2 + 'px';
   if (!$('boardLabel').classList.contains('editing')) $('boardLabel').textContent = `page · ${page.w} × ${Math.round(h)}`;
-  try { placeHandles(h); } catch {} // handles are created a bit later during startup
+  try { placeHandles(h); drawZones(); } catch {} // handles/zones are created a bit later during startup
   $('zoomFit').textContent = Math.round(zoom * 100) + '%';
   $('sbZoom').textContent = Math.round(zoom * 100) + '%';
   $('sbPage').textContent = `${page.w} × ${Math.round(h)}`;
@@ -190,7 +190,8 @@ canvas.addEventListener('wheel', e => { if (!(e.ctrlKey || e.metaKey)) return; e
 // Page size and background
 /* ── Page size: presets, typed size, and drag handles on the artboard edges ── */
 const PAGE_MIN = { w: 240, h: 160 }, PAGE_MAX = 4096;
-const clampSize = (v, min) => Math.max(min, Math.min(PAGE_MAX, Math.round(v / GRID) * GRID));
+// Exact sizes (presets, typed values) stay exact; dragging an edge snaps that side to the 8px grid.
+const clampSize = (v, min, step = 1) => Math.max(min, Math.min(PAGE_MAX, Math.round(v / step) * step));
 // keep the select in sync: a preset if one matches, otherwise a "custom W×H" entry
 function syncPageSize(){
   const sel = $('pageSize'), want = `${page.w}x${page.h}`;
@@ -224,27 +225,40 @@ $('boardLabel').addEventListener('pointerdown', e => e.stopPropagation());
 $('boardLabel').addEventListener('click', e => { if (!e.target.closest('input, button')) editPageSize(); });
 $('boardLabel').title = 'Click to type an exact page size · or drag the page edges';
 
-// Drag handles: right edge = width, bottom edge = height, corner = both. Shift keeps the aspect ratio.
-const handles = ['e', 's', 'se'].map(dir => { const h = document.createElement('div'); h.className = 'page-handle ' + dir; h.dataset.dir = dir; h.title = 'Drag to resize the page (Shift keeps proportions)'; stage.append(h); return h; });
+// Drag handles on all four edges and corners. Dragging the left/top edge grows the page on that side:
+// elements keep their place on screen (their coordinates shift) and the view scrolls to compensate.
+// Shift on a corner keeps the aspect ratio.
+const DIRS = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
+const CURSORS = { n: 'ns', s: 'ns', e: 'ew', w: 'ew', ne: 'nesw', sw: 'nesw', nw: 'nwse', se: 'nwse' };
+const handles = DIRS.map(dir => { const h = document.createElement('div'); h.className = 'page-handle ' + dir + (dir.length === 2 ? ' corner' : ''); h.dataset.dir = dir; h.style.cursor = CURSORS[dir] + '-resize'; h.title = 'Drag to resize the page (Shift keeps proportions)'; stage.append(h); return h; });
 const sizeTip = Object.assign(document.createElement('div'), { className: 'page-size-tip hidden' }); stage.append(sizeTip);
 let resizing = null;
 handles.forEach(h => h.addEventListener('pointerdown', e => {
   if (e.button !== 0) return;
   e.preventDefault(); e.stopPropagation();
-  resizing = { dir: h.dataset.dir, sx: e.clientX, sy: e.clientY, w: page.w, h: page.h, before: JSON.stringify(items) };
-  h.setPointerCapture(e.pointerId); canvas.classList.add('resizing-page');
+  resizing = { dir: h.dataset.dir, sx: e.clientX, sy: e.clientY, w: page.w, h: page.h, before: JSON.stringify(items),
+    pos: new Map(items.map(it => [it.id, { x: it.x, y: it.y }])), scrollX: canvas.scrollLeft, scrollY: canvas.scrollTop };
+  h.setPointerCapture(e.pointerId); canvas.classList.add('resizing-page'); canvas.dataset.resizeCursor = CURSORS[h.dataset.dir];
 }));
 addEventListener('pointermove', e => {
   if (!resizing) return;
-  const r = resizing, dx = (e.clientX - r.sx) / zoom, dy = (e.clientY - r.sy) / zoom;
-  let w = r.dir.includes('e') ? r.w + dx : r.w, h = r.dir.includes('s') ? r.h + dy : r.h;
-  if (e.shiftKey && r.dir === 'se') h = w * r.h / r.w;
-  w = clampSize(w, PAGE_MIN.w); h = clampSize(h, PAGE_MIN.h);
+  const r = resizing, d = r.dir, dx = (e.clientX - r.sx) / zoom, dy = (e.clientY - r.sy) / zoom;
+  let w = r.w + (d.includes('e') ? dx : d.includes('w') ? -dx : 0);
+  let h = r.h + (d.includes('s') ? dy : d.includes('n') ? -dy : 0);
+  if (e.shiftKey && d.length === 2) h = w * r.h / r.w;
+  w = clampSize(w, PAGE_MIN.w, d.includes("e") || d.includes("w") ? GRID : 1); h = clampSize(h, PAGE_MIN.h, d.includes("n") || d.includes("s") ? GRID : 1);
   if (w === page.w && h === page.h) return;
   page = { ...page, w, h };
-  // live: resize the board and full-width frames only; the full re-render happens on release
-  for (const it of items) if (it.full) { const f = nodes.get(it.id)?.querySelector('iframe'); if (f) f.style.width = w + 'px'; }
+  // growing on the left/top: move every element by the same amount so it stays put relative to the content
+  const ox = d.includes('w') ? w - r.w : 0, oy = d.includes('n') ? h - r.h : 0;
+  for (const it of items) {
+    const p0 = r.pos.get(it.id); if (!p0) continue;
+    it.x = it.full ? 0 : Math.max(0, p0.x + ox); it.y = Math.max(0, p0.y + oy);
+    const el = nodes.get(it.id); if (el) { el.style.left = it.x + 'px'; el.style.top = it.y + 'px'; }
+    if (it.full) { const f = el?.querySelector('iframe'); if (f) f.style.width = w + 'px'; }
+  }
   layout();
+  if (ox || oy) { canvas.scrollLeft = r.scrollX + ox * zoom; canvas.scrollTop = r.scrollY + oy * zoom; }
   sizeTip.textContent = `${w} × ${h}`; sizeTip.classList.remove('hidden');
 });
 addEventListener('pointerup', () => {
@@ -254,10 +268,14 @@ addEventListener('pointerup', () => {
   setPageSize(page.w, page.h);
 });
 function placeHandles(h){
-  const L = STAGE_PAD, T = STAGE_PAD, W = page.w * zoom, H = h * zoom;
-  handles[0].style.cssText = `left:${L + W - 4}px;top:${T}px;height:${H}px`;
-  handles[1].style.cssText = `left:${L}px;top:${T + H - 4}px;width:${W}px`;
-  handles[2].style.cssText = `left:${L + W - 7}px;top:${T + H - 7}px`;
+  const L = STAGE_PAD, T = STAGE_PAD, W = page.w * zoom, H = h * zoom, E = 4, C = 7;
+  const pos = {
+    n: `left:${L}px;top:${T - E}px;width:${W}px`, s: `left:${L}px;top:${T + H - E}px;width:${W}px`,
+    w: `left:${L - E}px;top:${T}px;height:${H}px`, e: `left:${L + W - E}px;top:${T}px;height:${H}px`,
+    nw: `left:${L - C}px;top:${T - C}px`, ne: `left:${L + W - C}px;top:${T - C}px`,
+    sw: `left:${L - C}px;top:${T + H - C}px`, se: `left:${L + W - C}px;top:${T + H - C}px`,
+  };
+  handles.forEach(el => { el.style.cssText = pos[el.dataset.dir] + `;cursor:${CURSORS[el.dataset.dir]}-resize`; });
   sizeTip.style.left = L + W + 12 + 'px'; sizeTip.style.top = T + H + 12 + 'px';
 }
 // Quick swatches = the first background presets; the ✎ button opens the full editor (background.js)
@@ -352,11 +370,64 @@ board.addEventListener('pointermove', e => {
   if (!drag.moved && Math.hypot(dx, dy) < 3) return;
   drag.moved = true; drag.el.classList.add('dragging');
   const maxX = Math.max(0, page.w - drag.el.offsetWidth);
-  drag.item.x = drag.item.full ? 0 : Math.min(maxX, snap(drag.ox + dx));
-  drag.item.y = snap(drag.oy + dy);
+  let x = drag.item.full ? 0 : Math.min(maxX, Math.max(0, drag.ox + dx)), y = Math.max(0, drag.oy + dy);
+  // smart guides: snap edges/centers to the page and to other elements (Alt disables)
+  const g = e.altKey ? null : smartSnap(drag.item, x, y, drag.el.offsetWidth, drag.el.offsetHeight);
+  if (g) { x = g.x; y = g.y; } else { x = drag.item.full ? 0 : Math.min(maxX, snap(x)); y = snap(y); }
+  showGuides(g?.lines || []);
+  drag.item.x = x; drag.item.y = y;
   drag.el.style.left = drag.item.x + 'px'; drag.el.style.top = drag.item.y + 'px';
 });
+/* ── Roblox safe zones: areas the Roblox client draws on top of your UI ──
+   Top bar (menu, chat, backpack…) along the top; on touch screens the thumbstick (bottom-left)
+   and the jump button (bottom-right). Sizes are approximate and scale with the page height. */
+const zoneLayer = document.createElement('div'); zoneLayer.className = 'rbx-zones'; board.append(zoneLayer);
+function drawZones(){
+  const on = !!page.robloxZones;
+  $('zonesToggle').setAttribute('aria-pressed', on);
+  zoneLayer.hidden = !on; if (!on) return;
+  const touch = page.w <= 1100 || page.h <= 600;           // phone / small tablet sizes
+  const k = Math.min(1, page.h / 720);                       // the client shrinks controls on short screens
+  const bar = Math.round(58 * Math.max(.75, k));
+  const stick = Math.round(220 * k), jump = Math.round(90 * k);
+  zoneLayer.innerHTML = `<div class="rbx-zone top" style="height:${bar}px"><span>Roblox top bar · keep clear (${bar}px)</span></div>`
+    + (touch ? `<div class="rbx-zone stick" style="width:${stick}px;height:${stick}px;left:${Math.round(40 * k)}px;bottom:${Math.round(30 * k)}px"><span>thumbstick</span></div>`
+      + `<div class="rbx-zone jump" style="width:${jump}px;height:${jump}px;right:${Math.round(60 * k)}px;bottom:${Math.round(40 * k)}px"><span>jump</span></div>` : '');
+}
+$('zonesToggle').onclick = () => { page = { ...page, robloxZones: !page.robloxZones }; store.set('oc-page', page); drawZones(); setState(page.robloxZones ? 'Roblox zones on — keep buttons out of the shaded areas' : 'ready'); };
+
+/* ── Smart guides ── */
+const guideLayer = document.createElement('div'); guideLayer.className = 'guides'; board.append(guideLayer);
+function smartSnap(item, x, y, w, h){
+  const tol = 6 / zoom;
+  const xs = [{ v: 0 }, { v: page.w / 2 }, { v: page.w }], ys = [{ v: 0 }, { v: page.h / 2 }];
+  for (const it of items) {
+    if (it.id === item.id) continue;
+    const el = nodes.get(it.id); if (!el) continue;
+    const L = el.offsetLeft, T = el.offsetTop, W = el.offsetWidth, H = el.offsetHeight;
+    xs.push({ v: L }, { v: L + W / 2 }, { v: L + W });
+    ys.push({ v: T }, { v: T + H / 2 }, { v: T + H });
+  }
+  const best = (pos, size, targets) => {
+    let hit = null;
+    for (const [k, off] of [['start', 0], ['mid', size / 2], ['end', size]]) for (const t of targets) {
+      const d = Math.abs(pos + off - t.v);
+      if (d <= tol && (!hit || d < hit.d)) hit = { d, pos: t.v - off, line: t.v };
+    }
+    return hit;
+  };
+  const bx = item.full ? null : best(x, w, xs), by = best(y, h, ys);
+  if (!bx && !by) return null;
+  const lines = [];
+  if (bx) lines.push({ x: bx.line });
+  if (by) lines.push({ y: by.line });
+  return { x: item.full ? 0 : bx ? Math.round(bx.pos) : snap(x), y: by ? Math.round(by.pos) : snap(y), lines };
+}
+function showGuides(lines){
+  guideLayer.innerHTML = lines.map(l => l.x !== undefined ? `<i class="guide v" style="left:${l.x}px"></i>` : `<i class="guide h" style="top:${l.y}px"></i>`).join('');
+}
 const endDrag = () => {
+  showGuides([]);
   if (!drag) return;
   drag.el.classList.remove('dragging');
   if (drag.moved) { history.push(drag.snapshot); layout(); persist(); }
