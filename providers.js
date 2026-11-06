@@ -1,7 +1,7 @@
 // AI providers. All are CORS-checked: requests go straight from the browser with the user's key.
 // Once there is a server, this same module will be called through a proxy (keys will move to the server).
 export const PROVIDERS = [
-  { id: 'oc', name: 'openconstructor AI', logo: '', base: '/api', free: true, keyUrl: '', hint: '', note: 'no key needed — 20 free generations a day when signed in (GPT-OSS 120B via Groq)', kind: 'proxy', publicModels: true },
+  { id: 'oc', name: 'openconstructor AI', logo: '', base: '/api', free: true, keyUrl: '', hint: '', note: 'no key needed — 20 free generations a day when signed in', kind: 'proxy', publicModels: true },
   { id: 'openrouter', name: 'OpenRouter', logo: 'openrouter', base: 'https://openrouter.ai/api/v1', free: true, keyUrl: 'https://openrouter.ai/keys', hint: 'sk-or-…', note: '300+ models in one key: Claude, GPT, Gemini and more — a dozen at no cost (Gemma 4, Nemotron), GPT-OSS from $0.02/M', publicModels: true },
   { id: 'gemini', name: 'Google Gemini', logo: 'gemini-color', base: 'https://generativelanguage.googleapis.com/v1beta/openai', free: true, keyUrl: 'https://aistudio.google.com/apikey', hint: 'AIza…', note: 'no-cost tier with Flash models, strong at layout', prefer: ['gemini-2.5-flash', 'gemini-flash-latest'] },
   { id: 'groq', name: 'Groq', logo: 'groq', base: 'https://api.groq.com/openai/v1', free: true, keyUrl: 'https://console.groq.com/keys', hint: 'gsk_…', note: 'no-cost plan with GPT-OSS 120B and Llama, very fast (about 1K requests a day)', prefer: ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile'] },
@@ -21,9 +21,9 @@ const NOT_CHAT = /embed|whisper|tts|audio|image|dall-e|moderation|guard|transcri
 const anthropicHeaders = key => ({ 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true', 'content-type': 'application/json' });
 async function errorText(r){ try { const d = await r.json(); return d.error?.message || d.error || d.message || `HTTP ${r.status}`; } catch { return `HTTP ${r.status}`; } }
 
+// The server picks the actual model (Gemini Flash, GPT-OSS on Groq or Llama on Cloudflare) — one entry is enough
 const PROXY_MODELS = [
-  { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B', vendor: 'openconstructor' },
-  { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B', vendor: 'openconstructor' },
+  { id: 'auto', name: 'Free AI', vendor: 'openconstructor', note: 'no key needed' },
 ];
 
 // Supabase access token of the signed-in user (for the free openconstructor AI), or null

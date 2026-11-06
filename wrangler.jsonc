@@ -9,6 +9,7 @@
   "observability": {
     "enabled": true
   },
+  "ai": { "binding": "AI" }, // Cloudflare Workers AI: keyless fallback for the free AI
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",

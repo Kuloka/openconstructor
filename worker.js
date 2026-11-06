@@ -108,6 +108,33 @@ const AI_MODELS = ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile', 'openai/gpt
 const AI_MAX_BODY = 200_000;
 const AI_MAX_TOKENS = 8000;
 const GROQ = 'https://api.groq.com/openai/v1/chat/completions';
+const GEMINI = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
+const WORKERS_AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+
+// Which upstream serves the free AI: Gemini key → Groq key → Cloudflare Workers AI (no key, small daily allowance).
+const freeBackend = env => env.GEMINI_API_KEY ? 'gemini' : env.GROQ_API_KEY ? 'groq' : env.AI ? 'workers-ai' : null;
+
+// Call the chosen upstream and always answer in OpenAI chat-completions shape: { status, text }.
+async function callUpstream(env, body){
+  const be = freeBackend(env);
+  if (be === 'gemini') {
+    const r = await fetch(GEMINI, { method: 'POST', headers: { Authorization: `Bearer ${env.GEMINI_API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'gemini-2.5-flash', messages: body.messages, max_tokens: body.max_tokens, reasoning_effort: 'low' }) });
+    return { status: r.status, text: await r.text(), be };
+  }
+  if (be === 'groq') {
+    const r = await fetch(GROQ, { method: 'POST', headers: { Authorization: `Bearer ${env.GROQ_API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    return { status: r.status, text: await r.text(), be };
+  }
+  // Workers AI binding: returns { response } — wrap it like an OpenAI completion
+  try {
+    const out = await env.AI.run(WORKERS_AI_MODEL, { messages: body.messages, max_tokens: Math.min(body.max_tokens, 4096) });
+    const content = typeof out === 'string' ? out : out?.response ?? out?.choices?.[0]?.message?.content ?? '';
+    return { status: 200, be, text: JSON.stringify({ choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: out?.finish_reason === 'length' ? 'length' : 'stop' }] }) };
+  } catch (err) {
+    const msg = String(err?.message || err);
+    return { status: /limit|quota|neurons|429/i.test(msg) ? 429 : 502, text: msg, be };
+  }
+}
 
 const json = (status, data, headers = {}) => new Response(JSON.stringify(data), {
   status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers },
@@ -149,7 +176,7 @@ async function aiChat(request, env){
   if (request.method !== 'POST') return fail(405, 'Method not allowed', { Allow: 'POST' });
   const token = bearer(request);
   if (!token) return fail(401, 'Sign in to use the free openconstructor AI.');
-  if (!env.GROQ_API_KEY) return fail(503, 'The free openconstructor AI is not configured yet. Add your own key to keep going.');
+  if (!freeBackend(env)) return fail(503, 'The free openconstructor AI is not configured yet. Add your own key to keep going.');
 
   const tooBig = () => fail(413, 'Request is too large for the free AI (200 KB max).');
   if ((+request.headers.get('Content-Length') || 0) > AI_MAX_BODY) return tooBig();
@@ -181,15 +208,14 @@ async function aiChat(request, env){
   }
 
   let g;
-  try {
-    g = await fetch(GROQ, { method: 'POST', headers: { Authorization: `Bearer ${env.GROQ_API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify(parsed.body) });
-  } catch (err) {
-    console.error('ai: groq unreachable', err?.message);
+  try { g = await callUpstream(env, parsed.body); }
+  catch (err) {
+    console.error('ai: upstream unreachable', err?.message);
     return fail(502, 'The free AI is unreachable right now. Try again in a minute.', quota);
   }
-  const text = await g.text();
-  if (!g.ok) {
-    console.error('ai: groq error', g.status, text.slice(0, 300));
+  const text = g.text;
+  if (g.status < 200 || g.status >= 300) {
+    console.error('ai: upstream error', g.be, g.status, String(text).slice(0, 300));
     if (g.status === 429) return fail(503, 'The free AI is busy right now. Try again in a minute or add your own key.', quota);
     if (g.status === 413 || (g.status === 400 && /context|too long|too large|tokens/i.test(text))) return fail(413, 'This request is too long for the free AI. Try a shorter prompt or add your own key.', quota);
     return fail(502, `The free AI failed (upstream ${g.status}). Try again or add your own key.`, quota);

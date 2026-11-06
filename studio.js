@@ -900,7 +900,8 @@ function saveKeys(){ try { const s = JSON.stringify(keys); (remember ? localStor
 const AUTO = { id: 'openrouter/free', name: 'Auto', vendor: 'OpenRouter', note: 'best available model' };
 const modelsBy = {}, modelErr = {}, loading = {};
 // new visitors start on the free openconstructor AI (no key, sign-in required)
-let currentModel = store.get('form-model', 'oc::openai/gpt-oss-120b');
+let currentModel = store.get('form-model', 'oc::auto');
+if (/^oc::(?!auto$)/.test(currentModel)) currentModel = 'oc::auto'; // older free-AI model ids
 if (!currentModel.includes('::')) currentModel = 'openrouter::' + currentModel;
 const providerModels = p => (p.id === 'openrouter' ? [AUTO, ...(modelsBy.openrouter || [])] : (modelsBy[p.id] || [])).map(m => ({ ...m, pid: p.id, key: `${p.id}::${m.id}` }));
 const allModels = () => PROVIDERS.flatMap(providerModels);
