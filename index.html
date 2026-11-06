@@ -125,10 +125,21 @@
     <main class="workspace">
       <div class="canvas-toolbar">
         <div class="toolbar-group"><span class="tab-label">page</span><select id="pageSize" class="mini-select" aria-label="Page size">
-          <option value="1440x900">desktop 1440</option>
-          <option value="1280x800">laptop 1280</option>
-          <option value="834x1112">tablet 834</option>
-          <option value="390x844">phone 390</option>
+          <optgroup label="web">
+            <option value="1440x900">desktop 1440</option>
+            <option value="1280x800">laptop 1280</option>
+            <option value="834x1112">tablet 834</option>
+            <option value="390x844">phone 390</option>
+          </optgroup>
+          <optgroup label="game / roblox">
+            <option value="1920x1080">1080p 1920×1080</option>
+            <option value="1366x768">laptop 1366×768</option>
+            <option value="1280x720">720p 1280×720</option>
+            <option value="1024x768">tablet 1024×768</option>
+            <option value="844x390">phone landscape 844×390</option>
+            <option value="390x844">phone portrait 390×844</option>
+          </optgroup>
+          <option value="custom" id="pageCustom" hidden>custom</option>
         </select>
         <div class="swatches" id="swatches" role="radiogroup" aria-label="Page background"></div></div>
         <div class="toolbar-group">

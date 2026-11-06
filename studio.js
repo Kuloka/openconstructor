@@ -163,7 +163,8 @@ function layout(){
   board.classList.toggle('light', isLightPage());
   stage.style.width = page.w * zoom + STAGE_PAD * 2 + 'px';
   stage.style.height = h * zoom + STAGE_PAD * 2 + 'px';
-  $('boardLabel').textContent = `page · ${page.w} × ${Math.round(h)}`;
+  if (!$('boardLabel').classList.contains('editing')) $('boardLabel').textContent = `page · ${page.w} × ${Math.round(h)}`;
+  try { placeHandles(h); } catch {} // handles are created a bit later during startup
   $('zoomFit').textContent = Math.round(zoom * 100) + '%';
   $('sbZoom').textContent = Math.round(zoom * 100) + '%';
   $('sbPage').textContent = `${page.w} × ${Math.round(h)}`;
@@ -187,9 +188,78 @@ $('zoomFit').onclick = fitZoom;
 canvas.addEventListener('wheel', e => { if (!(e.ctrlKey || e.metaKey)) return; e.preventDefault(); setZoom(zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1)); }, { passive: false });
 
 // Page size and background
-$('pageSize').value = `${page.w}x${page.h}`;
-if (!$('pageSize').value) $('pageSize').value = '1440x900';
-$('pageSize').onchange = () => { const [w, h] = $('pageSize').value.split('x').map(Number); page = { ...page, w, h }; store.set('oc-page', page); items.forEach(it => { if (it.full) it.x = 0; }); render(); fitZoom(); };
+/* ── Page size: presets, typed size, and drag handles on the artboard edges ── */
+const PAGE_MIN = { w: 240, h: 160 }, PAGE_MAX = 4096;
+const clampSize = (v, min) => Math.max(min, Math.min(PAGE_MAX, Math.round(v / GRID) * GRID));
+// keep the select in sync: a preset if one matches, otherwise a "custom W×H" entry
+function syncPageSize(){
+  const sel = $('pageSize'), want = `${page.w}x${page.h}`;
+  const hit = [...sel.options].find(o => o.value === want);
+  const custom = $('pageCustom');
+  custom.hidden = !!hit; custom.textContent = `custom ${page.w}×${page.h}`;
+  sel.value = hit ? want : 'custom';
+}
+function setPageSize(w, h, { refit = false } = {}){
+  page = { ...page, w: clampSize(w, PAGE_MIN.w), h: clampSize(h, PAGE_MIN.h) }; store.set('oc-page', page);
+  items.forEach(it => { if (it.full) it.x = 0; else it.x = Math.min(it.x, Math.max(0, page.w - (nodes.get(it.id)?.offsetWidth || 0))); });
+  syncPageSize(); render(); if (refit) fitZoom();
+}
+syncPageSize();
+$('pageSize').onchange = () => { const v = $('pageSize').value; if (v === 'custom') return editPageSize(); const [w, h] = v.split('x').map(Number); setPageSize(w, h, { refit: true }); };
+
+// Click the "page · W × H" label to type an exact size
+function editPageSize(){
+  const label = $('boardLabel'); if (label.querySelector('input')) return;
+  label.classList.add('editing');
+  label.innerHTML = `page · <input type="number" min="${PAGE_MIN.w}" max="${PAGE_MAX}" step="1" value="${page.w}" aria-label="Width"> × <input type="number" min="${PAGE_MIN.h}" max="${PAGE_MAX}" step="1" value="${page.h}" aria-label="Height"> <button class="btn mini" type="button">ok</button>`;
+  const [wi, hi] = label.querySelectorAll('input');
+  const done = apply => { if (!label.classList.contains('editing')) return; label.classList.remove('editing'); if (apply) { checkpoint(); setPageSize(+wi.value || page.w, +hi.value || page.h); } else layout(); };
+  label.onkeydown = e => { if (e.key === 'Enter') done(true); if (e.key === 'Escape') done(false); e.stopPropagation(); };
+  label.querySelector('button').onclick = () => done(true);
+  label.addEventListener('focusout', e => { if (!label.contains(e.relatedTarget)) done(true); });
+  wi.focus(); wi.select();
+}
+// pointerdown must not reach the canvas, otherwise panning captures the pointer and the click never fires
+$('boardLabel').addEventListener('pointerdown', e => e.stopPropagation());
+$('boardLabel').addEventListener('click', e => { if (!e.target.closest('input, button')) editPageSize(); });
+$('boardLabel').title = 'Click to type an exact page size · or drag the page edges';
+
+// Drag handles: right edge = width, bottom edge = height, corner = both. Shift keeps the aspect ratio.
+const handles = ['e', 's', 'se'].map(dir => { const h = document.createElement('div'); h.className = 'page-handle ' + dir; h.dataset.dir = dir; h.title = 'Drag to resize the page (Shift keeps proportions)'; stage.append(h); return h; });
+const sizeTip = Object.assign(document.createElement('div'), { className: 'page-size-tip hidden' }); stage.append(sizeTip);
+let resizing = null;
+handles.forEach(h => h.addEventListener('pointerdown', e => {
+  if (e.button !== 0) return;
+  e.preventDefault(); e.stopPropagation();
+  resizing = { dir: h.dataset.dir, sx: e.clientX, sy: e.clientY, w: page.w, h: page.h, before: JSON.stringify(items) };
+  h.setPointerCapture(e.pointerId); canvas.classList.add('resizing-page');
+}));
+addEventListener('pointermove', e => {
+  if (!resizing) return;
+  const r = resizing, dx = (e.clientX - r.sx) / zoom, dy = (e.clientY - r.sy) / zoom;
+  let w = r.dir.includes('e') ? r.w + dx : r.w, h = r.dir.includes('s') ? r.h + dy : r.h;
+  if (e.shiftKey && r.dir === 'se') h = w * r.h / r.w;
+  w = clampSize(w, PAGE_MIN.w); h = clampSize(h, PAGE_MIN.h);
+  if (w === page.w && h === page.h) return;
+  page = { ...page, w, h };
+  // live: resize the board and full-width frames only; the full re-render happens on release
+  for (const it of items) if (it.full) { const f = nodes.get(it.id)?.querySelector('iframe'); if (f) f.style.width = w + 'px'; }
+  layout();
+  sizeTip.textContent = `${w} × ${h}`; sizeTip.classList.remove('hidden');
+});
+addEventListener('pointerup', () => {
+  if (!resizing) return;
+  history.push(resizing.before); resizing = null;
+  canvas.classList.remove('resizing-page'); sizeTip.classList.add('hidden');
+  setPageSize(page.w, page.h);
+});
+function placeHandles(h){
+  const L = STAGE_PAD, T = STAGE_PAD, W = page.w * zoom, H = h * zoom;
+  handles[0].style.cssText = `left:${L + W - 4}px;top:${T}px;height:${H}px`;
+  handles[1].style.cssText = `left:${L}px;top:${T + H - 4}px;width:${W}px`;
+  handles[2].style.cssText = `left:${L + W - 7}px;top:${T + H - 7}px`;
+  sizeTip.style.left = L + W + 12 + 'px'; sizeTip.style.top = T + H + 12 + 'px';
+}
 // Quick swatches = the first background presets; the ✎ button opens the full editor (background.js)
 const QUICK = BG_PRESETS.slice(0, 7);
 function setBackground(spec, css){ page = { ...page, bg: css, bgSpec: spec }; store.set('oc-page', page); syncSwatches(); layout(); }
@@ -922,7 +992,7 @@ export const studio = {
   setPage(patch, { refresh = false } = {}){ page = { ...page, ...patch }; store.set('oc-page', page); if (refresh) for (const el of nodes.values()) el._key = null; render(); },
   load({ items: list = [], page: pg, name } = {}){
     checkpoint(); items = list.map(x => ({ id: x.id || crypto.randomUUID(), ...x }));
-    if (pg) { page = { ...page, ...pg }; store.set('oc-page', page); $('pageSize').value = `${page.w}x${page.h}`; syncSwatches(); }
+    if (pg) { page = { ...page, ...pg }; store.set('oc-page', page); syncPageSize(); syncSwatches(); }
     if (name) { nameEl.textContent = name; store.set('oc-name', name); }
     selected = null; for (const el of nodes.values()) el._key = null; render(); requestAnimationFrame(fitZoom);
   },
@@ -935,7 +1005,7 @@ export const studio = {
 export function loadTemplate(tpl){
   checkpoint();
   page = { ...page, ...tpl.page, ...(tpl.page?.bg ? { bgSpec: null } : {}) }; store.set('oc-page', page);
-  $('pageSize').value = `${page.w}x${page.h}`; syncSwatches();
+  syncPageSize(); syncSwatches();
   items = tpl.items.map(i => ({ id: crypto.randomUUID(), ...i }));
   selected = null; render(); requestAnimationFrame(fitZoom);
   message(`Opened the "${tpl.name}" template. Right-click any block → "Edit with AI", or select it and describe what to change.`, 'assistant');

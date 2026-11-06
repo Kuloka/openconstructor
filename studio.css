@@ -564,3 +564,24 @@ body.resizing iframe { pointer-events: none; }
 .canvas-toolbar .toolbar-group { flex: none; }
 .canvas-toolbar .tab-label { display: none; }
 @media (max-width: 1500px) { .swatches button[data-bg="5"], .swatches button[data-bg="6"] { display: none; } }
+
+/* ── Page resize handles + typed size ─────────────────── */
+.page-handle { position: absolute; z-index: 4; }
+.page-handle.e { width: 8px; cursor: ew-resize; }
+.page-handle.s { height: 8px; cursor: ns-resize; }
+.page-handle.se { width: 14px; height: 14px; cursor: nwse-resize; border-radius: 3px; background: var(--panel-2); box-shadow: 0 0 0 1px var(--border-2); }
+.page-handle.e::after, .page-handle.s::after { content: ""; position: absolute; background: var(--accent); opacity: 0; transition: opacity .15s; }
+.page-handle.e::after { left: 3px; top: 0; bottom: 0; width: 2px; }
+.page-handle.s::after { top: 3px; left: 0; right: 0; height: 2px; }
+.page-handle:hover::after, .canvas.resizing-page .page-handle::after { opacity: .9; }
+.page-handle.se:hover, .canvas.resizing-page .page-handle.se { background: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.canvas.resizing-page, .canvas.resizing-page * { cursor: nwse-resize !important; user-select: none; }
+.canvas.resizing-page .node iframe { pointer-events: none; }
+.page-size-tip { position: absolute; z-index: 5; padding: 3px 8px; border-radius: 4px; background: var(--accent); color: #1a0703; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; pointer-events: none; }
+.artboard-label { cursor: pointer; padding: 2px 6px; margin-left: -6px; border-radius: 4px; transition: background .15s, color .15s; }
+.artboard-label:hover { background: var(--panel-2); color: var(--text); }
+.artboard-label.editing { display: flex; align-items: center; gap: 6px; background: var(--panel-2); color: var(--text); }
+.artboard-label input { width: 64px; height: 20px; padding: 0 4px; border: 1px solid var(--border-2); border-radius: 3px; background: var(--panel); color: var(--text); font: inherit; font-variant-numeric: tabular-nums; }
+.artboard-label input:focus { outline: none; border-color: var(--accent); }
+.artboard-label .btn.mini { height: 20px; margin: 0; }
+#pageSize { width: 150px; max-width: 150px; text-overflow: ellipsis; }
