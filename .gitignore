@@ -1,13 +1,32 @@
+# Dependencies and build output
 node_modules
 dist
-.env.local
-.env.*.local
 
-# wrangler files
+# Secrets: every .env file except the example (keys, passwords, tokens)
+.env
+.env.*
+!.env.example
+
+# Cloudflare / wrangler
 .wrangler
 .dev.vars*
 !.dev.vars.example
-!.env.example
 
-# local MCP config
+# Supabase CLI local state (the SQL schemas in supabase/*.sql are meant to be public)
+supabase/.temp
+supabase/.branches
+supabase/.env
+supabase/seed.local.sql
+
+# Local tool config
 .mcp.json
+.claude/settings.local.json
+
+# Logs, OS and editor junk
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea
+*.swp
