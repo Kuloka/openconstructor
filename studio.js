@@ -216,7 +216,7 @@ $('pageSize').onchange = () => { const v = $('pageSize').value; if (v === 'custo
 function editPageSize(){
   const label = $('boardLabel'); if (label.querySelector('input')) return;
   label.classList.add('editing');
-  label.innerHTML = `page · <input type="number" min="${PAGE_MIN.w}" max="${PAGE_MAX}" step="1" value="${page.w}" aria-label="Width"> × <input type="number" min="${PAGE_MIN.h}" max="${PAGE_MAX}" step="1" value="${page.h}" aria-label="Height"> <button class="btn mini" type="button">ok</button>`;
+  label.innerHTML = `page · <input type="number" min="${PAGE_MIN.w}" max="${PAGE_MAX}" step="1" value="${+page.w || 0}" aria-label="Width"> × <input type="number" min="${PAGE_MIN.h}" max="${PAGE_MAX}" step="1" value="${+page.h || 0}" aria-label="Height"> <button class="btn mini" type="button">ok</button>`;
   const [wi, hi] = label.querySelectorAll('input');
   const done = apply => { if (!label.classList.contains('editing')) return; label.classList.remove('editing'); if (apply) { checkpoint(); setPageSize(+wi.value || page.w, +hi.value || page.h); } else layout(); };
   label.onkeydown = e => { if (e.key === 'Enter') done(true); if (e.key === 'Escape') done(false); e.stopPropagation(); };
@@ -613,7 +613,7 @@ window.addEventListener('oc:account-menu', e => openCtx(e.detail.x, e.detail.y, 
 let renaming = null;
 function renderLayers(){
   const list = [...items].reverse();
-  $('layers').innerHTML = list.length ? list.map(x => `<div class="layer${x.id === selected ? ' active' : ''}" data-layer="${x.id}" title="${escapeHTML(x.name)}"><span class="layer-ic">${x.full ? '▤' : '▢'}</span>${renaming === x.id ? `<input class="layer-input" value="${escapeHTML(x.name)}" maxlength="80">` : `<span class="layer-name">${escapeHTML(x.name)}</span>`}<button data-layer-del title="Delete">×</button></div>`).join('') : '<div class="layers-empty">Nothing on the page yet</div>';
+  $('layers').innerHTML = list.length ? list.map(x => `<div class="layer${x.id === selected ? ' active' : ''}" data-layer="${escapeHTML(x.id)}" title="${escapeHTML(x.name)}"><span class="layer-ic">${x.full ? '▤' : '▢'}</span>${renaming === x.id ? `<input class="layer-input" value="${escapeHTML(x.name)}" maxlength="80">` : `<span class="layer-name">${escapeHTML(x.name)}</span>`}<button data-layer-del title="Delete">×</button></div>`).join('') : '<div class="layers-empty">Nothing on the page yet</div>';
   const input = $('layers').querySelector('.layer-input');
   if (input) { input.focus(); input.select(); }
 }
@@ -809,7 +809,7 @@ async function exportWithAI(t){
     const html = buildHTML();
     const code = String(await chat(p, key, m.id, system, `Page "${nameEl.textContent.trim()}" (${page.w}×${page.h}). Source HTML:\n${html}`) || '').replace(/^\s*```[\w-]*\s*\n?/, '').replace(/\n?```\s*$/, '');
     if (!code.trim()) throw Error('empty response');
-    stop(); download(code, fileBase() + t.ext); message(`Done — downloaded ${fileBase() + t.ext}. AI ports are a starting point: review before shipping.`, 'assistant');
+    await stop.compose(t.label, code); await stop.finish('downloaded'); download(code, fileBase() + t.ext); message(`Done — downloaded ${fileBase() + t.ext}. AI ports are a starting point: review before shipping.`, 'assistant');
   } catch (e) { stop(); setState('ai export failed', 'error'); message('AI export failed: ' + e.message, 'assistant'); }
 }
 $('export').onclick = () => {
@@ -1058,23 +1058,115 @@ $('forgetKeys').onclick = () => { keys = {}; saveKeys(); PROVIDERS.forEach(p => 
 renderPicker();
 
 /* ── AI chat ─────────────────────────────────────────────── */
-function message(text, role){ const node = document.createElement('div'); node.className = 'message ' + role; node.textContent = text; $('messages').append(node); $('messages').scrollTop = $('messages').scrollHeight; return node; }
+const toBottom = () => { const m = $('messages'); m.scrollTop = m.scrollHeight; };
+// Typewriter: types `text` into `el` (about one second whatever the length). A newer call on the same
+// element cancels the older one. Reduced motion: the text appears at once.
+function typeText(el, text, { speed = 16 } = {}){
+  text = String(text ?? '');
+  const id = (el._typing = (el._typing || 0) + 1);
+  if (reduceMotion()) { el.textContent = text; toBottom(); return Promise.resolve(); }
+  const step = Math.max(1, Math.round(text.length / 70));
+  return new Promise(done => {
+    let i = 0; el.textContent = ''; el.classList.add('typing');
+    const tick = () => {
+      if (el._typing !== id) return done();
+      i = Math.min(text.length, i + step); el.textContent = text.slice(0, i); toBottom();
+      if (i < text.length) setTimeout(tick, speed); else { el.classList.remove('typing'); done(); }
+    };
+    tick();
+  });
+}
+// Erase what's there, then type the new text — used when a label changes
+function retype(el, text){
+  const id = (el._typing = (el._typing || 0) + 1);
+  if (reduceMotion() || !el.textContent) return typeText(el, text);
+  el.classList.add('typing');
+  return new Promise(done => {
+    const erase = () => {
+      if (el._typing !== id) return done();
+      const t = el.textContent; if (t.length) { el.textContent = t.slice(0, -2); setTimeout(erase, 12); } else typeText(el, text).then(done);
+    };
+    erase();
+  });
+}
+function message(text, role){
+  const node = document.createElement('div'); node.className = 'message ' + role;
+  $('messages').append(node);
+  if (role === 'assistant') typeText(node, text); else { node.textContent = text; toBottom(); }
+  return node;
+}
 
-// "Thinking" indicator: the pixel block of the logo blinks like a terminal cursor
+// "Thinking" panel: a checklist that grows step by step, each label typed out; the title retypes
+// "thinking" → "composing" when the answer arrives, and the real code is typed into a small window
+// while it's placed. At the end it folds into "thought for 7s" (click to see the steps again).
+// Returns end(): end() removes it (error), end.compose(name, code), end.answer(), end.finish().
 function thinking(){
   const node = document.createElement('div');
   node.className = 'message assistant thinking';
-  node.innerHTML = `<span class="oc-logo thinking-logo" aria-hidden="true">${logoSvg}</span><span class="thinking-text">thinking</span><span class="thinking-time">0s</span>`;
-  $('messages').append(node); $('messages').scrollTop = $('messages').scrollHeight;
-  const steps = ['thinking', 'planning layout', 'choosing styles', 'assembling'];
+  node.innerHTML = `<button class="th-head" type="button" aria-expanded="true"><span class="oc-logo thinking-logo" aria-hidden="true">${logoSvg}</span><span class="th-title"></span><span class="th-time">0s</span></button><ol class="th-steps"></ol><pre class="th-code" hidden><code></code></pre>`;
+  $('messages').append(node); toBottom();
+  const title = node.querySelector('.th-title'), list = node.querySelector('.th-steps'), time = node.querySelector('.th-time');
   const t0 = Date.now();
+  let queue = Promise.resolve(), over = false;
+  // steps run one after another so each label finishes typing before the next starts
+  const step = label => (queue = queue.then(() => {
+    if (over) return;
+    list.querySelector('li.run')?.classList.replace('run', 'done');
+    const li = document.createElement('li'); li.className = 'run';
+    li.innerHTML = '<i class="th-mark" aria-hidden="true"></i><span></span>';
+    list.append(li);
+    return typeText(li.lastChild, label);
+  }));
+  typeText(title, 'thinking');
   setState('ai is thinking…', 'busy');
-  const timer = setInterval(() => {
-    const s = Math.floor((Date.now() - t0) / 1000);
-    node.querySelector('.thinking-time').textContent = s + 's';
-    node.querySelector('.thinking-text').textContent = steps[Math.min(steps.length - 1, Math.floor(s / 4))];
-  }, 500);
-  return () => { clearInterval(timer); node.remove(); };
+  // While waiting for the model: the usual stages of building a UI, paced by elapsed time
+  const plan = [[0, 'reading your request'], [700, 'thinking it through'], [3500, 'planning the layout'], [8000, 'choosing colors and type'], [14000, 'writing the code']];
+  const timers = plan.map(([at, label]) => setTimeout(() => step(label), at));
+  const clock = setInterval(() => { time.textContent = Math.floor((Date.now() - t0) / 1000) + 's'; }, 250);
+  const stopWaiting = () => { timers.forEach(clearTimeout); };
+
+  const end = () => { over = true; stopWaiting(); clearInterval(clock); node.remove(); };
+  // The answer arrived with code: show it being written, then the caller places it
+  end.compose = (name, code) => {
+    stopWaiting();
+    retype(title, 'composing');
+    setState('composing…', 'busy');
+    step(`composing “${String(name || 'element').slice(0, 40)}”`);
+    return (queue = queue.then(async () => {
+      if (over) return;
+      const pre = node.querySelector('.th-code'), out = pre.firstChild;
+      pre.hidden = false;
+      // for display only: one tag / CSS declaration per line, so compact code still "writes" line by line
+      const lines = String(code).replace(/>\s*</g, '>\n<').replace(/([;{}])(?=[^\n])/g, '$1\n').split('\n').map(l => l.trim()).filter(Boolean).slice(0, 600);
+      if (reduceMotion()) { out.textContent = lines.slice(-8).join('\n'); return; }
+      // ~1.3s: show a moving window over the last lines as the code "writes itself"
+      const per = Math.max(1, Math.ceil(lines.length / 45));
+      for (let i = 0; i < lines.length && !over; i += per) {
+        out.textContent = lines.slice(Math.max(0, i + per - 8), i + per).join('\n');
+        pre.scrollTop = pre.scrollHeight; toBottom();
+        await new Promise(r => setTimeout(r, 28));
+      }
+    }));
+  };
+  end.answer = () => { stopWaiting(); retype(title, 'answering'); return queue; };
+  // Fold into a one-line summary that stays in the chat
+  end.finish = (lastStep = 'done') => {
+    stopWaiting();
+    step(lastStep);
+    return (queue = queue.then(() => {
+      if (over) return;
+      over = true; clearInterval(clock);
+      list.querySelectorAll('li').forEach(li => li.className = 'done');
+      const s = Math.max(1, Math.round((Date.now() - t0) / 1000));
+      node.classList.add('folded');
+      node.querySelector('.th-code').hidden = true;
+      retype(title, `thought for ${s}s`); time.textContent = `${list.children.length} steps`;
+      const head = node.querySelector('.th-head');
+      head.setAttribute('aria-expanded', 'false');
+      head.onclick = () => { const open = node.classList.toggle('folded'); head.setAttribute('aria-expanded', String(!open)); };
+    }));
+  };
+  return end;
 }
 
 // Answer format: a one-line JSON header (no code) followed by the code in a ```html block.
@@ -1179,9 +1271,11 @@ Rules:
     if (typeof content !== 'string' || !content.trim()) throw Error('Empty model response');
     const result = parseAnswer(content);
     if (result.action === 'reply' || (!result.code && result.reply)) {
-      stop(); setState('ready'); message(String(result.reply || '…'), 'assistant'); $('prompt').value = ''; return;
+      await stop.answer(); await stop.finish('answered');
+      setState('ready'); message(String(result.reply || '…'), 'assistant'); $('prompt').value = ''; return;
     }
     if (typeof result.code !== 'string' || !result.code.trim() || result.code.length > 200000) throw Error('Invalid code');
+    await stop.compose(result.name, result.code);
     const full = result.full === true || result.full === 'true';
     if (result.action === 'update' && target) {
       const item = items.find(x => x.id === target.id); if (!item) throw Error('The element was deleted during the request');
@@ -1189,7 +1283,7 @@ Rules:
       if (full) { item.full = true; item.x = 0; }
       selected = item.id; render();
     } else add(String(result.name || 'New element').slice(0, 80), result.code, { full, ...(custom.place || {}) });
-    stop(); setState('element ready', 'ok');
+    await stop.finish(result.action === 'update' && target ? 'updated on the canvas' : 'placed on the canvas'); setState('element ready', 'ok');
     message(String(result.reply || 'Done. The element is on the page.'), 'assistant'); $('prompt').value = ''; window.dispatchEvent(new CustomEvent('oc:generated'));
   } catch (e) { stop(); setState('ai error', 'error'); $('chatStatus').textContent = 'Error: ' + e.message; message('Could not apply the response. Try again or pick another model.', 'assistant'); }
   finally { $('send').disabled = false; }
@@ -1242,6 +1336,19 @@ canvas.addEventListener('drop', e => { canvas.classList.remove('drop-shot'); con
 
 /* ── API for the welcome screen, menus and feature modules (publish, projects, theme…) ── */
 export const stats = { presets: 200, ready: presetsReady };
+// Data from files, the cloud or remix links is untrusted: ids end up in markup, sizes in inputs
+const SAFE_ID = /^[\w-]{1,64}$/;
+function cleanItems(list){
+  const seen = new Set();
+  return (Array.isArray(list) ? list : []).filter(x => x && typeof x === 'object').map(x => {
+    let id = typeof x.id === 'string' && SAFE_ID.test(x.id) && !seen.has(x.id) ? x.id : crypto.randomUUID(); seen.add(id);
+    return { ...x, id, name: String(x.name ?? 'element').slice(0, 80), code: String(x.code ?? '') };
+  });
+}
+function cleanPage(pg){
+  const num = (v, d) => Number.isFinite(+v) ? +v : d;
+  return { ...pg, w: clampSize(num(pg.w, 1440), PAGE_MIN.w), h: clampSize(num(pg.h, 900), PAGE_MIN.h) };
+}
 export const studio = {
   // read
   items: () => items.map(x => ({ ...x })),
@@ -1254,17 +1361,17 @@ export const studio = {
   update(mutate){ checkpoint(); const next = mutate(items.map(x => ({ ...x }))); if (Array.isArray(next)) items = next; render(); },
   setPage(patch, { refresh = false } = {}){ page = { ...page, ...patch }; store.set('oc-page', page); if (refresh) for (const el of nodes.values()) el._key = null; render(); },
   load({ items: list = [], page: pg, name } = {}){
-    checkpoint(); items = list.map(x => ({ id: x.id || crypto.randomUUID(), ...x }));
+    checkpoint(); items = cleanItems(list);
     // a loaded project brings its own screens (or none) — never keep the previous project's
-    if (pg) { page = { ...page, screens: undefined, screen: undefined, ...pg }; store.set('oc-page', page); syncPageSize(); syncSwatches(); }
+    if (pg) { page = cleanPage({ ...page, screens: undefined, screen: undefined, ...pg }); store.set('oc-page', page); syncPageSize(); syncSwatches(); }
     window.dispatchEvent(new CustomEvent('oc:screens'));
     if (name) { nameEl.textContent = name; store.set('oc-name', name); }
     selected = null; for (const el of nodes.values()) el._key = null; render(); requestAnimationFrame(fitZoom);
   },
   // Switch the canvas to another screen's content: no undo step (undo history is per screen)
   swap({ items: list = [], page: pg = {} }){
-    items = list.map(x => ({ id: x.id || crypto.randomUUID(), ...x })); history = [];
-    page = { ...pg }; store.set('oc-page', page); syncPageSize(); syncSwatches(); drawZones();
+    items = cleanItems(list); history = [];
+    page = cleanPage({ ...pg }); store.set('oc-page', page); syncPageSize(); syncSwatches(); drawZones();
     selected = null; picked.clear(); for (const el of nodes.values()) el._key = null; render(); requestAnimationFrame(fitZoom);
   },
   // Resolves once every element frame has loaded and been measured (for exports that read the DOM)

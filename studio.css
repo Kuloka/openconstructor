@@ -234,7 +234,29 @@ body.resizing iframe { pointer-events: none; }
 .message strong { display: block; margin-bottom: 2px; color: var(--text); }
 .message p { margin: 2px 0 0; color: var(--muted); }
 @keyframes msg-in { from { opacity: 0; transform: translateY(3px); } }
-.message.thinking { display: flex; align-items: center; gap: 10px; border-left-color: var(--accent); color: var(--muted); }
+.message.thinking { display: grid; gap: 6px; border-left-color: var(--accent); color: var(--muted); white-space: normal; }
+.message.thinking.folded { border-left-color: var(--border-2); }
+.th-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: default; }
+.message.thinking.folded .th-head, .message.thinking .th-head[aria-expanded] { cursor: pointer; }
+.th-title { color: var(--text-2); }
+.message.thinking:not(.folded) .th-title { background: linear-gradient(90deg, var(--muted) 0%, var(--text) 50%, var(--muted) 100%) 0 0 / 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: th-shine 1.6s linear infinite; }
+@keyframes th-shine { to { background-position: -200% 0; } }
+.th-time { margin-left: auto; color: var(--subtle); font-variant-numeric: tabular-nums; font-size: 11px; }
+.message.thinking.folded .thinking-logo * { animation: none; }
+.th-steps { display: grid; gap: 3px; margin: 0; padding: 0 0 0 2px; list-style: none; font-size: 12px; }
+.message.thinking.folded .th-steps { display: none; }
+.th-steps li { display: flex; align-items: center; gap: 8px; animation: msg-in .2s ease-out; }
+.th-steps li.done { color: var(--subtle); }
+.th-steps li.run { color: var(--text-2); }
+.th-mark { position: relative; flex: none; width: 10px; height: 10px; border-radius: 50%; }
+.th-steps li.run .th-mark { border: 1.5px solid var(--border-2); border-top-color: var(--accent); animation: th-spin .7s linear infinite; }
+.th-steps li.done .th-mark { background: var(--accent); opacity: .85; animation: th-pop .25s cubic-bezier(.2,.9,.3,1.4); }
+.th-steps li.done .th-mark::after { content: ''; position: absolute; left: 3px; top: 1.5px; width: 2.5px; height: 5px; border: solid #fff; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
+@keyframes th-spin { to { transform: rotate(360deg); } }
+@keyframes th-pop { from { transform: scale(.3); opacity: 0; } }
+.typing::after { content: '▍'; margin-left: 1px; color: var(--accent); animation: oc-blink .8s steps(1) infinite; }
+.th-code { max-height: 132px; margin: 2px 0 0; padding: 8px 10px; overflow: hidden; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--muted); font-size: 11px; line-height: 1.5; white-space: pre; -webkit-mask-image: linear-gradient(to bottom, transparent, #000 30%); mask-image: linear-gradient(to bottom, transparent, #000 30%); animation: msg-in .2s ease-out; }
+@media (prefers-reduced-motion: reduce) { .th-steps li.run .th-mark, .message.thinking .th-title, .typing::after { animation: none; } }
 .thinking-logo { width: 16px; height: 16px; }
 /* «Думает»: грани кубика загораются по очереди — блок собирается */
 .thinking-logo .f1, .thinking-logo .f2, .thinking-logo .f3 { animation: oc-face 1.2s ease-in-out infinite; }
