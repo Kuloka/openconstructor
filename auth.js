@@ -55,8 +55,24 @@ export function openAuth(m = 'signin'){
   setMode(m);
   $('authOff').classList.toggle('hidden', !!supabase);
   modal.querySelectorAll('.auth-oauth button, #authForm button, #authForm input').forEach(el => el.disabled = !supabase);
+  syncProviders();
   modal.classList.remove('hidden');
   if (supabase) setTimeout(() => $('authEmail').focus(), 50);
+}
+
+// Show only the social buttons whose provider is switched on in Supabase,
+// so a half-configured project never shows a button that fails.
+let enabled = null;
+async function syncProviders(){
+  const box = modal.querySelector('.auth-oauth'), or = modal.querySelector('.auth-or');
+  if (!supabase) return;
+  if (!enabled) {
+    try { const r = await fetch(`${URL_}/auth/v1/settings`, { headers: { apikey: KEY } }); enabled = (await r.json()).external || {}; }
+    catch { enabled = {}; }
+  }
+  let any = false;
+  box.querySelectorAll('[data-oauth]').forEach(b => { const on = !!enabled[b.dataset.oauth]; b.classList.toggle('hidden', !on); any ||= on; });
+  box.classList.toggle('hidden', !any); or.classList.toggle('hidden', !any);
 }
 
 const errText = e => ({
