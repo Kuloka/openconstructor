@@ -107,24 +107,42 @@ const AI_GLOBAL = 900; // keep both <= the ceilings in supabase/ai.sql
 const AI_MODELS = ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile', 'openai/gpt-oss-20b'];
 const AI_MAX_BODY = 200_000;
 const AI_MAX_TOKENS = 8000;
-const GROQ = 'https://api.groq.com/openai/v1/chat/completions';
-const GEMINI = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
 const WORKERS_AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 
-// Which upstream serves the free AI: Gemini key → Groq key → Cloudflare Workers AI (no key, small daily allowance).
-const freeBackend = env => env.GEMINI_API_KEY ? 'gemini' : env.GROQ_API_KEY ? 'groq' : env.AI ? 'workers-ai' : null;
+// Free-AI upstreams, tried in this order. Each one is used only if its secret is set
+// (`npx wrangler secret put <SECRET>`); when one is out of quota (429) or down (5xx), the next one answers.
+// Cloudflare Workers AI needs no key and is the last resort.
+const BACKENDS = [
+  { id: 'openrouter', secret: 'OPENROUTER_API_KEY', url: 'https://openrouter.ai/api/v1/chat/completions', model: 'openrouter/free', extra: { } },
+  { id: 'mistral', secret: 'MISTRAL_API_KEY', url: 'https://api.mistral.ai/v1/chat/completions', model: 'mistral-medium-latest', extra: { } },
+  { id: 'groq', secret: 'GROQ_API_KEY', url: 'https://api.groq.com/openai/v1/chat/completions', model: 'openai/gpt-oss-120b', extra: { reasoning_effort: 'low' } },
+  { id: 'gemini', secret: 'GEMINI_API_KEY', url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', model: 'gemini-2.5-flash', extra: { reasoning_effort: 'low' } },
+];
+const freeBackends = env => [...BACKENDS.filter(b => env[b.secret]), ...(env.AI ? [{ id: 'workers-ai' }] : [])];
+const freeBackend = env => freeBackends(env)[0]?.id || null;
 
-// Call the chosen upstream and always answer in OpenAI chat-completions shape: { status, text }.
+// Call the upstreams in order and always answer in OpenAI chat-completions shape: { status, text, be }.
 async function callUpstream(env, body){
-  const be = freeBackend(env);
-  if (be === 'gemini') {
-    const r = await fetch(GEMINI, { method: 'POST', headers: { Authorization: `Bearer ${env.GEMINI_API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'gemini-2.5-flash', messages: body.messages, max_tokens: body.max_tokens, reasoning_effort: 'low' }) });
-    return { status: r.status, text: await r.text(), be };
+  let last = null;
+  for (const b of freeBackends(env)) {
+    const r = b.id === 'workers-ai' ? await callWorkersAI(env, body) : await callOpenAICompatible(env, b, body);
+    if (r.status >= 200 && r.status < 300) return r;
+    last = r;
+    console.error('ai: backend failed, trying next', b.id, r.status, String(r.text).slice(0, 200));
+    if (!(r.status === 429 || r.status >= 500 || r.status === 402 || r.status === 401 || r.status === 403)) break; // a real request error: don't retry elsewhere
   }
-  if (be === 'groq') {
-    const r = await fetch(GROQ, { method: 'POST', headers: { Authorization: `Bearer ${env.GROQ_API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    return { status: r.status, text: await r.text(), be };
-  }
+  return last || { status: 503, text: 'no backend', be: null };
+}
+async function callOpenAICompatible(env, b, body){
+  const headers = { Authorization: `Bearer ${env[b.secret]}`, 'Content-Type': 'application/json' };
+  if (b.id === 'openrouter') { headers['HTTP-Referer'] = 'https://openconstructor.pw'; headers['X-Title'] = 'openconstructor'; }
+  try {
+    const r = await fetch(b.url, { method: 'POST', headers, body: JSON.stringify({ model: b.model, messages: body.messages, max_tokens: body.max_tokens, ...b.extra }) });
+    return { status: r.status, text: await r.text(), be: b.id };
+  } catch (err) { return { status: 502, text: String(err?.message || err), be: b.id }; }
+}
+async function callWorkersAI(env, body){
+  const be = 'workers-ai';
   // Workers AI binding: returns { response } — wrap it like an OpenAI completion
   try {
     const out = await env.AI.run(WORKERS_AI_MODEL, { messages: body.messages, max_tokens: Math.min(body.max_tokens, 4096) });
