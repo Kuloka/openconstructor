@@ -51,18 +51,42 @@ function previewDoc(code, wide){
   const body = wide ? ':root{color-scheme:dark}html,body{margin:0;background:#0d0b0a;color:#eee;font-family:system-ui;overflow:hidden}' : ':root{color-scheme:dark}html,body{margin:0;height:100%;overflow:hidden;background:#111113}body{display:grid;place-items:center;box-sizing:border-box;padding:20px;color:#eee;font-family:system-ui}';
   return `<!doctype html><html><head>${CSP}<meta name="viewport" content="width=device-width,initial-scale=1"><style>${body}button{white-space:nowrap}</style></head><body>${code}</body></html>`;
 }
+const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 function nodeDoc(item){
   const root = item.full ? `width:${page.w}px;padding:0` : `width:max-content;max-width:${page.w - 2 * PAD}px;padding:${PAD}px`;
   return `<!doctype html><html><head>${CSP}<meta name="color-scheme" content="dark"><style>:root{color-scheme:dark}html,body{margin:0;background:transparent;color:#eee;font-family:system-ui;overflow:hidden}button{white-space:nowrap}#__root{display:inline-block;box-sizing:border-box;${root}}</style></head><body><div id="__root">${item.code}</div></body></html>`;
 }
 
+// Animated components (typewriter, expanding bars…) change size while they play, so the frame
+// is sized from the static layout (animations off) and then only ever grows as the animation runs.
 function measure(frame){
   try {
-    const root = frame.contentDocument?.getElementById('__root'); if (!root) return;
-    const r = root.getBoundingClientRect();
-    frame.style.width = Math.ceil(Math.max(r.width, 48)) + 'px';
-    frame.style.height = Math.ceil(Math.max(r.height, 32)) + 'px';
+    const doc = frame.contentDocument, root = doc?.getElementById('__root'); if (!root) return;
+    const size = () => { const r = root.getBoundingClientRect(); return [Math.max(r.width, root.scrollWidth), Math.max(r.height, root.scrollHeight)]; };
+    const freeze = doc.createElement('style');
+    freeze.textContent = '*,*::before,*::after{animation:none!important;transition:none!important}';
+    doc.head.append(freeze); const still = size(); freeze.remove();
+    // Scrub every running animation through its cycle and keep the largest size seen
+    let now = size();
+    const anims = doc.getAnimations ? doc.getAnimations() : [];
+    if (anims.length) {
+      const saved = anims.map(a => a.currentTime);
+      for (const f of [0, .25, .5, .75, .999]) {
+        anims.forEach(a => { const t = a.effect?.getComputedTiming(); if (t && Number.isFinite(t.duration)) a.currentTime = (t.delay || 0) + t.duration * f; });
+        const s = size(); now = [Math.max(now[0], s[0]), Math.max(now[1], s[1])];
+      }
+      anims.forEach((a, k) => { a.currentTime = saved[k]; });
+    }
+    frame._max = [Math.max(still[0], now[0], frame._max?.[0] || 0), Math.max(still[1], now[1], frame._max?.[1] || 0)];
+    frame.style.width = Math.ceil(Math.max(frame._max[0], 48)) + 'px';
+    // cap height: AI code using 100vh would otherwise grow with the frame forever
+    frame._max[1] = Math.min(frame._max[1], 5000);
+    frame.style.height = Math.ceil(Math.max(frame._max[1], 32)) + 'px';
     layout();
+    if (!frame._ro || frame._ro.root !== root) {
+      frame._ro?.disconnect();
+      frame._ro = new ResizeObserver(() => measure(frame)); frame._ro.root = root; frame._ro.observe(root);
+    }
   } catch {}
 }
 function createNode(item){
@@ -71,13 +95,19 @@ function createNode(item){
   el.innerHTML = `<span class="node-tag"></span><iframe sandbox="allow-same-origin" tabindex="-1" referrerpolicy="no-referrer"></iframe>`;
   const frame = el.querySelector('iframe');
   frame.style.width = page.w + 'px';
-  frame.addEventListener('load', () => { measure(frame); setTimeout(() => measure(frame), 300); });
+  frame.addEventListener('load', () => { frame._max = null; measure(frame); setTimeout(() => measure(frame), 300); });
+  el.classList.add('entering'); el.addEventListener('animationend', () => el.classList.remove('entering'), { once: true });
   board.append(el); nodes.set(item.id, el); return el;
 }
 function render(){
   persist();
   $('itemCount').textContent = items.length + (items.length === 1 ? ' element' : ' elements');
-  for (const [id, el] of nodes) if (!items.some(x => x.id === id)) { el.remove(); nodes.delete(id); }
+  // removed elements fade out instead of vanishing
+  for (const [id, el] of nodes) if (!items.some(x => x.id === id)) {
+    nodes.delete(id); el.style.pointerEvents = 'none';
+    const a = el.animate([{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(.96)' }], { duration: reduceMotion() ? 0 : 160, easing: 'ease-in' });
+    a.onfinish = () => el.remove();
+  }
   items.forEach((item, i) => {
     const el = nodes.get(item.id) || createNode(item);
     const frame = el.querySelector('iframe');
@@ -316,7 +346,7 @@ document.addEventListener('keydown', e => {
 const openCats = new Set(store.get('oc-cats-open', [CATEGORIES[0].id]));
 const catChevron = '<svg class="cat-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>';
 const catIcon = c => `<svg class="cat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${c.icon || ''}</svg>`;
-const card = p => `<button class="component${p.full ? ' wide' : ''}" data-add="${p.index}" title="Add: ${escapeHTML(p.name)}"><span class="component-preview"><iframe title="${escapeHTML(p.name)}" sandbox tabindex="-1" data-preset="${p.index}"></iframe></span><span class="component-info"><span>${escapeHTML(p.name)}</span><span class="component-plus">+</span></span></button>`;
+const card = (p, k) => `<button class="component${p.full ? ' wide' : ''}" style="--i:${k}" data-add="${p.index}" title="Add: ${escapeHTML(p.name)}"><span class="component-preview"><iframe title="${escapeHTML(p.name)}" sandbox tabindex="-1" data-preset="${p.index}"></iframe></span><span class="component-info"><span>${escapeHTML(p.name)}</span><span class="component-plus">+</span></span></button>`;
 function renderLibrary(){
   const query = $('catalogSearch').value.trim().toLocaleLowerCase();
   const indexed = presets.map((p, i) => ({ ...p, index: i }));
@@ -590,7 +620,9 @@ document.querySelector('.tb-menu').addEventListener('click', e => {
   if (cmd === 'addCode') edit(null);
   if (cmd === 'clear') clearPage();
 });
-$('canvasEmpty').addEventListener('click', e => { const b = e.target.closest('[data-empty]'); if (!b) return; if (b.dataset.empty === 'welcome') openWelcome(); else { window.dispatchEvent(new CustomEvent('oc:open-chat')); prefillPrompt(b.dataset.empty); } });
+$('canvasEmpty').addEventListener('click', e => { const b = e.target.closest('[data-empty]'); if (!b) return; if (b.dataset.empty === 'welcome') openWelcome();
+  else if (b.dataset.empty === 'library') { window.dispatchEvent(new CustomEvent('oc:show-view', { detail: 'library' })); const s = $('catalogSearch'); s.focus(); $('sidePanel').animate([{ boxShadow: 'inset 0 0 0 1px var(--accent)' }, { boxShadow: 'inset 0 0 0 1px transparent' }], { duration: 1200 }); }
+  else { window.dispatchEvent(new CustomEvent('oc:open-chat')); prefillPrompt(b.dataset.empty); } });
 
 render();
 requestAnimationFrame(fitZoom);
