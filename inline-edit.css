@@ -22,3 +22,19 @@
 .ins-link span { color: var(--subtle); font-size: 10.5px; }
 .ins-link input { height: 26px; padding: 0 8px; border: 1px solid var(--border-2); border-radius: 4px; background: var(--panel); color: var(--text); font: 11.5px 'JetBrains Mono', monospace; }
 .ins-link input:focus { outline: none; border-color: var(--accent); }
+.ins-panel { max-height: calc(100vh - 140px); overflow-y: auto; scrollbar-width: thin; }
+.ins-sec { margin: 12px 0 6px; padding-top: 10px; border-top: 1px solid var(--border); color: var(--text-2); font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; }
+.ins-sec span { color: var(--subtle); font-weight: 400; text-transform: none; letter-spacing: 0; }
+.ins-media { display: flex; gap: 4px; }
+.ins-media .btn { height: 26px; font-size: 11px; }
+.ins-media .btn:first-child { flex: 1; }
+.ins-anim { margin-bottom: 8px; padding: 8px; border: 1px solid var(--border); border-radius: 5px; background: var(--panel); }
+.ins-anim-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 11px; }
+.ins-anim-head b { overflow: hidden; color: var(--accent); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.ins-anim-head span { color: var(--subtle); }
+.ins-pause { display: flex; align-items: center; gap: 3px; margin-left: auto; color: var(--muted); cursor: pointer; }
+.ins-pause input { accent-color: var(--accent); }
+.ins-anim-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.ins-anim-grid select, .ins-anim-grid input { height: 22px; border: 1px solid var(--border-2); border-radius: 3px; background: var(--panel-2); color: var(--text); font: 11px inherit; }
+.ins-anim-grid label { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
+.ins-anim-grid label input { width: 56px; padding: 0 4px; }

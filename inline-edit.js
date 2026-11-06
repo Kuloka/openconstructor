@@ -29,6 +29,13 @@ panel.innerHTML = `
   <label class="ins-row">radius <b data-v="borderRadius"></b><input type="range" min="0" max="48" data-p="borderRadius" data-unit="px"></label>
   <label class="ins-row">padding <b data-v="padding"></b><input type="range" min="0" max="64" data-p="padding" data-unit="px"></label>
   <label class="ins-row">opacity <b data-v="opacity"></b><input type="range" min="0" max="1" step="0.05" data-p="opacity"></label>
+  <div class="ins-sec">image</div>
+  <div class="ins-media">
+    <button class="btn" data-ins="image" title="Put your own picture here: replaces an icon/image, or fills a block">🖼 use my image…</button>
+    <button class="btn" data-ins="noimage" title="Remove the picture you added">remove</button>
+  </div>
+  <div class="ins-sec">motion <span id="insMotionCount"></span></div>
+  <div class="ins-motion" id="insMotion"></div>
   <div class="ins-actions">
     <button class="btn" data-ins="parent" title="Select the parent element">↑ parent</button>
     <button class="btn" data-ins="clear" title="Remove the styles you set on this part">reset</button>
@@ -57,8 +64,119 @@ $('insLink').addEventListener('change', e => {
   e.target.value = url; session.dirty = true; outline(); fill();
 });
 
+/* ── image: your own picture in place of an icon / avatar / block ── */
+const imgInput = Object.assign(document.createElement('input'), { type: 'file', accept: 'image/*', hidden: true, id: 'insImageInput' });
+document.body.append(imgInput);
+function toDataURL(file, max = 640){
+  return new Promise((resolve, reject) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+      resolve(c.toDataURL('image/webp', .86)); // keeps transparency, small enough to live inside the page code
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(Error('not an image')); };
+    img.src = url;
+  });
+}
+imgInput.onchange = async () => {
+  const file = imgInput.files[0]; imgInput.value = '';
+  let el = session?.picked; if (!file || !el) return;
+  if (file.size > 20e6) { studio.status('image is too large (max 20 MB)', 'warn'); return; }
+  const data = await toDataURL(file).catch(() => null); if (!data || !session) return;
+  const doc = session.doc;
+  // a block holding a single icon (e.g. a spinning logo): replace that icon, so its animation survives
+  const svg = el.closest('svg') || (el.querySelectorAll('svg').length === 1 && el.querySelectorAll('img').length === 0 ? el.querySelector('svg') : null);
+  if (svg) el = svg;
+  if (el.tagName === 'IMG') el.src = data;
+  else if (el.tagName.toLowerCase() === 'svg') {
+    // swap the icon for an <img> of the same size; class/style move over so its animation keeps running
+    const r = el.getBoundingClientRect(), img = doc.createElement('img'), cs = doc.defaultView.getComputedStyle(el);
+    img.src = data; img.alt = '';
+    if (el.getAttribute('class')) img.setAttribute('class', el.getAttribute('class'));
+    img.style.cssText = (el.getAttribute('style') || '') + `;width:${Math.round(r.width)}px;height:${Math.round(r.height)}px;object-fit:cover;border-radius:inherit;display:block`;
+    // CSS often animates the icon by tag (".logo svg { animation: spin … }") — carry the running animation over explicitly
+    if (cs.animationName && cs.animationName !== 'none') {
+      for (const p of ['animationName', 'animationDuration', 'animationTimingFunction', 'animationDelay', 'animationIterationCount', 'animationDirection', 'animationFillMode', 'animationPlayState']) img.style[p] = cs[p];
+      img.style.transformOrigin = cs.transformOrigin === '0px 0px' ? 'center' : cs.transformOrigin;
+    }
+    el.replaceWith(img); el = img;
+  } else {
+    // fill the block; drop a lone icon or 1–3 letter placeholder (avatar initials) that would cover the picture
+    el.style.backgroundImage = `url("${data}")`; el.style.backgroundSize = 'cover'; el.style.backgroundPosition = 'center';
+    [...el.children].forEach(c => { if (c.tagName.toLowerCase() === 'svg') c.remove(); });
+    if (!el.children.length && el.textContent.trim().length <= 3) el.textContent = '';
+  }
+  session.dirty = true; pick(el);
+  // the browser starts the swapped element's animation on the next frames — refresh the motion list then
+  setTimeout(() => session && fill(), 120);
+  if (data.length > 250000) studio.status('image added — it is large, publishing may hit the 1 MB page limit', 'warn');
+  else studio.status('image added', 'ok');
+};
+
+/* ── motion: speed, direction, delay, repeats and pause for every animation in/around the picked part ── */
+const baseDur = new WeakMap(); // element → original durations (so "speed" stays relative to the design)
+const splitList = v => String(v).split(',').map(s => s.trim());
+function animTargets(){
+  const { doc, root, picked } = session; if (!picked) return [];
+  const seen = new Set(), out = [];
+  for (const a of doc.getAnimations()) {
+    const t = a.effect?.target; if (!t || seen.has(t) || !root.contains(t)) continue;
+    if (!(picked.contains(t) || t.contains(picked))) continue;
+    seen.add(t); out.push(t);
+  }
+  return out.slice(0, 6);
+}
+function renderMotion(){
+  const box = $('insMotion'); const targets = session ? animTargets() : [];
+  $('insMotionCount').textContent = targets.length ? '' : '· none here';
+  box.innerHTML = targets.map((t, ti) => {
+    const cs = session.doc.defaultView.getComputedStyle(t);
+    const names = splitList(cs.animationName), durs = splitList(cs.animationDuration).map(parseFloat);
+    if (!baseDur.has(t)) baseDur.set(t, durs.slice());
+    const base = baseDur.get(t), dirs = splitList(cs.animationDirection), its = splitList(cs.animationIterationCount), dels = splitList(cs.animationDelay).map(parseFloat), plays = splitList(cs.animationPlayState);
+    return names.map((n, i) => {
+      if (n === 'none') return '';
+      const speed = Math.round((base[i] || durs[i] || 1) / (durs[i] || 1) * 100) / 100;
+      const it = its[i % its.length], d = dirs[i % dirs.length];
+      return `<div class="ins-anim" data-t="${ti}" data-i="${i}">
+        <div class="ins-anim-head"><b>${n.replace(/[<&]/g, '')}</b><span>${'<' + t.tagName.toLowerCase() + '>'}</span><label class="ins-pause"><input type="checkbox" data-m="pause" ${plays[i % plays.length] === 'paused' ? 'checked' : ''}> pause</label></div>
+        <label class="ins-row">speed <b>${speed}×</b><input type="range" min="0.1" max="5" step="0.05" value="${speed}" data-m="speed"></label>
+        <div class="ins-anim-grid">
+          <select data-m="direction" title="direction — reverse turns a clockwise spin counter-clockwise">${['normal', 'reverse', 'alternate', 'alternate-reverse'].map(o => `<option ${o === d ? 'selected' : ''}>${o}</option>`).join('')}</select>
+          <select data-m="iterations" title="how many times it plays">${['infinite', '1', '2', '3', '5'].map(o => `<option ${o === it ? 'selected' : ''}>${o}</option>`).join('')}</select>
+          <label title="delay before it starts">delay <input type="number" min="0" max="10" step="0.1" value="${dels[i % dels.length] || 0}" data-m="delay">s</label>
+        </div></div>`;
+    }).join('');
+  }).join('');
+  box._targets = targets;
+  if (!box.children.length) { $('insMotionCount').textContent = '· none here'; box.innerHTML = '<p class="ins-hint">No animation on this part. Try ↑ parent — the motion is often on the wrapper.</p>'; }
+}
+function setAnimProp(t, prop, i, value){
+  const cs = session.doc.defaultView.getComputedStyle(t);
+  const n = splitList(cs.animationName).length;
+  const list = splitList(cs[prop]); while (list.length < n) list.push(list[list.length % Math.max(1, list.length)] || list[0]);
+  list[i] = value; t.style[prop] = list.slice(0, n).join(', ');
+}
+$('insMotion').addEventListener('input', e => {
+  const row = e.target.closest('.ins-anim'), m = e.target.dataset.m; if (!row || !m || !session) return;
+  const t = $('insMotion')._targets[+row.dataset.t], i = +row.dataset.i; if (!t) return;
+  if (m === 'speed') {
+    const sp = Math.max(.1, +e.target.value), base = baseDur.get(t)?.[i] || 1;
+    setAnimProp(t, 'animationDuration', i, (base / sp).toFixed(3) + 's');
+    e.target.closest('.ins-row').querySelector('b').textContent = sp + '×';
+  }
+  if (m === 'direction') setAnimProp(t, 'animationDirection', i, e.target.value);
+  if (m === 'iterations') setAnimProp(t, 'animationIterationCount', i, e.target.value);
+  if (m === 'delay') setAnimProp(t, 'animationDelay', i, (Math.max(0, +e.target.value || 0)) + 's');
+  if (m === 'pause') setAnimProp(t, 'animationPlayState', i, e.target.checked ? 'paused' : 'running');
+  session.dirty = true;
+});
+
 function fill(){
   const el = session?.picked; if (!el) return;
+  renderMotion();
   $('insLink').value = linkOf(el)?.getAttribute('href') || '';
   const cs = session.doc.defaultView.getComputedStyle(el);
   $('insTag').textContent = '<' + el.tagName.toLowerCase() + (el.classList[0] ? '.' + el.classList[0] : '') + '>';
@@ -81,6 +199,11 @@ panel.addEventListener('click', e => {
   const a = e.target.closest('[data-ins]')?.dataset.ins; if (!a || !session) return;
   if (a === 'done') return finish();
   const el = session.picked; if (!el) return;
+  if (a === 'image') return imgInput.click();
+  if (a === 'noimage') {
+    if (el.tagName === 'IMG' && el.src.startsWith('data:')) { el.remove(); session.dirty = true; return pick(null); }
+    el.style.backgroundImage = ''; el.style.backgroundSize = ''; el.style.backgroundPosition = ''; session.dirty = true; return fill();
+  }
   if (a === 'parent' && el.parentElement && el.parentElement !== session.root) pick(el.parentElement);
   if (a === 'clear') { el.removeAttribute('style'); session.dirty = true; fill(); outline(); }
   if (a === 'remove' && el !== session.root) { const up = el.parentElement; el.remove(); session.dirty = true; pick(up === session.root ? null : up); }
