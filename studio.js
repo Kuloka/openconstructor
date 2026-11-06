@@ -1366,12 +1366,17 @@ $('send').onclick = () => {
 };
 
 // One AI round-trip. `custom.user` replaces the default context (used by Fusion); `custom.place` positions a new element.
+let lastAiId = null; // the element the AI built or changed last
 async function runAI(request, custom = {}){
   const m = current(), p = byId(m.pid), key = keys[m.pid];
   if (!p) { $('chatStatus').textContent = 'Pick a model from the list below the input.'; return; }
   if (p.kind === 'proxy') { if (!authUser) { $('chatStatus').textContent = 'Sign in (free) to use openconstructor AI — or connect your own key in ⚙.'; openAuth('signup'); return; } }
   else if (!key) { $('chatStatus').textContent = `Add a ${p.name} key to use this model.`; openSettings(); return; }
-  const target = custom.user ? null : items.find(x => x.id === selected);
+  // What a change request applies to: the selection, else the page being worked on (the last element the AI
+  // built or the only full-width section), so 'make the photos bigger' edits it instead of adding a new page
+  const fulls = items.filter(x => x.full);
+  const target = custom.user ? null : items.find(x => x.id === selected) || items.find(x => x.id === lastAiId) || (fulls.length === 1 ? fulls[0] : null);
+  const implicit = target && target.id !== selected;
   const recent = custom.user ? '' : chatContext(); // turns before this one
   logChat('user', request);
   const asked = message(request, 'user'); $('send').disabled = true; $('chatStatus').textContent = '';
@@ -1390,7 +1395,7 @@ then, unless action is "reply", the HTML and CSS in ONE fenced block:
 \`\`\`
 Rules:
 - If the message is just conversation or a question (a greeting, thanks, "what can you do", how-to) and does not ask to build or change something, use action "reply" with only the "reply" field — do NOT create an element.
-- If the user asks to change the selected element, use action "update"; if they ask to build something, "add".
+- "Current element" is what the user is working on (selected, or the page built last). If the request changes anything about it (colors, text, layout, photos, adding or removing a section inside it), use action "update" and return the COMPLETE updated element, keeping everything the user did not ask to change. Use "add" only when the user clearly wants a separate new block, component or page, or when there is no current element.
 - Page: ${page.w}×${page.h}px, ${isLightPage() ? 'light' : 'dark'} background. If the user asks for a website, landing page, page or section, set "full": true and build a complete full-width layout (header, hero, content blocks, footer) with a root element of width:100%. For a standalone component (button, card, form), set "full": false, width up to 360px.
 - Self-contained HTML and CSS only: one <style> plus markup. No JavaScript, external links or fonts. Icons as inline SVG.
 - Real photos make pages feel finished: for websites, landing pages, heroes, product/menu cards, galleries, team and testimonials use photos — <img src="photo:2-4 English words" alt="…"> sized by CSS with object-fit:cover, or background-image:url('photo:2-4 English words'). Append ?portrait or ?square for tall or square slots (photo:barista portrait?portrait). Describe what should be in the picture (photo:latte art cup, photo:cozy cafe interior). Never write http image URLs. Small UI components (buttons, inputs, toggles) need no photos.${custom.attachNote || ''}
@@ -1401,7 +1406,7 @@ Rules:
   // photos already in the selected element travel as short kept:N tokens, not megabytes of base64
   const kept = [];
   const slim = code => String(code).replace(/data:image\/[\w.+-]+;base64,[A-Za-z0-9+/=]+/g, d => 'kept:' + kept.push(d));
-  const user = custom.user || ((recent ? 'Conversation so far (for context):\n' + recent + '\n\n' : '') + 'Selected element: ' + JSON.stringify(target ? { name: target.name, code: slim(target.code) } : null) + '\nOther elements: ' + JSON.stringify(items.map(x => ({ name: x.name }))) + '\nRequest: ' + request + (custom.extra || ''));
+  const user = custom.user || ((recent ? 'Conversation so far (for context):\n' + recent + '\n\n' : '') + 'Current element' + (implicit ? ' (not selected — the page built last)' : ' (selected)') + ': ' + JSON.stringify(target ? { name: target.name, code: slim(target.code) } : null) + '\nOther elements: ' + JSON.stringify(items.map(x => ({ name: x.name }))) + '\nRequest: ' + request + (custom.extra || ''));
   try {
     // One automatic retry when the answer can't be parsed (free models sometimes break the format);
     // a model that rejects images gets the request again without them.
@@ -1433,8 +1438,8 @@ Rules:
       const item = items.find(x => x.id === target.id); if (!item) throw Error('The element was deleted during the request');
       checkpoint(); item.name = String(result.name || item.name).slice(0, 80); item.code = result.code;
       if (full) { item.full = true; item.x = 0; }
-      selected = item.id; render();
-    } else add(String(result.name || 'New element').slice(0, 80), result.code, { full, ...(custom.place || {}) });
+      selected = item.id; lastAiId = item.id; render();
+    } else { add(String(result.name || 'New element').slice(0, 80), result.code, { full, ...(custom.place || {}) }); lastAiId = selected; }
     await stop.finish(result.action === 'update' && target ? 'updated on the canvas' : 'placed on the canvas'); setState('element ready', 'ok');
     message(String(result.reply || 'Done. The element is on the page.'), 'assistant'); logChat('assistant', result.reply || 'Done. The element is on the page.'); $('prompt').value = ''; window.dispatchEvent(new CustomEvent('oc:generated'));
   } catch (e) { stop(); setState('ai error', 'error'); $('chatStatus').textContent = 'Error: ' + e.message; message('Could not apply the response. Try again or pick another model.', 'assistant'); }

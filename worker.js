@@ -274,25 +274,35 @@ async function photoSearch(env, q, o){
     }
   }
   const aspect = o === 'landscape' ? 'wide' : o === 'portrait' ? 'tall' : 'square';
-  const search = async extra => {
-    const r = await fetch(`https://api.openverse.org/v1/images/?q=${encodeURIComponent(q)}&page_size=8&license=cc0,pdm&mature=false&size=medium,large${extra}`, { headers: { 'User-Agent': PHOTO_UA } });
+  const search = async (words, extra) => {
+    const r = await fetch(`https://api.openverse.org/v1/images/?q=${encodeURIComponent(words)}&page_size=8&license=cc0,pdm&mature=false&source=stocksnap${extra}`, { headers: { 'User-Agent': PHOTO_UA } });
     if (!r.ok) return [];
     const d = await r.json();
-    return (d.results || []).map(x => ({ urls: x.source === 'stocksnap' ? [x.thumbnail + '?full_size=true', x.thumbnail] : x.width && x.width <= 1600 ? [x.url, x.thumbnail] : [x.thumbnail], credit: `${x.title || 'Photo'} — ${x.creator || 'unknown'} (${String(x.license).toUpperCase()})` }));
+    return (d.results || []).filter(x => !x.mature).map(x => ({ urls: [x.thumbnail + '?full_size=true', x.thumbnail], credit: `${x.title || 'Photo'} — ${x.creator || 'unknown'} (${String(x.license).toUpperCase()})` }));
   };
-  // StockSnap (CC0 stock photography, 960px) first: general Openverse results are often snapshots
-  let list = await search(`&source=stocksnap&aspect_ratio=${aspect}`);
-  if (list.length < 3) list = [...list, ...await search('&source=stocksnap')];
-  if (!list.length) list = await search(`&aspect_ratio=${aspect}`);
-  if (!list.length) list = await search('');
-  return list;
+  // Only StockSnap (curated CC0 stock photography): the rest of Openverse is mostly snapshots and
+  // off-topic pictures. A query with no match is shortened from the front ('black oversized hoodie'
+  // → 'oversized hoodie' → 'hoodie'): the last word is usually the subject.
+  // then from the back ('black hoodie streetwear' → 'black hoodie' → 'hoodie'), then single words
+  const words = q.split(' ');
+  const tries = [...new Set([
+    ...words.map((_, k) => words.slice(k).join(' ')),
+    ...words.map((_, k) => words.slice(0, words.length - k).join(' ')),
+    ...[...words].sort((a, b) => b.length - a.length),
+  ])].filter(w => w.length > 2).slice(0, 6);
+  for (const w of tries) {
+    let list = await search(w, `&aspect_ratio=${aspect}`);
+    if (list.length < 3) list = [...list, ...await search(w, '')];
+    if (list.length) return list;
+  }
+  return [];
 }
 async function photo(request, env, ctx, url){
   const q = (url.searchParams.get('q') || '').replace(/[^\p{L}\p{N} &'-]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 60).toLowerCase();
   if (!q) return fail(400, 'Missing ?q= search words.');
   const o = ['landscape', 'portrait', 'square'].includes(url.searchParams.get('o')) ? url.searchParams.get('o') : 'landscape';
   const i = Math.min(7, Math.max(0, parseInt(url.searchParams.get('i')) || 0));
-  const cache = caches.default, key = new Request(`https://photo-cache.invalid/v3/${o}/${i}/${encodeURIComponent(q)}`);
+  const cache = caches.default, key = new Request(`https://photo-cache.invalid/v5/${o}/${i}/${encodeURIComponent(q)}`);
   const hit = await cache.match(key); if (hit) return hit;
   let list;
   try { list = await photoSearch(env, q, o); } catch { list = []; }
