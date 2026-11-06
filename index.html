@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>openconstructor — build interfaces with blocks and AI</title>
+  <meta name="description" content="Visual interface builder: drag components onto a page, ask AI to build or change them, export clean HTML and CSS.">
+  <link rel="icon" type="image/svg+xml" href="/src/logo.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap">
+</head>
+<body>
+<div class="app" id="app">
+  <!-- Title bar -->
+  <header class="titlebar">
+    <div class="tb-left">
+      <button class="tb-logo" id="homeBtn" title="Home: templates and examples"><span class="oc-logo" aria-hidden="true"></span><span class="wordmark"><i>open</i>constructor</span></button>
+      <nav class="tb-menu">
+        <button data-cmd="home">templates</button>
+        <button data-cmd="addCode">+ custom code</button>
+        <button data-cmd="clear">clear</button>
+      </nav>
+    </div>
+    <div class="tb-center"><span class="muted">~/</span><span id="projectName" contenteditable="plaintext-only" spellcheck="false" title="Click to rename">my-interface</span><span class="muted">.html</span></div>
+    <div class="tb-right">
+      <button class="btn" id="undo" title="Undo (Ctrl+Z)">↶ undo</button>
+      <button class="btn primary" id="export" title="Download the page as a single HTML file">export ↓</button>
+    </div>
+  </header>
+
+  <div class="main" id="main">
+    <!-- Activity bar -->
+    <nav class="activitybar" aria-label="Panels">
+      <button data-view="library" title="Components (Ctrl+B)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M17.5 14v7M14 17.5h7"/></svg></button>
+      <button data-view="layers" title="Layers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></svg></button>
+      <button data-toggle="chat" title="AI chat (Ctrl+Shift+B)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg></button>
+      <span class="ab-spacer"></span>
+      <button id="helpButton" title="Quick tour (?)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.6 2.6 0 0 1 5 .9c0 1.8-2.5 2.2-2.5 3.9M12 17h.01"/></svg></button>
+      <button id="settingsButton" title="AI providers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg></button>
+    </nav>
+
+    <!-- Side panel: components / layers -->
+    <aside class="panel side" id="sidePanel">
+      <div class="panel-head">
+        <span class="panel-title" id="sideTitle">components</span>
+        <div class="panel-actions">
+          <button data-panel-action="swap" data-panel="side" title="Move to the other side">⇄</button>
+          <button data-panel-action="close" data-panel="side" title="Hide (Ctrl+B)">×</button>
+        </div>
+      </div>
+      <div class="view" data-view-body="library">
+        <div class="search-wrap"><span>/</span><input id="catalogSearch" placeholder="search components" aria-label="Search components"></div>
+        <div class="categories">
+          <button class="active" data-category="All">all</button><button data-category="Buttons">buttons</button><button data-category="Inputs">inputs</button><button data-category="Elements">elements</button><button data-category="Sections">sections</button><button data-category="Effects">effects</button>
+        </div>
+        <div class="library" id="library"></div>
+        <div class="sidebar-bottom"><button class="btn block" id="addCode">+ add your own html/css</button></div>
+      </div>
+      <div class="view hidden" data-view-body="layers">
+        <div class="layers" id="layers"></div>
+        <p class="panel-note">Double-click to rename · right-click for actions</p>
+      </div>
+    </aside>
+    <div class="splitter" data-split="side" title="Drag to resize"></div>
+
+    <!-- Editor -->
+    <main class="workspace">
+      <div class="canvas-toolbar">
+        <div class="toolbar-group"><span class="tab-label">page</span><select id="pageSize" class="mini-select" aria-label="Page size">
+          <option value="1440x900">desktop 1440</option>
+          <option value="1280x800">laptop 1280</option>
+          <option value="834x1112">tablet 834</option>
+          <option value="390x844">phone 390</option>
+        </select>
+        <div class="swatches" id="swatches" role="radiogroup" aria-label="Page background"></div></div>
+        <div class="toolbar-group">
+          <div class="zoom"><button id="zoomOut" title="Zoom out (Ctrl −)">−</button><button id="zoomFit" title="Fit to screen (Ctrl+0)">100%</button><button id="zoomIn" title="Zoom in (Ctrl +)">+</button></div>
+        </div>
+      </div>
+      <div class="canvas-wrap">
+        <div class="canvas" id="canvas">
+          <div class="stage" id="stage">
+            <div class="artboard-label" id="boardLabel"></div>
+            <div class="board" id="board"></div>
+          </div>
+        </div>
+        <div class="canvas-empty hidden" id="canvasEmpty">
+          <span class="oc-logo empty-logo" aria-hidden="true"></span>
+          <h2>empty page</h2>
+          <p>Drop a component from the left panel, open a template, or ask the AI to build something.</p>
+          <div class="empty-actions">
+            <button class="btn primary" data-empty="welcome">open a template</button>
+            <button class="btn" data-empty="Build a landing page for a coffee shop: header, hero, drinks menu and footer">› coffee shop landing</button>
+            <button class="btn" data-empty="Build a user profile card with an avatar, stats and a follow button">› profile card</button>
+          </div>
+        </div>
+      </div>
+    </main>
+    <div class="splitter" data-split="chat" title="Drag to resize"></div>
+
+    <!-- AI chat -->
+    <aside class="panel chat-panel" id="chatPanel">
+      <div class="panel-head">
+        <span class="panel-title"><span class="oc-logo tiny" aria-hidden="true"></span>ai assistant</span>
+        <div class="panel-actions">
+          <button data-panel-action="max" data-panel="chat" title="Maximize">⤢</button>
+          <button data-panel-action="swap" data-panel="chat" title="Move to the other side">⇄</button>
+          <button data-panel-action="close" data-panel="chat" title="Hide (Ctrl+Shift+B)">×</button>
+        </div>
+      </div>
+      <div class="chat-messages" id="messages"><div class="message assistant"><strong>What should we build?</strong><p>Describe a component or a whole page and I'll assemble it on the canvas. To change an element, select it or right-click it → “Edit with AI”.</p></div></div>
+      <div id="chatStatus" class="status"></div>
+      <div id="react-composer"></div>
+      <div class="composer-legacy"><textarea id="prompt" aria-label="Message to AI"></textarea><div class="composer-footer"><select id="model" class="model" aria-label="Model"><option value="openrouter/free">Auto</option></select><button class="send" id="send" aria-label="Send">↑</button></div></div>
+    </aside>
+  </div>
+
+  <!-- Status bar -->
+  <footer class="statusbar">
+    <span class="sb-item sb-state" id="sbState"><i></i>ready</span>
+    <span class="sb-item" id="sbModel"></span>
+    <span class="sb-spacer"></span>
+    <span class="sb-item" id="itemCount">0 elements</span>
+    <span class="sb-item" id="sbPage">1440 × 900</span>
+    <span class="sb-item" id="sbZoom">100%</span>
+    <span class="sb-item sb-hint">right-click — menu · space + drag — pan · ? — tour</span>
+  </footer>
+</div>
+
+<div class="ctx hidden" id="ctxMenu" role="menu"></div>
+
+<div class="modal hidden" id="settings"><div class="modal-card wide"><div class="modal-head"><h2>ai providers</h2><button class="btn icon" data-close="settings">×</button></div><p class="muted">Connect one or more services — their models will appear in the list under the chat. Your key is sent only to the provider you pick. Google Gemini and Groq are the easiest to start with.</p><div class="providers" id="providers"></div><div class="modal-foot"><label class="check"><input type="checkbox" id="rememberKeys"> remember keys on this device</label><span class="sb-spacer"></span><button class="btn" id="forgetKeys">forget all keys</button><button class="btn primary" data-close="settings">done</button></div></div></div>
+<div class="modal hidden" id="codeModal"><div class="modal-card"><div class="modal-head"><h2 id="codeTitle">element code</h2><button class="btn icon" data-close="codeModal">×</button></div><p class="muted">HTML and CSS. Scripts and network requests are disabled in the preview.</p><label class="field">Name<input id="codeName" maxlength="80"></label><label class="field">HTML + CSS<textarea id="codeInput" spellcheck="false"></textarea></label><div class="modal-actions"><button class="btn" id="copyCode">copy</button><button class="btn primary" id="saveCode">save</button></div></div></div>
+<script type="module" src="/src/main.jsx"></script>
+</body>
+</html>
