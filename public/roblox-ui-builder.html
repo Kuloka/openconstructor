@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Roblox UI Builder – Design in the Browser, Export Luau</title>
+<meta name="description" content="Design Roblox UI in your browser and export a Luau LocalScript that builds the ScreenGui, Frames, TextLabels, UICorner and UIStroke. Free, open source.">
+<link rel="canonical" href="https://openconstructor.pw/roblox-ui-builder">
+<meta name="theme-color" content="#0c0a09">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="manifest" href="/site.webmanifest">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="openconstructor">
+<meta property="og:title" content="Roblox UI Builder – Design in the Browser, Export Luau">
+<meta property="og:description" content="Design Roblox UI in your browser and export a Luau LocalScript that builds the ScreenGui, Frames, TextLabels, UICorner and UIStroke. Free, open source.">
+<meta property="og:url" content="https://openconstructor.pw/roblox-ui-builder">
+<meta property="og:image" content="https://openconstructor.pw/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Roblox UI Builder – Design in the Browser, Export Luau">
+<meta name="twitter:description" content="Design Roblox UI in your browser and export a Luau LocalScript that builds the ScreenGui, Frames, TextLabels, UICorner and UIStroke. Free, open source.">
+<meta name="twitter:image" content="https://openconstructor.pw/og.png">
+<link rel="stylesheet" href="/pages.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "name": "Roblox UI Builder – Design in the Browser, Export Luau",
+  "description": "Design Roblox UI in your browser and export a Luau LocalScript that builds the ScreenGui, Frames, TextLabels, UICorner and UIStroke. Free, open source.",
+  "url": "https://openconstructor.pw/roblox-ui-builder",
+  "inLanguage": "en",
+  "isPartOf": {
+    "@type": "WebSite",
+    "name": "openconstructor",
+    "url": "https://openconstructor.pw/"
+  },
+  "about": {
+    "@type": "SoftwareApplication",
+    "name": "openconstructor",
+    "url": "https://openconstructor.pw/"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "openconstructor",
+      "item": "https://openconstructor.pw/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Roblox UI builder: design in the browser, export Luau",
+      "item": "https://openconstructor.pw/roblox-ui-builder"
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is this an official Roblox tool?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. openconstructor is an independent, free and open-source project. It generates ordinary Luau that you paste into Roblox Studio yourself."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Where do I put the exported script?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Create a LocalScript in StarterPlayer › StarterPlayerScripts (or in StarterGui) and paste the exported file into it. It builds the ScreenGui in the local player’s PlayerGui when the game starts."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Do the buttons work after export?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "They appear and react to hover and press, but they are not connected to any logic. Find them by name from your own script and connect MouseButton1Click or other events."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does the UI scale on phones and tablets?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. The script adds a UIScale that fits the whole design into the current viewport and updates when the screen size changes."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does it cost anything?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. The editor and all exports are free. The AI assistant is optional and uses your own provider key; several providers have no-cost tiers."
+      }
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<header class="top">
+  <a class="home" href="/"><img src="/favicon.svg" alt="" width="24" height="24"><span><i>open</i>constructor</span></a>
+  <nav aria-label="Guides">
+    <a href="/components">Components</a>
+    <a href="/ai-ui-generator">AI generator</a>
+    <a href="/html-to-react-vue-svelte">React · Vue · Svelte</a>
+    <a href="/roblox-ui-builder" aria-current="page">Roblox UI</a>
+    <a href="/love2d-ui">LÖVE 2D</a>
+  </nav>
+</header>
+<main>
+  <p class="kicker">Roblox · Luau export</p>
+  <h1>Roblox UI builder: design in the browser, export Luau</h1>
+  <p class="lead">Laying out a menu, shop or HUD by nudging Frames in Roblox Studio is slow. In openconstructor you build the screen on a free-form canvas from ready-made components (or ask the AI to make it), then export a single Luau LocalScript that recreates the design inside your game.</p>
+  <a class="cta" href="/">Open the editor →</a>
+
+  <h2>How it works</h2>
+  <ol>
+    <li><b>Build the screen.</b> Drop components from the <a href="/components">library</a> onto the page — buttons, cards, inventories made from grids, pricing tables for a shop — and drag them where you want them. You can also describe it to the <a href="/ai-ui-generator">AI assistant</a>: “a dark shop window with three item cards and a buy button”.</li>
+    <li><b>Export.</b> Click <code>export ↓</code> and pick <b>Roblox (Luau)</b>. openconstructor walks the rendered page, measures every visible box, text and control, and writes one <code>.client.lua</code> file.</li>
+    <li><b>Paste it into Studio.</b> Create a <b>LocalScript</b> in <code>StarterPlayer › StarterPlayerScripts</code> (or in <code>StarterGui</code>) and paste the file into it. Press Play — the interface is built at runtime in the player's <code>PlayerGui</code>.</li>
+  </ol>
+  <p>The <code>.client.lua</code> extension also works as-is with Rojo projects, which treat it as a LocalScript.</p>
+
+  <h2>What the exported script creates</h2>
+  <table>
+    <tr><th>In the design</th><th>In Roblox</th></tr>
+    <tr><td>The page</td><td>A <code>ScreenGui</code> (<code>ResetOnSpawn = false</code>, <code>IgnoreGuiInset = true</code>) holding a centred <code>Frame</code> named “Page”</td></tr>
+    <tr><td>Boxes, panels, cards</td><td><code>Frame</code> with the same position, size, colour and transparency</td></tr>
+    <tr><td>Text</td><td><code>TextLabel</code> with size, colour, alignment and wrapping; bold weights use Gotham Bold, monospace text uses the Code font</td></tr>
+    <tr><td>Buttons</td><td><code>TextButton</code> with <code>AutoButtonColor</code> so it reacts to hover and press</td></tr>
+    <tr><td>Inputs</td><td><code>TextBox</code> with the placeholder text</td></tr>
+    <tr><td>Rounded corners</td><td><code>UICorner</code></td></tr>
+    <tr><td>Borders</td><td><code>UIStroke</code> with thickness, colour and transparency</td></tr>
+    <tr><td>Linear gradients</td><td><code>UIGradient</code> with a matching <code>ColorSequence</code>, <code>NumberSequence</code> and rotation</td></tr>
+    <tr><td>Screen size</td><td>A <code>UIScale</code> that fits the whole design to the viewport and updates when the window is resized</td></tr>
+  </table>
+  <p>The script is plain, readable Luau with a small <code>make()</code> helper, so you can rename instances, move parts of it into your own modules or use it as a reference while you rebuild the UI by hand.</p>
+
+  <h2>Wiring up logic</h2>
+  <p>The export is a <b>visual snapshot</b>. Buttons and text boxes appear and respond to hover, but nothing is connected to your game yet. Each instance is named after the element it came from, so you can find it from your own code, for example:</p>
+  <pre><code>local page = playerGui:WaitForChild("My interface"):WaitForChild("Page")
+page:FindFirstChild("Buy", true).MouseButton1Click:Connect(function()
+	-- fire a RemoteEvent, open a frame, etc.
+end)</code></pre>
+
+  <h2>Honest limitations</h2>
+  <ul>
+    <li>Only layout and styling are exported — no click handlers, tweens or game logic.</li>
+    <li>CSS effects Roblox has no equivalent for (shadows, blur, filters, animations) are left out. Icons and images become plain frames, so add <code>ImageLabel</code>s with your own asset IDs.</li>
+    <li>Positions are absolute offsets inside one scaled page, not a responsive <code>UIListLayout</code> structure. That keeps the result faithful to the design, but for complex, data-driven lists you will want to restructure the generated code.</li>
+    <li>Text uses Roblox fonts (Gotham, Gotham Bold, Code), so line breaks can differ slightly from the browser preview.</li>
+  </ul>
+  <div class="note">Tip: design at the resolution you target (for example 1440×900 for desktop) — the <code>UIScale</code> then only has to shrink the layout a little on smaller screens.</div>
+  <p>Making a game in LÖVE instead? See the <a href="/love2d-ui">LÖVE 2D export</a>.</p>
+
+  <h2 id="faq">FAQ</h2>
+  <details><summary>Is this an official Roblox tool?</summary><p>No. openconstructor is an independent, free and open-source project. It generates ordinary Luau that you paste into Roblox Studio yourself.</p></details>
+  <details><summary>Where do I put the exported script?</summary><p>Create a LocalScript in StarterPlayer › StarterPlayerScripts (or in StarterGui) and paste the exported file into it. It builds the ScreenGui in the local player’s PlayerGui when the game starts.</p></details>
+  <details><summary>Do the buttons work after export?</summary><p>They appear and react to hover and press, but they are not connected to any logic. Find them by name from your own script and connect MouseButton1Click or other events.</p></details>
+  <details><summary>Does the UI scale on phones and tablets?</summary><p>Yes. The script adds a UIScale that fits the whole design into the current viewport and updates when the screen size changes.</p></details>
+  <details><summary>Does it cost anything?</summary><p>No. The editor and all exports are free. The AI assistant is optional and uses your own provider key; several providers have no-cost tiers.</p></details>
+
+  <h2>Ready to try it?</h2>
+  <p>openconstructor is free, open source (MIT) and runs entirely in your browser. No sign-up is needed to build and export.</p>
+  <a class="cta" href="/">Open the editor →</a>
+
+  <h2>More guides</h2>
+  <ul class="more">
+    <li><a href="/components">Components<span>145 components in 12 sections</span></a></li>
+    <li><a href="/ai-ui-generator">AI generator<span>Free-tier models, your own key</span></a></li>
+    <li><a href="/html-to-react-vue-svelte">React · Vue · Svelte<span>Export pages as components</span></a></li>
+    <li><a href="/love2d-ui">LÖVE 2D<span>Export a main.lua for LÖVE 11</span></a></li>
+  </ul>
+</main>
+<footer>
+  <a href="/">openconstructor</a><a href="https://github.com/Kuloka/openconstructor">GitHub</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a>
+  <p>Free and open source under the MIT license.</p>
+</footer>
+</body>
+</html>

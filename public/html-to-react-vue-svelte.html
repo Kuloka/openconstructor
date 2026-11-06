@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Export HTML to React, Vue &amp; Svelte Components | openconstructor</title>
+<meta name="description" content="Build a page from HTML+CSS components or with AI, then export it as one React (JSX), Vue 3 or Svelte component file. Free, open source, in the browser.">
+<link rel="canonical" href="https://openconstructor.pw/html-to-react-vue-svelte">
+<meta name="theme-color" content="#0c0a09">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="manifest" href="/site.webmanifest">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="openconstructor">
+<meta property="og:title" content="Export HTML to React, Vue &amp; Svelte Components | openconstructor">
+<meta property="og:description" content="Build a page from HTML+CSS components or with AI, then export it as one React (JSX), Vue 3 or Svelte component file. Free, open source, in the browser.">
+<meta property="og:url" content="https://openconstructor.pw/html-to-react-vue-svelte">
+<meta property="og:image" content="https://openconstructor.pw/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Export HTML to React, Vue &amp; Svelte Components | openconstructor">
+<meta name="twitter:description" content="Build a page from HTML+CSS components or with AI, then export it as one React (JSX), Vue 3 or Svelte component file. Free, open source, in the browser.">
+<meta name="twitter:image" content="https://openconstructor.pw/og.png">
+<link rel="stylesheet" href="/pages.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "name": "Export HTML to React, Vue & Svelte Components | openconstructor",
+  "description": "Build a page from HTML+CSS components or with AI, then export it as one React (JSX), Vue 3 or Svelte component file. Free, open source, in the browser.",
+  "url": "https://openconstructor.pw/html-to-react-vue-svelte",
+  "inLanguage": "en",
+  "isPartOf": {
+    "@type": "WebSite",
+    "name": "openconstructor",
+    "url": "https://openconstructor.pw/"
+  },
+  "about": {
+    "@type": "SoftwareApplication",
+    "name": "openconstructor",
+    "url": "https://openconstructor.pw/"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "openconstructor",
+      "item": "https://openconstructor.pw/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Turn an HTML design into a React, Vue or Svelte component",
+      "item": "https://openconstructor.pw/html-to-react-vue-svelte"
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Does the React export need any extra libraries?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. It is a single component with no imports beyond React itself; the CSS travels inside the file."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is the CSS scoped?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "In React and Svelte the CSS is global, so class names behave exactly as they did in the editor. In Vue it is a normal unscoped style block. Rename classes if they clash with your app."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I export to Tailwind?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes, as an AI port: the assistant rewrites the page as one HTML file that uses Tailwind utility classes. It needs an AI provider key."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is the exported code mine to use?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. You can use exported code in personal and commercial projects. openconstructor itself is MIT-licensed."
+      }
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<header class="top">
+  <a class="home" href="/"><img src="/favicon.svg" alt="" width="24" height="24"><span><i>open</i>constructor</span></a>
+  <nav aria-label="Guides">
+    <a href="/components">Components</a>
+    <a href="/ai-ui-generator">AI generator</a>
+    <a href="/html-to-react-vue-svelte" aria-current="page">React · Vue · Svelte</a>
+    <a href="/roblox-ui-builder">Roblox UI</a>
+    <a href="/love2d-ui">LÖVE 2D</a>
+  </nav>
+</header>
+<main>
+  <p class="kicker">Export · React · Vue · Svelte</p>
+  <h1>Turn an HTML design into a React, Vue or Svelte component</h1>
+  <p class="lead">Everything you build in openconstructor is plain HTML and CSS. When the page is ready you can download it as a standalone HTML file, or wrap it as one component for the framework your project uses — React, Vue or Svelte — without a build step on our side.</p>
+  <a class="cta" href="/">Open the editor →</a>
+
+  <h2>The workflow</h2>
+  <ol>
+    <li>Assemble a page from the <a href="/components">component library</a>, paste your own HTML/CSS with <code>+ custom code</code>, or ask the <a href="/ai-ui-generator">AI assistant</a> to build sections for you.</li>
+    <li>Arrange everything on the free-form canvas — each element keeps its own HTML and CSS.</li>
+    <li>Click <code>export ↓</code> and choose <b>HTML</b>, <b>React (JSX)</b>, <b>Vue SFC</b> or <b>Svelte</b>. You get one file named after your project.</li>
+  </ol>
+
+  <h2>What each export contains</h2>
+  <div class="grid">
+    <div><h3>React (.jsx)</h3><p>A default-exported function component. The page's CSS is collected into one string rendered in a <code>&lt;style&gt;</code> tag, and each element is rendered with its original markup via <code>dangerouslySetInnerHTML</code>.</p></div>
+    <div><h3>Vue (.vue)</h3><p>A Vue 3 single-file component: a <code>&lt;template&gt;</code> that renders each element with <code>v-html</code>, a small <code>&lt;script&gt;</code> with the element list, and all the CSS in a <code>&lt;style&gt;</code> block.</p></div>
+    <div><h3>Svelte (.svelte)</h3><p>A Svelte component that renders elements with <code>{@html}</code>. Styles are injected through <code>&lt;svelte:head&gt;</code> so the original class names keep working instead of being scoped away.</p></div>
+  </div>
+  <p>In all three, the elements keep the positions they had on the canvas inside a wrapper <code>div.oc-page</code> with the page width and background. <code>&lt;script&gt;</code> tags inside elements are dropped — they never ran in the builder either — so interactive behaviour is yours to add.</p>
+
+  <h2>When this is the right tool</h2>
+  <ul>
+    <li><b>Prototypes and landing pages</b> that you want to drop into an existing React, Next.js, Nuxt, Vue or SvelteKit app quickly.</li>
+    <li><b>Design hand-off</b>: a developer gets a working file with real CSS rather than a screenshot.</li>
+    <li><b>A starting point</b> you then split into smaller, idiomatic components with props and state.</li>
+  </ul>
+  <p>The export is deliberately faithful rather than clever: it does not try to guess props, convert every element into JSX or rewrite your CSS, which is where automated converters usually break things. If you need typed, idiomatic components, treat the export as the reference implementation and refactor from there.</p>
+
+  <h2>Other targets</h2>
+  <p>Besides the built-in exports, the AI assistant can port the page to <b>Flutter</b> (Dart), <b>SwiftUI</b>, <b>Jetpack Compose</b> (Kotlin) or <b>HTML with Tailwind CSS</b> classes. AI ports are generated by the model you choose, so review them before shipping. For game engines there are direct exports to <a href="/roblox-ui-builder">Roblox (Luau)</a> and <a href="/love2d-ui">LÖVE 2D</a>.</p>
+
+  <h2 id="faq">FAQ</h2>
+  <details><summary>Does the React export need any extra libraries?</summary><p>No. It is a single component with no imports beyond React itself; the CSS travels inside the file.</p></details>
+  <details><summary>Is the CSS scoped?</summary><p>In React and Svelte the CSS is global, so class names behave exactly as they did in the editor. In Vue it is a normal unscoped style block. Rename classes if they clash with your app.</p></details>
+  <details><summary>Can I export to Tailwind?</summary><p>Yes, as an AI port: the assistant rewrites the page as one HTML file that uses Tailwind utility classes. It needs an AI provider key.</p></details>
+  <details><summary>Is the exported code mine to use?</summary><p>Yes. You can use exported code in personal and commercial projects. openconstructor itself is MIT-licensed.</p></details>
+
+  <h2>Ready to try it?</h2>
+  <p>openconstructor is free, open source (MIT) and runs entirely in your browser. No sign-up is needed to build and export.</p>
+  <a class="cta" href="/">Open the editor →</a>
+
+  <h2>More guides</h2>
+  <ul class="more">
+    <li><a href="/components">Components<span>145 components in 12 sections</span></a></li>
+    <li><a href="/ai-ui-generator">AI generator<span>Free-tier models, your own key</span></a></li>
+    <li><a href="/roblox-ui-builder">Roblox UI<span>Design in the browser, export Luau</span></a></li>
+    <li><a href="/love2d-ui">LÖVE 2D<span>Export a main.lua for LÖVE 11</span></a></li>
+  </ul>
+</main>
+<footer>
+  <a href="/">openconstructor</a><a href="https://github.com/Kuloka/openconstructor">GitHub</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a>
+  <p>Free and open source under the MIT license.</p>
+</footer>
+</body>
+</html>

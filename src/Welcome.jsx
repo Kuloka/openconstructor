@@ -150,6 +150,16 @@ export default function Welcome(){
         </div>
       </section>
 
+      <nav className="wl-guides" aria-label="Guides">
+        <span>guides</span>
+        <a href="/roblox-ui-builder">Roblox UI builder (Luau)</a>
+        <a href="/html-to-react-vue-svelte">Export to React, Vue &amp; Svelte</a>
+        <a href="/ai-ui-generator">AI UI generator</a>
+        <a href="/components">145 components</a>
+        <a href="/love2d-ui">LÖVE 2D UI</a>
+        <a href="https://github.com/Kuloka/openconstructor" target="_blank" rel="noreferrer">GitHub</a>
+      </nav>
+
       <footer className="wl-foot">
         <div className="wl-brand small"><Logo size={18} /><span><i>open</i>constructor</span></div>
         <span><button className="wl-donate" onClick={openDonate}>support the project</button> · <a href="/privacy">privacy</a> · <a href="/terms">terms</a> · effects: React Bits, Magic UI · icons: Lobe Icons</span>

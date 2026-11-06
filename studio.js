@@ -125,8 +125,35 @@ function render(){
   layout();
 }
 function contentBottom(){ let h = 0; for (const el of nodes.values()) h = Math.max(h, el.offsetTop + el.offsetHeight); return h; }
+/* ── Stack layout: blocks flow top to bottom (order = vertical position), components are centered.
+   The same order drives a responsive export, so the page adapts to phones and tablets. ── */
+const STACK_GAP = 24;
+const isStack = () => page.layout === 'stack';
+function restack(){
+  if (!isStack()) return;
+  const order = [...items].sort((a, b) => a.y - b.y);
+  let y = 0, prevFull = true;
+  for (const it of order) {
+    const el = nodes.get(it.id); const w = el?.offsetWidth || 0, h = el?.offsetHeight || 0;
+    if (!it.full || !prevFull) y += y ? STACK_GAP : 0;
+    it.x = it.full ? 0 : Math.max(0, Math.round((page.w - w) / 2));
+    it.y = y;
+    if (el && !el.classList.contains('dragging')) { el.style.left = it.x + 'px'; el.style.top = it.y + 'px'; }
+    y += h; prevFull = !!it.full;
+  }
+}
+function setLayoutMode(mode){
+  page = { ...page, layout: mode }; store.set('oc-page', page);
+  document.querySelectorAll('[data-layout]').forEach(b => b.setAttribute('aria-checked', b.dataset.layout === mode));
+  if (mode === 'stack') { checkpoint(); restack(); persist(); setState('stack layout: drag blocks up or down to reorder · the export adapts to any screen', 'ok'); }
+  layout();
+}
+document.querySelectorAll('[data-layout]').forEach(b => b.onclick = () => setLayoutMode(b.dataset.layout));
+document.querySelectorAll('[data-layout]').forEach(b => b.setAttribute('aria-checked', b.dataset.layout === (page.layout || 'free')));
+
 // The page grows downward when elements extend past its height, like a real web page
 function layout(){
+  restack();
   const h = Math.max(page.h, contentBottom() + 48);
   board.style.width = page.w + 'px'; board.style.height = h + 'px';
   board.style.background = page.bg;
@@ -260,7 +287,7 @@ board.addEventListener('pointermove', e => {
 const endDrag = () => {
   if (!drag) return;
   drag.el.classList.remove('dragging');
-  if (drag.moved) { history.push(drag.snapshot); persist(); layout(); }
+  if (drag.moved) { history.push(drag.snapshot); layout(); persist(); }
   drag = null;
 };
 board.addEventListener('pointerup', endDrag);
@@ -307,6 +334,7 @@ function nodeMenu(id){
   return [
     { label: '✦ edit with ai', run: () => editWithAI(id) },
     { label: '⚗ fuse with…', run: () => startFusion(id) },
+    { label: '✎ edit text & style', key: 'dbl-click', run: () => window.dispatchEvent(new CustomEvent('oc:edit-inline', { detail: id })) },
     { label: '‹/› code', run: () => edit(id) },
     { label: 'rename', run: () => startRename(id) },
     '-',
@@ -512,6 +540,7 @@ $('export').onclick = () => {
   ]);
 };
 function buildHTML(){
+  if (isStack()) return buildStackHTML();
   const H = Math.max(page.h, contentBottom() + 48);
   const body = items.map(it => it.full
     ? `<div style="position:absolute;left:0;top:${it.y}px;width:${page.w}px">\n${it.code}\n</div>`
@@ -519,6 +548,42 @@ function buildHTML(){
   const title = escapeHTML(nameEl.textContent.trim() || 'My interface');
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=${page.w}"><title>${title}</title><style>html,body{margin:0}body{min-height:100vh;background:${page.bg};background-attachment:fixed;color:#eee;font-family:system-ui}.oc-page{position:relative;width:${page.w}px;height:${H}px;margin:0 auto}</style>${page.themeCss ? `<style>${page.themeCss.replace(/#__root/g, '.oc-page')}</style>` : ''}</head><body><div class="oc-page">\n${body}\n</div></body></html>`;
 }
+// Responsive page: normal document flow in stack order; sections span the width, components are centered
+// and may shrink on small screens.
+function buildStackHTML(){
+  const order = [...items].sort((a, b) => a.y - b.y);
+  const body = order.map(it => it.full
+    ? `<section class="oc-full">\n${it.code}\n</section>`
+    : `<div class="oc-block">\n${it.code}\n</div>`).join('\n');
+  const title = escapeHTML(nameEl.textContent.trim() || 'My interface');
+  const theme = page.themeCss ? `<style>${page.themeCss.replace(/#__root/g, '.oc-page')}</style>` : '';
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>
+html,body{margin:0}body{min-height:100vh;background:${page.bg};background-attachment:fixed;color:#eee;font-family:system-ui}
+.oc-page{display:flex;flex-direction:column;gap:${STACK_GAP}px;min-height:100vh;overflow-x:hidden}
+.oc-full{width:100%}.oc-full>*{max-width:100%;box-sizing:border-box}
+.oc-block{display:flex;justify-content:center;padding:0 16px}.oc-block>*{max-width:100%;box-sizing:border-box}
+.oc-page img,.oc-page svg,.oc-page video{max-width:100%;height:auto}
+@media(max-width:640px){.oc-full [style*="grid-template-columns"],.oc-full [class*="grid"]{grid-template-columns:1fr!important}.oc-page h1{font-size:clamp(28px,8vw,48px)!important}}
+</style>${theme}</head><body><main class="oc-page">\n${body}\n</main></body></html>`;
+}
+// Device preview: the exported page rendered at phone, tablet and desktop widths side by side (scripts off)
+function openDevicePreview(){
+  if (!items.length) { setState('nothing to preview: the page is empty', 'warn'); return; }
+  const html = buildHTML();
+  const devices = [{ name: 'phone', w: 390, h: 844 }, { name: 'tablet', w: 834, h: 1112 }, { name: 'desktop', w: 1440, h: 900 }];
+  let m = $('previewModal');
+  if (!m) { m = document.createElement('div'); m.className = 'modal hidden'; m.id = 'previewModal'; document.body.append(m); m.onclick = e => { if (e.target === m || e.target.closest('[data-close]')) m.classList.add('hidden'); }; }
+  m.innerHTML = `<div class="modal-card preview-card"><div class="modal-head"><h2>preview · ${isStack() ? 'responsive (stack)' : 'free layout — switch to stack to adapt to small screens'}</h2><button class="btn icon" data-close>×</button></div><div class="devices">${devices.map(d => `<figure class="device" style="--w:${d.w};--h:${d.h}"><div class="device-screen"><iframe sandbox title="${d.name}" tabindex="-1"></iframe></div><figcaption>${d.name} · ${d.w}px</figcaption></figure>`).join('')}</div></div>`;
+  m.classList.remove('hidden');
+  const CSPmeta = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:">`;
+  m.querySelectorAll('.device').forEach((fig, i) => {
+    const d = devices[i], f = fig.querySelector('iframe'), screen = fig.querySelector('.device-screen');
+    f.style.width = d.w + 'px'; f.style.height = d.h + 'px';
+    const fit = () => { const k = screen.clientWidth / d.w; f.style.transform = `scale(${k})`; screen.style.height = d.h * k + 'px'; };
+    f.srcdoc = html.replace('<head>', '<head>' + CSPmeta); requestAnimationFrame(fit);
+  });
+}
+$('devicePreview').onclick = openDevicePreview;
 function exportHTML(){
   if (!items.length) { setState('nothing to export: the page is empty', 'warn'); return; }
   download(buildHTML(), fileBase() + '.html', 'text/html');
@@ -702,7 +767,7 @@ Rules:
 - In the code field, encode regular line breaks as \\n exactly once; do not double-escape.`;
   const user = custom.user || ('Selected element: ' + JSON.stringify(target ? { name: target.name, code: target.code } : null) + '\nOther elements: ' + JSON.stringify(items.map(x => ({ name: x.name }))) + '\nRequest: ' + request);
   try {
-    const content = await chat(p, key, m.id, system, user);
+    const content = await chat(p, key, m.id, system, user, custom.images || []);
     if (typeof content !== 'string' || !content.trim()) throw Error('Empty model response');
     const result = parseAnswer(content);
     if (result.action === 'reply' || (!result.code && result.reply)) {
@@ -722,6 +787,49 @@ Rules:
   finally { $('send').disabled = false; }
 }
 $('prompt').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('send').click(); } });
+
+/* ── Screenshot → blocks: a picture of any site or mockup becomes an editable page ── */
+function shrinkImage(file, max = 1600){
+  return new Promise((resolve, reject) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+      resolve({ data: c.toDataURL('image/jpeg', .85), w: img.width, h: img.height });
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(Error('not an image')); };
+    img.src = url;
+  });
+}
+async function fromScreenshot(file){
+  if (!file || !file.type.startsWith('image/')) return;
+  if (file.size > 15e6) { setState('image is too large (max 15 MB)', 'warn'); return; }
+  window.dispatchEvent(new CustomEvent('oc:open-chat'));
+  try {
+    const { data, w, h } = await shrinkImage(file);
+    const note = $('prompt').value.trim();
+    const wide = w >= 900;
+    const thumb = message('', 'user'); thumb.innerHTML = `<img class="msg-shot" src="${data}" alt="screenshot">`;
+    const user = `SCREENSHOT TO BLOCKS. Recreate the interface in the attached image as faithfully as possible: layout, proportions, colors, typography, spacing, corner radii, icons (as inline SVG) and all visible text (keep its language). Use action "add" and full: ${wide} (${wide ? 'it is a full page or wide section: root width 100%' : 'it is a single component'}). Replace photos with tasteful gradient or SVG placeholders.${note ? '\nExtra instructions from the user: ' + note : ''}`;
+    await runAI(`📷 Build from screenshot (${w}×${h})`, { user, images: [data] });
+  } catch (e) { setState('screenshot failed: ' + e.message, 'error'); }
+}
+const shotInput = Object.assign(document.createElement('input'), { type: 'file', accept: 'image/*', hidden: true });
+shotInput.onchange = () => { fromScreenshot(shotInput.files[0]); shotInput.value = ''; };
+document.body.append(shotInput);
+export const pickScreenshot = () => shotInput.click();
+$('shotButton')?.addEventListener('click', pickScreenshot);
+// Paste an image anywhere outside text fields (or into the chat box) to rebuild it
+addEventListener('paste', e => {
+  const file = [...(e.clipboardData?.files || [])].find(f => f.type.startsWith('image/'));
+  if (!file) return;
+  e.preventDefault(); fromScreenshot(file);
+});
+// Drop an image file onto the canvas
+canvas.addEventListener('dragover', e => { if ([...e.dataTransfer.items].some(i => i.type.startsWith('image/'))) { e.preventDefault(); canvas.classList.add('drop-shot'); } });
+canvas.addEventListener('dragleave', () => canvas.classList.remove('drop-shot'));
+canvas.addEventListener('drop', e => { canvas.classList.remove('drop-shot'); const f = [...e.dataTransfer.files].find(x => x.type.startsWith('image/')); if (f) { e.preventDefault(); fromScreenshot(f); } });
 
 /* ── API for the welcome screen, menus and feature modules (publish, projects, theme…) ── */
 export const stats = { presets: presets.length };
@@ -767,6 +875,7 @@ document.querySelector('.tb-menu').addEventListener('click', e => {
   if (cmd === 'clear') clearPage();
 });
 $('canvasEmpty').addEventListener('click', e => { const b = e.target.closest('[data-empty]'); if (!b) return; if (b.dataset.empty === 'welcome') openWelcome();
+  else if (b.dataset.empty === 'screenshot') pickScreenshot();
   else if (b.dataset.empty === 'library') { window.dispatchEvent(new CustomEvent('oc:show-view', { detail: 'library' })); const s = $('catalogSearch'); s.focus(); $('sidePanel').animate([{ boxShadow: 'inset 0 0 0 1px var(--accent)' }, { boxShadow: 'inset 0 0 0 1px transparent' }], { duration: 1200 }); }
   else { window.dispatchEvent(new CustomEvent('oc:open-chat')); prefillPrompt(b.dataset.empty); } });
 

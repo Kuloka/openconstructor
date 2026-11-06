@@ -1,0 +1,27 @@
+/* Page theme (theme.js): toolbar button + popover. The panel reuses .bg-panel / .bg-field / .bg-tabs from studio.css. */
+.theme-btn { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 7px; border: 1px solid var(--border-2); border-radius: 3px; background: var(--bg); color: var(--text-2); font-size: 11.5px; white-space: nowrap; transition: border-color .12s, color .12s; }
+.theme-btn:hover, .theme-btn[aria-expanded="true"] { border-color: var(--accent); color: var(--text); }
+.theme-btn svg { width: 13px; height: 13px; }
+
+.theme-panel { width: 316px; max-height: calc(100vh - 120px); overflow-y: auto; }
+.th-label { display: flex; align-items: baseline; justify-content: space-between; margin: 2px 0 6px; color: var(--muted); font-size: 11px; }
+.th-label span { color: var(--subtle); font-size: 10.5px; }
+.theme-panel .bg-field span b { color: var(--subtle); font-weight: 400; font-size: 10.5px; margin-left: 4px; }
+
+.th-presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 12px; }
+.th-presets button { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 7px; border: 1px solid var(--border-2); border-radius: 4px; background: var(--panel); color: var(--text-2); font-size: 11.5px; transition: border-color .12s, color .12s; }
+.th-presets button:hover { border-color: var(--accent); color: var(--text); }
+.th-presets i { width: 10px; height: 10px; border-radius: 50%; flex: none; box-shadow: 0 0 0 1px #ffffff26; }
+
+.th-palette { display: grid; grid-template-columns: repeat(10, 1fr); gap: 5px; margin-bottom: 12px; }
+.th-swatch { position: relative; aspect-ratio: 1; border: 1px solid #ffffff2e; border-radius: 4px; background: var(--c); cursor: pointer; transition: transform .12s; }
+.th-swatch:hover { transform: scale(1.12); z-index: 1; }
+.th-swatch.alpha::after { content: ''; position: absolute; right: 1px; bottom: 1px; width: 5px; height: 5px; border-radius: 1px; background: repeating-conic-gradient(#999 0 25%, #eee 0 50%) 0 0 / 3px 3px; }
+.th-swatch input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }
+.th-swatch em { position: absolute; left: 50%; top: calc(100% + 3px); transform: translateX(-50%); padding: 0 3px; border-radius: 2px; background: var(--bg); color: var(--muted); font: normal 9.5px/1.4 var(--mono); opacity: 0; pointer-events: none; transition: opacity .12s; }
+.th-swatch:hover em { opacity: 1; }
+
+.th-select { width: 100%; height: 28px; }
+.theme-panel .bg-tabs button[aria-checked="true"] { color: var(--accent); }
+.theme-panel [data-reset] { margin-top: 2px; }
+.th-hint { margin-top: 8px; color: var(--subtle); font-size: 10.5px; line-height: 1.45; }

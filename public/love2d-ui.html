@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LÖVE 2D UI Designer – Export main.lua | openconstructor</title>
+<meta name="description" content="Design a menu or HUD in the browser and export it as a ready-to-run LÖVE 11 main.lua that draws and scales your layout. Free and open-source UI builder.">
+<link rel="canonical" href="https://openconstructor.pw/love2d-ui">
+<meta name="theme-color" content="#0c0a09">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="manifest" href="/site.webmanifest">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="openconstructor">
+<meta property="og:title" content="LÖVE 2D UI Designer – Export main.lua | openconstructor">
+<meta property="og:description" content="Design a menu or HUD in the browser and export it as a ready-to-run LÖVE 11 main.lua that draws and scales your layout. Free and open-source UI builder.">
+<meta property="og:url" content="https://openconstructor.pw/love2d-ui">
+<meta property="og:image" content="https://openconstructor.pw/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="LÖVE 2D UI Designer – Export main.lua | openconstructor">
+<meta name="twitter:description" content="Design a menu or HUD in the browser and export it as a ready-to-run LÖVE 11 main.lua that draws and scales your layout. Free and open-source UI builder.">
+<meta name="twitter:image" content="https://openconstructor.pw/og.png">
+<link rel="stylesheet" href="/pages.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "name": "LÖVE 2D UI Designer – Export main.lua | openconstructor",
+  "description": "Design a menu or HUD in the browser and export it as a ready-to-run LÖVE 11 main.lua that draws and scales your layout. Free and open-source UI builder.",
+  "url": "https://openconstructor.pw/love2d-ui",
+  "inLanguage": "en",
+  "isPartOf": {
+    "@type": "WebSite",
+    "name": "openconstructor",
+    "url": "https://openconstructor.pw/"
+  },
+  "about": {
+    "@type": "SoftwareApplication",
+    "name": "openconstructor",
+    "url": "https://openconstructor.pw/"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "openconstructor",
+      "item": "https://openconstructor.pw/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Design a LÖVE 2D interface visually, export a main.lua",
+      "item": "https://openconstructor.pw/love2d-ui"
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Which LÖVE version is supported?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "The exported main.lua targets LÖVE 11.x."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does the UI resize with the window?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. The design is scaled uniformly to fit the window and centred, so it keeps its proportions at any size."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I use custom fonts?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "The export uses LÖVE’s default font. Replace love.graphics.newFont(size) in the font() helper with love.graphics.newFont(\"myfont.ttf\", size) to use your own."
+      }
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<header class="top">
+  <a class="home" href="/"><img src="/favicon.svg" alt="" width="24" height="24"><span><i>open</i>constructor</span></a>
+  <nav aria-label="Guides">
+    <a href="/components">Components</a>
+    <a href="/ai-ui-generator">AI generator</a>
+    <a href="/html-to-react-vue-svelte">React · Vue · Svelte</a>
+    <a href="/roblox-ui-builder">Roblox UI</a>
+    <a href="/love2d-ui" aria-current="page">LÖVE 2D</a>
+  </nav>
+</header>
+<main>
+  <p class="kicker">LÖVE 2D · Lua export</p>
+  <h1>Design a LÖVE 2D interface visually, export a main.lua</h1>
+  <p class="lead">LÖVE has no built-in UI editor, so menus and HUDs usually start as rectangles typed out by hand. openconstructor lets you lay the screen out visually — from ready-made components or with the AI assistant — and exports a Lua file that draws the same layout in LÖVE.</p>
+  <a class="cta" href="/">Open the editor →</a>
+
+  <h2>How it works</h2>
+  <ol>
+    <li>Build the screen on the canvas from the <a href="/components">component library</a> or with the <a href="/ai-ui-generator">AI assistant</a>.</li>
+    <li>Click <code>export ↓</code> and choose <b>LÖVE 2D (Lua)</b>. openconstructor measures every visible box, border and text on the rendered page.</li>
+    <li>Save the file as <code>main.lua</code> in an empty folder and run it with LÖVE 11.x: <code>love path/to/folder</code>.</li>
+  </ol>
+
+  <h2>What the exported file does</h2>
+  <ul>
+    <li>Stores the design as a plain Lua table of nodes — position, size, fill colour, corner radius, border and text — that is easy to read and edit.</li>
+    <li>In <code>love.load</code>, sets the window title and opens a resizable, high-DPI window sized to fit your screen.</li>
+    <li>In <code>love.draw</code>, scales the whole design to the window and centres it, then draws rounded rectangles, borders and text with <code>love.graphics.printf</code> using the original alignment.</li>
+    <li>Creates fonts once per size and caches them.</li>
+  </ul>
+  <pre><code>-- excerpt of an exported file
+local nodes = {
+	{k = "button", x = 64, y = 120, w = 180, h = 44, bg = {0.89, 0.34, 0.18, 1}, r = 10,
+	 t = "Play", c = {1, 1, 1, 1}, fs = 16, al = "center"},
+}</code></pre>
+
+  <h2>Making it interactive</h2>
+  <p>The export is a static snapshot: nothing reacts to the mouse yet. Because every node keeps its kind, rectangle and text, adding behaviour is straightforward — for example, convert the mouse position back into design coordinates in <code>love.mousepressed</code> and check which <code>"button"</code> node contains it. You can also copy the node table into your own game state and draw it from your existing code.</p>
+
+  <h2>Limitations</h2>
+  <ul>
+    <li>No input handling, animation or state — layout and style only.</li>
+    <li>Gradients are approximated by a single solid colour (the first visible stop). Shadows, blur and images are not exported.</li>
+    <li>Text uses LÖVE's default font at the original sizes, so wrapping may differ slightly from the browser.</li>
+  </ul>
+  <p>Working in Roblox instead? The <a href="/roblox-ui-builder">Roblox UI export</a> generates real ScreenGui instances with UICorner, UIStroke and UIGradient.</p>
+
+  <h2 id="faq">FAQ</h2>
+  <details><summary>Which LÖVE version is supported?</summary><p>The exported main.lua targets LÖVE 11.x.</p></details>
+  <details><summary>Does the UI resize with the window?</summary><p>Yes. The design is scaled uniformly to fit the window and centred, so it keeps its proportions at any size.</p></details>
+  <details><summary>Can I use custom fonts?</summary><p>The export uses LÖVE’s default font. Replace love.graphics.newFont(size) in the font() helper with love.graphics.newFont("myfont.ttf", size) to use your own.</p></details>
+
+  <h2>Ready to try it?</h2>
+  <p>openconstructor is free, open source (MIT) and runs entirely in your browser. No sign-up is needed to build and export.</p>
+  <a class="cta" href="/">Open the editor →</a>
+
+  <h2>More guides</h2>
+  <ul class="more">
+    <li><a href="/components">Components<span>145 components in 12 sections</span></a></li>
+    <li><a href="/ai-ui-generator">AI generator<span>Free-tier models, your own key</span></a></li>
+    <li><a href="/html-to-react-vue-svelte">React · Vue · Svelte<span>Export pages as components</span></a></li>
+    <li><a href="/roblox-ui-builder">Roblox UI<span>Design in the browser, export Luau</span></a></li>
+  </ul>
+</main>
+<footer>
+  <a href="/">openconstructor</a><a href="https://github.com/Kuloka/openconstructor">GitHub</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a>
+  <p>Free and open source under the MIT license.</p>
+</footer>
+</body>
+</html>

@@ -1,14 +1,23 @@
 {
-  // Cloudflare static-site deploy: `npm run deploy` builds and uploads dist/
+  // Cloudflare deploy: `npm run deploy` builds and uploads dist/.
+  // worker.js serves published pages at /p/<slug>; everything else is the static site.
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "openconstructor",
+  "main": "worker.js",
   "compatibility_date": "2026-11-04",
   "observability": {
     "enabled": true
   },
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "single-page-application"
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/p/*"]
+  },
+  // Public values (the anon key is safe to expose; access is governed by RLS)
+  "vars": {
+    "SUPABASE_URL": "https://cxzdfjccdggeudsjxjbp.supabase.co",
+    "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4emRmamNjZGdnZXVkc2p4amJwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM5ODY5MDcsImV4cCI6MjEwOTU2MjkwN30.5hP7ZGisLhXKGrxc2598Jhn9BuKsaraRMYNcmx9ldRY"
   },
   "routes": [
     { "pattern": "openconstructor.pw", "custom_domain": true },

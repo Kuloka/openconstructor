@@ -126,3 +126,7 @@
 .wl-nav nav .wl-gh:hover { color: #fff; background: #ffffff0d; }
 .wl-foot a, .wl a[href^='/'] { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
 
+.wl-guides { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 18px; max-width: 1120px; margin: 0 auto; padding: 28px 24px 8px; border-top: 1px solid #ffffff10; font-size: 13px; }
+.wl-guides span { color: #8f837e; text-transform: uppercase; letter-spacing: .08em; font-size: 11px; align-self: center; }
+.wl-guides a { color: #cbc0bb; text-decoration: none; transition: color .15s; }
+.wl-guides a:hover { color: #f06a3f; }

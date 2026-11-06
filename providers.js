@@ -46,16 +46,18 @@ export async function listModels(p, key){
   }).sort((a, b) => (a.paid - b.paid) || a.name.localeCompare(b.name));
 }
 
-export async function chat(p, key, model, system, user){
+// `images` are data: URLs (screenshots). Each API wants them in its own message format.
+export async function chat(p, key, model, system, user, images = []){
   if (p.kind === 'anthropic') {
-    const r = await fetch(`${p.base}/messages`, { method: 'POST', headers: anthropicHeaders(key), body: JSON.stringify({ model, max_tokens: 8000, system, messages: [{ role: 'user', content: user }] }) });
+    const content = images.length ? [...images.map(url => { const [, type, data] = url.match(/^data:([^;]+);base64,(.*)$/) || []; return { type: 'image', source: { type: 'base64', media_type: type, data } }; }), { type: 'text', text: user }] : user;
+    const r = await fetch(`${p.base}/messages`, { method: 'POST', headers: anthropicHeaders(key), body: JSON.stringify({ model, max_tokens: 8000, system, messages: [{ role: 'user', content }] }) });
     if (!r.ok) throw Error(await errorText(r));
     const d = await r.json();
     return (d.content || []).map(c => c.text || '').join('');
   }
   const headers = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key };
   if (p.id === 'openrouter') headers['X-Title'] = 'openconstructor';
-  const r = await fetch(`${p.base}/chat/completions`, { method: 'POST', headers, body: JSON.stringify({ model, ...(p.id === 'openrouter' ? { max_tokens: 8000 } : {}), messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }) });
+  const r = await fetch(`${p.base}/chat/completions`, { method: 'POST', headers, body: JSON.stringify({ model, ...(p.id === 'openrouter' ? { max_tokens: 8000 } : {}), messages: [{ role: 'system', content: system }, { role: 'user', content: images.length ? [{ type: 'text', text: user }, ...images.map(url => ({ type: 'image_url', image_url: { url } }))] : user }] }) });
   if (!r.ok) throw Error(await errorText(r));
   const d = await r.json();
   const c = d.choices?.[0]?.message?.content;

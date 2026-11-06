@@ -5,6 +5,10 @@ import './agent.css';
 import '../studio.css';
 import '../layout.js';
 import {canSend} from '../studio.js';
+import '../inline-edit.js';
+import '../publish.js';
+import '../projects.js';
+import '../theme.js';
 import Welcome from './Welcome';
 
 function Composer(){

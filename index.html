@@ -3,9 +3,68 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>openconstructor — build interfaces with blocks and AI</title>
-  <meta name="description" content="Visual interface builder: drag components onto a page, ask AI to build or change them, export clean HTML and CSS.">
+  <title>openconstructor — free AI interface builder · export to HTML, React &amp; Roblox</title>
+  <meta name="description" content="Free, open-source interface builder in your browser: 145 HTML+CSS components, an AI assistant with your own key, export to HTML, React, Vue, Svelte and Roblox.">
+  <link rel="canonical" href="https://openconstructor.pw/">
+  <meta name="theme-color" content="#0c0a09">
+  <meta name="color-scheme" content="dark">
+  <meta name="application-name" content="openconstructor">
   <link rel="icon" type="image/svg+xml" href="/src/logo.svg">
+  <link rel="manifest" href="/site.webmanifest">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="openconstructor">
+  <meta property="og:title" content="openconstructor — free AI interface builder">
+  <meta property="og:description" content="Build interfaces with words and blocks: 145 components, AI with your own key, export to HTML, React, Vue, Svelte, Roblox Luau and LÖVE 2D. Free and open source.">
+  <meta property="og:url" content="https://openconstructor.pw/">
+  <meta property="og:image" content="https://openconstructor.pw/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="openconstructor — Build interfaces with words and blocks">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="openconstructor — free AI interface builder">
+  <meta name="twitter:description" content="145 components, AI with your own key, export to HTML, React, Vue, Svelte, Roblox Luau and LÖVE 2D. Free and open source.">
+  <meta name="twitter:image" content="https://openconstructor.pw/og.png">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "SoftwareApplication",
+        "@id": "https://openconstructor.pw/#app",
+        "name": "openconstructor",
+        "url": "https://openconstructor.pw/",
+        "description": "Free, open-source in-browser interface builder: 145 HTML and CSS components on a free-form canvas, an AI assistant that uses your own provider key, and export to HTML, React, Vue, Svelte, Roblox (Luau) UI and LÖVE 2D (Lua).",
+        "applicationCategory": "DeveloperApplication",
+        "applicationSubCategory": "DesignApplication",
+        "operatingSystem": "Web",
+        "browserRequirements": "Requires a modern web browser with JavaScript enabled",
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "license": "https://opensource.org/licenses/MIT",
+        "image": "https://openconstructor.pw/og.png",
+        "sameAs": ["https://github.com/Kuloka/openconstructor"],
+        "featureList": [
+          "145 HTML and CSS components in 12 sections",
+          "Free-form canvas",
+          "AI assistant with your own key: OpenRouter, Google Gemini, Groq, Cerebras, Mistral, DeepSeek, OpenAI, Anthropic, xAI, Together AI",
+          "Export to HTML, React, Vue and Svelte",
+          "Export to Roblox (Luau) UI and LÖVE 2D (Lua)",
+          "AI ports to Flutter, SwiftUI, Jetpack Compose and Tailwind",
+          "Fusion: combine the purpose of one component with the style of another",
+          "Background editor"
+        ]
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://openconstructor.pw/#website",
+        "name": "openconstructor",
+        "url": "https://openconstructor.pw/",
+        "inLanguage": "en",
+        "about": { "@id": "https://openconstructor.pw/#app" }
+      }
+    ]
+  }
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap">
@@ -72,6 +131,10 @@
         </select>
         <div class="swatches" id="swatches" role="radiogroup" aria-label="Page background"></div></div>
         <div class="toolbar-group">
+          <div class="seg" role="radiogroup" aria-label="Layout mode" title="free: place blocks anywhere · stack: blocks flow top to bottom and adapt to any screen">
+            <button role="radio" data-layout="free">free</button><button role="radio" data-layout="stack">stack</button>
+          </div>
+          <button class="btn mini" id="devicePreview" title="Preview on phone, tablet and desktop">▣ preview</button>
           <div class="zoom"><button id="zoomOut" title="Zoom out (Ctrl −)">−</button><button id="zoomFit" title="Fit to screen (Ctrl+0)">100%</button><button id="zoomIn" title="Zoom in (Ctrl +)">+</button></div>
         </div>
       </div>
@@ -90,6 +153,7 @@
             <button class="empty-card" data-empty="library"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M17.5 14v7M14 17.5h7"/></svg><b>Add blocks</b><span>145 components in the left panel</span></button>
             <button class="empty-card" data-empty="welcome"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg><b>Use a template</b><span>landing, dashboard, shop…</span></button>
             <button class="empty-card" data-empty="Build a landing page for a coffee shop: header, hero, drinks menu and footer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg><b>Ask the AI</b><span>“a coffee shop landing page”</span></button>
+            <button class="empty-card" data-empty="screenshot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><b>From a screenshot</b><span>paste, drop or pick any design</span></button>
           </div>
         </div>
       </div>
@@ -101,6 +165,7 @@
       <div class="panel-head">
         <span class="panel-title"><span class="oc-logo tiny" aria-hidden="true"></span>ai assistant</span>
         <div class="panel-actions">
+          <button id="shotButton" title="Build from a screenshot (or paste / drop an image)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
           <button data-panel-action="max" data-panel="chat" title="Maximize">⤢</button>
           <button data-panel-action="swap" data-panel="chat" title="Move to the other side">⇄</button>
           <button data-panel-action="close" data-panel="chat" title="Hide (Ctrl+Shift+B)">×</button>
