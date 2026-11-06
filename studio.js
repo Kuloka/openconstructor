@@ -22,7 +22,7 @@ if (!Array.isArray(items)) items = [];
 items.forEach((it, i) => { if (typeof it.x !== 'number' || typeof it.y !== 'number') { it.x = 48 + (i % 3) * 320; it.y = 48 + Math.floor(i / 3) * 200; } });
 let selected = null, editing = null, history = [];
 function checkpoint(){ history.push(JSON.stringify(items)); if (history.length > 50) history.shift(); }
-function persist(){ store.set('form-canvas-v3', items); }
+function persist(){ store.set('form-canvas-v3', items); window.dispatchEvent(new CustomEvent('oc:changed')); }
 
 // Project name in the header
 const nameEl = $('projectName');
@@ -56,7 +56,7 @@ function previewDoc(code, wide){
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 function nodeDoc(item){
   const root = item.full ? `width:${page.w}px;padding:0` : `width:max-content;max-width:${page.w - 2 * PAD}px;padding:${PAD}px`;
-  return `<!doctype html><html><head>${CSP}<meta name="color-scheme" content="dark"><style>:root{color-scheme:dark}html,body{margin:0;background:transparent;color:#eee;font-family:system-ui;overflow:hidden}button{white-space:nowrap}#__root{display:inline-block;box-sizing:border-box;${root}}</style></head><body><div id="__root">${item.code}</div></body></html>`;
+  return `<!doctype html><html><head>${CSP}<meta name="color-scheme" content="dark"><style>:root{color-scheme:dark}html,body{margin:0;background:transparent;color:#eee;font-family:system-ui;overflow:hidden}button{white-space:nowrap}#__root{display:inline-block;box-sizing:border-box;${root}}</style>${page.themeCss ? `<style id="__theme">${page.themeCss}</style>` : ''}</head><body><div id="__root">${item.code}</div></body></html>`;
 }
 
 // Animated components (typewriter, expanding bars…) change size while they play, so the frame
@@ -517,7 +517,7 @@ function buildHTML(){
     ? `<div style="position:absolute;left:0;top:${it.y}px;width:${page.w}px">\n${it.code}\n</div>`
     : `<div style="position:absolute;left:${it.x}px;top:${it.y}px;padding:${PAD}px">\n${it.code}\n</div>`).join('\n');
   const title = escapeHTML(nameEl.textContent.trim() || 'My interface');
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=${page.w}"><title>${title}</title><style>html,body{margin:0}body{min-height:100vh;background:${page.bg};background-attachment:fixed;color:#eee;font-family:system-ui}.oc-page{position:relative;width:${page.w}px;height:${H}px;margin:0 auto}</style></head><body><div class="oc-page">\n${body}\n</div></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=${page.w}"><title>${title}</title><style>html,body{margin:0}body{min-height:100vh;background:${page.bg};background-attachment:fixed;color:#eee;font-family:system-ui}.oc-page{position:relative;width:${page.w}px;height:${H}px;margin:0 auto}</style>${page.themeCss ? `<style>${page.themeCss.replace(/#__root/g, '.oc-page')}</style>` : ''}</head><body><div class="oc-page">\n${body}\n</div></body></html>`;
 }
 function exportHTML(){
   if (!items.length) { setState('nothing to export: the page is empty', 'warn'); return; }
@@ -723,8 +723,31 @@ Rules:
 }
 $('prompt').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('send').click(); } });
 
-/* ── API for the welcome screen and menus ────────────────── */
+/* ── API for the welcome screen, menus and feature modules (publish, projects, theme…) ── */
 export const stats = { presets: presets.length };
+export const studio = {
+  // read
+  items: () => items.map(x => ({ ...x })),
+  page: () => ({ ...page }),
+  name: () => nameEl.textContent.trim() || 'my-interface',
+  selected: () => selected,
+  frame: id => nodes.get(id)?.querySelector('iframe') || null,
+  html: () => buildHTML(),
+  // write (each call is one undo step)
+  update(mutate){ checkpoint(); const next = mutate(items.map(x => ({ ...x }))); if (Array.isArray(next)) items = next; render(); },
+  setPage(patch, { refresh = false } = {}){ page = { ...page, ...patch }; store.set('oc-page', page); if (refresh) for (const el of nodes.values()) el._key = null; render(); },
+  load({ items: list = [], page: pg, name } = {}){
+    checkpoint(); items = list.map(x => ({ id: x.id || crypto.randomUUID(), ...x }));
+    if (pg) { page = { ...page, ...pg }; store.set('oc-page', page); $('pageSize').value = `${page.w}x${page.h}`; syncSwatches(); }
+    if (name) { nameEl.textContent = name; store.set('oc-name', name); }
+    selected = null; for (const el of nodes.values()) el._key = null; render(); requestAnimationFrame(fitZoom);
+  },
+  // feedback
+  status: (text, kind) => setState(text, kind),
+  say: (text, role = 'assistant') => message(text, role),
+  menu: (x, y, entries) => openCtx(x, y, entries),
+  ai: (request, custom) => runAI(request, custom),
+};
 export function loadTemplate(tpl){
   checkpoint();
   page = { ...page, ...tpl.page, ...(tpl.page?.bg ? { bgSpec: null } : {}) }; store.set('oc-page', page);
