@@ -4,6 +4,8 @@
 
 <p align="center">Build interfaces with words and blocks — an open-source, in-browser AI interface builder.</p>
 
+<p align="center"><a href="https://openconstructor.pw"><b>openconstructor.pw</b></a> — try it live</p>
+
 ---
 
 Drop ready-made components onto one shared canvas, move them around freely, and ask an AI model to build or change anything on the page. When you're done, export a single self-contained HTML file.
@@ -21,7 +23,7 @@ Drop ready-made components onto one shared canvas, move them around freely, and 
 ## Quick start
 
 ```bash
-git clone https://github.com/<your-username>/openconstructor.git
+git clone https://github.com/Kuloka/openconstructor.git
 cd openconstructor
 npm install
 npm run dev
