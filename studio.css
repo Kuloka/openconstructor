@@ -227,15 +227,17 @@ body.resizing iframe { pointer-events: none; }
 .ctx hr { margin: 4px 6px; border: 0; border-top: 1px solid var(--border-2); }
 
 /* ── Чат ────────────────────────────────────────────────── */
-.chat-messages { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 14px; padding: 12px 14px 16px; }
-.message { padding: 2px 0 2px 12px; border-left: 2px solid var(--border-2); color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; animation: msg-in .2s ease-out; }
-.message.user { border-left-color: var(--accent); color: var(--text); }
-.message.user::before { content: "› "; color: var(--accent); }
+.chat-messages { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 18px; padding: 20px 18px 24px; }
+/* Chat bubbles: square corners (the editor's sharp style), plenty of air */
+.message { align-self: flex-start; max-width: 92%; padding: 11px 14px; border: 1px solid var(--border); border-radius: 3px; background: var(--panel-2); color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; box-shadow: 0 1px 0 #ffffff05 inset, 0 6px 18px -12px #000; animation: msg-in .24s cubic-bezier(.2,.7,.2,1); }
+.message.user { align-self: flex-end; max-width: 86%; border-color: #e4572e55; background: linear-gradient(180deg, #e4572e1f, #e4572e12); color: var(--text); }
+.message.welcome { align-self: stretch; max-width: none; padding: 14px 16px; border-style: dashed; background: transparent; box-shadow: none; }
+.chat-day { align-self: center; color: var(--subtle); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
 .message strong { display: block; margin-bottom: 2px; color: var(--text); }
 .message p { margin: 2px 0 0; color: var(--muted); }
-@keyframes msg-in { from { opacity: 0; transform: translateY(3px); } }
-.message.thinking { display: grid; gap: 6px; border-left-color: var(--accent); color: var(--muted); white-space: normal; }
-.message.thinking.folded { border-left-color: var(--border-2); }
+@keyframes msg-in { from { opacity: 0; transform: translateY(6px) scale(.985); } }
+.message.thinking { display: grid; gap: 8px; align-self: stretch; max-width: none; border-color: #e4572e40; background: transparent; box-shadow: none; color: var(--muted); white-space: normal; }
+.message.thinking.folded { align-self: flex-start; padding: 6px 12px; border-color: var(--border); }
 .th-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: default; }
 .message.thinking.folded .th-head, .message.thinking .th-head[aria-expanded] { cursor: pointer; }
 .th-title { color: var(--text-2); }

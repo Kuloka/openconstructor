@@ -1089,6 +1089,51 @@ function retype(el, text){
     erase();
   });
 }
+/* ── Chat history: one conversation per project, kept in this browser ──
+   The last few turns also go to the model, so "make it brighter" works without repeating yourself. */
+const chatKey = (name = nameEl.textContent.trim() || 'my-interface') => 'oc-chat:' + name;
+let chatLog = store.get(chatKey(), []);
+if (!Array.isArray(chatLog)) chatLog = [];
+function logChat(role, text){
+  chatLog.push({ role, text: String(text ?? '').slice(0, 2000), t: Date.now() });
+  if (chatLog.length > 80) chatLog = chatLog.slice(-80);
+  store.set(chatKey(), chatLog);
+}
+// Recent turns for the model (short, text only)
+const chatContext = () => chatLog.slice(-6).map(m => `${m.role === 'user' ? 'User' : 'You'}: ${m.text.slice(0, 400)}`).join('\n');
+function renderChat(){
+  const box = $('messages');
+  [...box.children].forEach(n => { if (!n.classList.contains('welcome')) n.remove(); });
+  let lastDay = '';
+  for (const m of chatLog) {
+    const day = new Date(m.t).toDateString();
+    if (day !== lastDay) {
+      lastDay = day;
+      const d = document.createElement('div'); d.className = 'chat-day';
+      d.textContent = day === new Date().toDateString() ? 'today' : new Date(m.t).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+      box.append(d);
+    }
+    const n = document.createElement('div'); n.className = 'message ' + m.role; n.textContent = m.text; n.style.animation = 'none';
+    box.append(n);
+  }
+  toBottom();
+}
+function switchChat(){ chatLog = store.get(chatKey(), []); if (!Array.isArray(chatLog)) chatLog = []; renderChat(); }
+$('newChat').onclick = () => {
+  if (!chatLog.length) return;
+  chatLog = []; store.set(chatKey(), chatLog);
+  const box = $('messages');
+  box.animate([{ opacity: 1 }, { opacity: 0 }], { duration: reduceMotion() ? 0 : 140 }).onfinish = () => { renderChat(); box.animate([{ opacity: 0 }, { opacity: 1 }], { duration: reduceMotion() ? 0 : 180 }); };
+  setState('new chat');
+};
+// renaming the project carries its conversation along
+let nameBefore = nameEl.textContent.trim();
+nameEl.addEventListener('focus', () => { nameBefore = nameEl.textContent.trim(); });
+nameEl.addEventListener('blur', () => {
+  const now = nameEl.textContent.trim();
+  if (now && now !== nameBefore) { const old = store.get(chatKey(nameBefore), []); if (old.length && !store.get(chatKey(now), []).length) store.set(chatKey(now), old); switchChat(); }
+});
+
 function message(text, role){
   const node = document.createElement('div'); node.className = 'message ' + role;
   $('messages').append(node);
@@ -1327,6 +1372,8 @@ async function runAI(request, custom = {}){
   if (p.kind === 'proxy') { if (!authUser) { $('chatStatus').textContent = 'Sign in (free) to use openconstructor AI — or connect your own key in ⚙.'; openAuth('signup'); return; } }
   else if (!key) { $('chatStatus').textContent = `Add a ${p.name} key to use this model.`; openSettings(); return; }
   const target = custom.user ? null : items.find(x => x.id === selected);
+  const recent = custom.user ? '' : chatContext(); // turns before this one
+  logChat('user', request);
   const asked = message(request, 'user'); $('send').disabled = true; $('chatStatus').textContent = '';
   if (custom.shown?.length) {
     const strip = document.createElement('div'); strip.className = 'msg-attachments';
@@ -1354,7 +1401,7 @@ Rules:
   // photos already in the selected element travel as short kept:N tokens, not megabytes of base64
   const kept = [];
   const slim = code => String(code).replace(/data:image\/[\w.+-]+;base64,[A-Za-z0-9+/=]+/g, d => 'kept:' + kept.push(d));
-  const user = custom.user || ('Selected element: ' + JSON.stringify(target ? { name: target.name, code: slim(target.code) } : null) + '\nOther elements: ' + JSON.stringify(items.map(x => ({ name: x.name }))) + '\nRequest: ' + request + (custom.extra || ''));
+  const user = custom.user || ((recent ? 'Conversation so far (for context):\n' + recent + '\n\n' : '') + 'Selected element: ' + JSON.stringify(target ? { name: target.name, code: slim(target.code) } : null) + '\nOther elements: ' + JSON.stringify(items.map(x => ({ name: x.name }))) + '\nRequest: ' + request + (custom.extra || ''));
   try {
     // One automatic retry when the answer can't be parsed (free models sometimes break the format);
     // a model that rejects images gets the request again without them.
@@ -1376,7 +1423,7 @@ Rules:
     }
     if (result.action === 'reply' || (!result.code && result.reply)) {
       await stop.answer(); await stop.finish('answered');
-      setState('ready'); message(String(result.reply || '…'), 'assistant'); $('prompt').value = ''; return;
+      setState('ready'); message(String(result.reply || '…'), 'assistant'); logChat('assistant', result.reply || '…'); $('prompt').value = ''; return;
     }
     if (typeof result.code !== 'string' || !result.code.trim() || result.code.length > 200000) throw Error('Invalid code');
     await stop.compose(result.name, result.code);
@@ -1389,7 +1436,7 @@ Rules:
       selected = item.id; render();
     } else add(String(result.name || 'New element').slice(0, 80), result.code, { full, ...(custom.place || {}) });
     await stop.finish(result.action === 'update' && target ? 'updated on the canvas' : 'placed on the canvas'); setState('element ready', 'ok');
-    message(String(result.reply || 'Done. The element is on the page.'), 'assistant'); $('prompt').value = ''; window.dispatchEvent(new CustomEvent('oc:generated'));
+    message(String(result.reply || 'Done. The element is on the page.'), 'assistant'); logChat('assistant', result.reply || 'Done. The element is on the page.'); $('prompt').value = ''; window.dispatchEvent(new CustomEvent('oc:generated'));
   } catch (e) { stop(); setState('ai error', 'error'); $('chatStatus').textContent = 'Error: ' + e.message; message('Could not apply the response. Try again or pick another model.', 'assistant'); }
   finally { $('send').disabled = false; }
 }
@@ -1471,7 +1518,7 @@ export const studio = {
     // a loaded project brings its own screens (or none) — never keep the previous project's
     if (pg) { page = cleanPage({ ...page, screens: undefined, screen: undefined, ...pg }); store.set('oc-page', page); syncPageSize(); syncSwatches(); }
     window.dispatchEvent(new CustomEvent('oc:screens'));
-    if (name) { nameEl.textContent = name; store.set('oc-name', name); }
+    if (name) { nameEl.textContent = name; store.set('oc-name', name); switchChat(); }
     selected = null; for (const el of nodes.values()) el._key = null; render(); requestAnimationFrame(fitZoom);
   },
   // Switch the canvas to another screen's content: no undo step (undo history is per screen)
@@ -1521,5 +1568,6 @@ $('canvasEmpty').addEventListener('click', e => { const b = e.target.closest('[d
   else { window.dispatchEvent(new CustomEvent('oc:open-chat')); prefillPrompt(b.dataset.empty); } });
 
 render();
+renderChat();
 requestAnimationFrame(fitZoom);
 loadModels();
