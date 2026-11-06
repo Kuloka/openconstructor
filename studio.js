@@ -1148,6 +1148,7 @@ function thinking(){
       }
     }));
   };
+  end.step = label => { stopWaiting(); return step(label); };
   end.answer = () => { stopWaiting(); retype(title, 'answering'); return queue; };
   // Fold into a one-line summary that stays in the chat
   end.finish = (lastStep = 'done') => {
@@ -1167,6 +1168,57 @@ function thinking(){
     }));
   };
   return end;
+}
+
+/* ── Photos and attachments in AI answers ──
+   The model writes src="photo:latte art" / url('photo:cozy cafe?portrait') for stock photos and
+   src="attachment:1" for the user's attached images; here they become data: URLs (frames and exports
+   can't load anything from the network). Photos come from /api/photo (worker.js). */
+// only inside attribute values / url(): visible text like "photo: by Anna" stays untouched
+const MEDIA_RE = /(?<=["'(]\s*)(photo|attachment|kept):([^"'()<>\n]{1,80})/g;
+const PLACEHOLDER = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 10"><defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="#3a2a24"/><stop offset="1" stop-color="#15110f"/></linearGradient></defs><rect width="16" height="10" fill="url(#g)"/></svg>').replace(/'/g, '%27').replace(/\(/g, '%28').replace(/\)/g, '%29');
+async function toDataURL(blob, max = 900, quality = .72){
+  const bmp = await createImageBitmap(blob);
+  const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height); bmp.close?.();
+  const webp = c.toDataURL('image/webp', quality);
+  return webp.startsWith('data:image/webp') ? webp : c.toDataURL('image/jpeg', quality);
+}
+const photoCache = new Map(); // "query|orientation|index" → data URL (same request twice → same photo)
+async function fetchPhoto(q, o, i){
+  const key = `${q}|${o}|${i}`;
+  if (!photoCache.has(key)) photoCache.set(key, (async () => {
+    const r = await fetch(`/api/photo?q=${encodeURIComponent(q)}&o=${o}&i=${i}`);
+    if (!r.ok) throw Error('no photo');
+    return toDataURL(await r.blob());
+  })().catch(e => { photoCache.delete(key); throw e; }));
+  return photoCache.get(key);
+}
+// Replace every photo:/attachment: token. Repeats of one query get different photos (i = 0, 1, 2…).
+// kept:N = an image the element already had (sent to the model as a short token).
+async function resolveMedia(code, attachments = [], onPhotos, kept = []){
+  const found = [...code.matchAll(MEDIA_RE)];
+  if (!found.length) return code;
+  const seen = new Map(), jobs = [];
+  for (const m of found) {
+    if (m[1] !== 'photo') continue;
+    let [q, o = 'landscape'] = m[2].trim().split('?');
+    q = q.trim().toLowerCase(); if (!['landscape', 'portrait', 'square'].includes(o)) o = 'landscape';
+    const n = seen.get(q + '|' + o) || 0; seen.set(q + '|' + o, n + 1);
+    m.job = { q, o, i: n % 8 };
+    if (jobs.length < 12 && !jobs.some(j => j.q === q && j.o === o && j.i === m.job.i)) jobs.push(m.job);
+  }
+  if (jobs.length) onPhotos?.([...new Set(jobs.map(j => j.q))]);
+  const got = new Map();
+  await Promise.all(jobs.map(j => fetchPhoto(j.q, j.o, j.i).then(url => got.set(`${j.q}|${j.o}|${j.i}`, url), () => {})));
+  let k = 0;
+  return code.replace(MEDIA_RE, (all, kind, ref) => {
+    const m = found[k++];
+    if (kind === 'attachment') { const a = attachments.filter(x => x.url)[(parseInt(ref) || 1) - 1]; return a?.url || PLACEHOLDER; }
+    if (kind === 'kept') return kept[(parseInt(ref) || 1) - 1] || PLACEHOLDER;
+    const j = m?.job; return (j && got.get(`${j.q}|${j.o}|${j.i}`)) || PLACEHOLDER;
+  });
 }
 
 // Answer format: a one-line JSON header (no code) followed by the code in a ```html block.
@@ -1238,7 +1290,35 @@ function parseAnswer(content){
   return result;
 }
 
-$('send').onclick = () => { const request = $('prompt').value.trim(); if (request) runAI(request); };
+/* ── Attachments from the chat box (+): images and text files go along with the next request ── */
+let pendingAttachments = [];
+export const setAttachments = list => { pendingAttachments = Array.isArray(list) ? list : []; };
+// An attached image as a page-ready data URL plus its size
+export async function readAttachment(file){
+  if (file.type.startsWith('image/')) {
+    if (file.size > 15e6) throw Error('image is too large (max 15 MB)');
+    const url = await toDataURL(file, 1200, .8);
+    const bmp = await createImageBitmap(file); const out = { id: crypto.randomUUID(), name: file.name || 'image', url, w: bmp.width, h: bmp.height }; bmp.close?.();
+    return out;
+  }
+  if (file.size > 300e3) throw Error(`${file.name} is too large (text files up to 300 KB)`);
+  return { id: crypto.randomUUID(), name: file.name, text: await file.text(), size: file.size };
+}
+$('send').onclick = () => {
+  const request = $('prompt').value.trim(), att = pendingAttachments;
+  if (!request && !att.length) return;
+  if (!att.length) return runAI(request);
+  pendingAttachments = []; window.dispatchEvent(new CustomEvent('oc:attachments-sent'));
+  const imgs = att.filter(a => a.url), files = att.filter(a => a.text != null);
+  const vision = byId(current().pid)?.kind !== 'proxy';
+  const custom = { attachments: att, shown: att };
+  if (imgs.length) {
+    custom.attachNote = `\n- The user attached ${imgs.length} image(s): ${imgs.map((a, i) => `attachment:${i + 1} = "${a.name}" (${a.w}×${a.h})`).join(', ')}. ${vision ? 'They are included so you can see them.' : 'You cannot see them — go by their names.'} When the user wants them on the page (their logo, product or team photo…), use src="attachment:N" or url('attachment:N') exactly, and prefer them over stock photos.`;
+    if (vision) custom.images = imgs.map(a => a.url);
+  }
+  if (files.length) custom.extra = files.map(f => `\n\nAttached file "${f.name}":\n${f.text.slice(0, 20000)}`).join('');
+  runAI(request || (imgs.length ? 'Use the attached image' + (imgs.length > 1 ? 's' : '') : 'Use the attached file'), custom);
+};
 
 // One AI round-trip. `custom.user` replaces the default context (used by Fusion); `custom.place` positions a new element.
 async function runAI(request, custom = {}){
@@ -1247,7 +1327,12 @@ async function runAI(request, custom = {}){
   if (p.kind === 'proxy') { if (!authUser) { $('chatStatus').textContent = 'Sign in (free) to use openconstructor AI — or connect your own key in ⚙.'; openAuth('signup'); return; } }
   else if (!key) { $('chatStatus').textContent = `Add a ${p.name} key to use this model.`; openSettings(); return; }
   const target = custom.user ? null : items.find(x => x.id === selected);
-  message(request, 'user'); $('send').disabled = true; $('chatStatus').textContent = '';
+  const asked = message(request, 'user'); $('send').disabled = true; $('chatStatus').textContent = '';
+  if (custom.shown?.length) {
+    const strip = document.createElement('div'); strip.className = 'msg-attachments';
+    strip.innerHTML = custom.shown.map(a => a.url ? `<img src="${a.url}" alt="${escapeHTML(a.name)}" title="${escapeHTML(a.name)}">` : `<span class="msg-file">📄 ${escapeHTML(a.name)}</span>`).join('');
+    asked.append(strip); toBottom();
+  }
   const stop = thinking();
   const system = `You are openconstructor AI, you build interfaces. Answer in EXACTLY this format and nothing else:
 line 1 — a one-line JSON header WITHOUT the code: {"action":"add|update|reply","full":true|false,"name":"short element name","reply":"short reply to the user"}
@@ -1260,22 +1345,42 @@ Rules:
 - If the message is just conversation or a question (a greeting, thanks, "what can you do", how-to) and does not ask to build or change something, use action "reply" with only the "reply" field — do NOT create an element.
 - If the user asks to change the selected element, use action "update"; if they ask to build something, "add".
 - Page: ${page.w}×${page.h}px, ${isLightPage() ? 'light' : 'dark'} background. If the user asks for a website, landing page, page or section, set "full": true and build a complete full-width layout (header, hero, content blocks, footer) with a root element of width:100%. For a standalone component (button, card, form), set "full": false, width up to 360px.
-- Self-contained HTML and CSS only: one <style> plus markup. No JavaScript, external links, images or fonts. Icons as inline SVG.
+- Self-contained HTML and CSS only: one <style> plus markup. No JavaScript, external links or fonts. Icons as inline SVG.
+- Real photos make pages feel finished: for websites, landing pages, heroes, product/menu cards, galleries, team and testimonials use photos — <img src="photo:2-4 English words" alt="…"> sized by CSS with object-fit:cover, or background-image:url('photo:2-4 English words'). Append ?portrait or ?square for tall or square slots (photo:barista portrait?portrait). Describe what should be in the picture (photo:latte art cup, photo:cozy cafe interior). Never write http image URLs. Small UI components (buttons, inputs, toggles) need no photos.${custom.attachNote || ''}
 - Do not style html or body; use unique class names with a shared prefix.
 - Clean, modern design: spacing, heading hierarchy, rounded corners, shadows, hover states. Respect prefers-reduced-motion for animations.
 - Write all UI text in the components in the same language as the user's request.
 - Keep the code compact (no comments, no repeated boilerplate) so the answer fits in one response.`;
-  const user = custom.user || ('Selected element: ' + JSON.stringify(target ? { name: target.name, code: target.code } : null) + '\nOther elements: ' + JSON.stringify(items.map(x => ({ name: x.name }))) + '\nRequest: ' + request);
+  // photos already in the selected element travel as short kept:N tokens, not megabytes of base64
+  const kept = [];
+  const slim = code => String(code).replace(/data:image\/[\w.+-]+;base64,[A-Za-z0-9+/=]+/g, d => 'kept:' + kept.push(d));
+  const user = custom.user || ('Selected element: ' + JSON.stringify(target ? { name: target.name, code: slim(target.code) } : null) + '\nOther elements: ' + JSON.stringify(items.map(x => ({ name: x.name }))) + '\nRequest: ' + request + (custom.extra || ''));
   try {
-    const content = await chat(p, key, m.id, system, user, custom.images || []);
-    if (typeof content !== 'string' || !content.trim()) throw Error('Empty model response');
-    const result = parseAnswer(content);
+    // One automatic retry when the answer can't be parsed (free models sometimes break the format);
+    // a model that rejects images gets the request again without them.
+    let result, images = custom.images || [];
+    for (let attempt = 0; ; attempt++) {
+      let content;
+      const ask = attempt ? user + '\n\nIMPORTANT: your previous answer could not be read. Reply EXACTLY in the required format: the one-line JSON header, then ONE ```html block.' : user;
+      try { content = await chat(p, key, m.id, system, ask, images); }
+      catch (err) {
+        if (images.length && attempt < 2 && ![401, 429].includes(err.status)) { images = []; stop.step('this model can’t see images — continuing without them'); continue; }
+        throw err;
+      }
+      try {
+        if (typeof content !== 'string' || !content.trim()) throw Error('Empty model response');
+        result = parseAnswer(content);
+        if (!(result.action === 'reply' || (!result.code && result.reply)) && (typeof result.code !== 'string' || !result.code.trim())) throw Error('Invalid code');
+        break;
+      } catch (err) { if (attempt >= 1) throw err; stop.step('the answer came out garbled — asking again'); }
+    }
     if (result.action === 'reply' || (!result.code && result.reply)) {
       await stop.answer(); await stop.finish('answered');
       setState('ready'); message(String(result.reply || '…'), 'assistant'); $('prompt').value = ''; return;
     }
     if (typeof result.code !== 'string' || !result.code.trim() || result.code.length > 200000) throw Error('Invalid code');
     await stop.compose(result.name, result.code);
+    result.code = await resolveMedia(result.code, custom.attachments || [], qs => stop.step('finding photos: ' + qs.slice(0, 4).join(', ') + (qs.length > 4 ? '…' : '')), kept);
     const full = result.full === true || result.full === 'true';
     if (result.action === 'update' && target) {
       const item = items.find(x => x.id === target.id); if (!item) throw Error('The element was deleted during the request');
@@ -1325,6 +1430,7 @@ export const pickScreenshot = () => shotInput.click();
 $('shotButton')?.addEventListener('click', pickScreenshot);
 // Paste an image anywhere outside text fields (or into the chat box) to rebuild it
 addEventListener('paste', e => {
+  if (e.target.closest?.('#react-composer')) return; // pasted into the chat box: it becomes an attachment
   const file = [...(e.clipboardData?.files || [])].find(f => f.type.startsWith('image/'));
   if (!file) return;
   e.preventDefault(); fromScreenshot(file);

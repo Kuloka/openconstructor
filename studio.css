@@ -641,3 +641,8 @@ body.resizing iframe { pointer-events: none; }
 .align-bar i { width: 1px; height: 18px; margin: 0 4px; background: var(--border-2); }
 .prov-free { border-color: #e4572e66 !important; background: linear-gradient(90deg, #e4572e12, transparent 60%); }
 .prov-free .btn { flex: none; }
+
+/* Attachments shown under the user's chat message */
+.msg-attachments { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.msg-attachments img { width: 64px; height: 64px; object-fit: cover; border: 1px solid var(--border); border-radius: 6px; animation: msg-in .2s ease-out; }
+.msg-file { display: inline-flex; align-items: center; height: 26px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel-2); color: var(--text-2); font-size: 11px; }

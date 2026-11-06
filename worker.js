@@ -258,6 +258,64 @@ async function aiQuota(request, env){
   }
 }
 
+/* ── Stock photos for AI-built pages ─────────────────────────
+   GET /api/photo?q=latte+art&o=landscape|portrait|square&i=0
+   Returns one image (bytes) for a short search query. Pexels when PEXELS_API_KEY is set (free key,
+   no attribution required), otherwise Openverse limited to CC0 / public domain (no key, no attribution).
+   The editor turns it into a data: URL, so pages stay self-contained. Cached at the edge for a week. */
+const PHOTO_UA = 'openconstructor/1.0 (+https://openconstructor.pw)';
+async function photoSearch(env, q, o){
+  if (env.PEXELS_API_KEY) {
+    const r = await fetch(`https://api.pexels.com/v1/search?query=${encodeURIComponent(q)}&per_page=8&orientation=${o}`, { headers: { Authorization: env.PEXELS_API_KEY } });
+    if (r.ok) {
+      const d = await r.json();
+      const list = (d.photos || []).map(p => ({ urls: [o === 'portrait' && p.src.portrait ? p.src.portrait : p.src.large], credit: `Photo by ${p.photographer} on Pexels` }));
+      if (list.length) return list;
+    }
+  }
+  const aspect = o === 'landscape' ? 'wide' : o === 'portrait' ? 'tall' : 'square';
+  const search = async extra => {
+    const r = await fetch(`https://api.openverse.org/v1/images/?q=${encodeURIComponent(q)}&page_size=8&license=cc0,pdm&mature=false&size=medium,large${extra}`, { headers: { 'User-Agent': PHOTO_UA } });
+    if (!r.ok) return [];
+    const d = await r.json();
+    return (d.results || []).map(x => ({ urls: x.source === 'stocksnap' ? [x.thumbnail + '?full_size=true', x.thumbnail] : x.width && x.width <= 1600 ? [x.url, x.thumbnail] : [x.thumbnail], credit: `${x.title || 'Photo'} — ${x.creator || 'unknown'} (${String(x.license).toUpperCase()})` }));
+  };
+  // StockSnap (CC0 stock photography, 960px) first: general Openverse results are often snapshots
+  let list = await search(`&source=stocksnap&aspect_ratio=${aspect}`);
+  if (list.length < 3) list = [...list, ...await search('&source=stocksnap')];
+  if (!list.length) list = await search(`&aspect_ratio=${aspect}`);
+  if (!list.length) list = await search('');
+  return list;
+}
+async function photo(request, env, ctx, url){
+  const q = (url.searchParams.get('q') || '').replace(/[^\p{L}\p{N} &'-]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 60).toLowerCase();
+  if (!q) return fail(400, 'Missing ?q= search words.');
+  const o = ['landscape', 'portrait', 'square'].includes(url.searchParams.get('o')) ? url.searchParams.get('o') : 'landscape';
+  const i = Math.min(7, Math.max(0, parseInt(url.searchParams.get('i')) || 0));
+  const cache = caches.default, key = new Request(`https://photo-cache.invalid/v3/${o}/${i}/${encodeURIComponent(q)}`);
+  const hit = await cache.match(key); if (hit) return hit;
+  let list;
+  try { list = await photoSearch(env, q, o); } catch { list = []; }
+  if (!list.length) return fail(404, 'No photo found.');
+  // start at the requested result, fall through to the next ones when a host refuses
+  let img = null, pick = null, type = '';
+  for (let k = 0; k < Math.min(4, list.length) && !img; k++) {
+    pick = list[(i + k) % list.length];
+    for (const u of pick.urls) {
+      try {
+        const r = await fetch(u, { headers: { 'User-Agent': PHOTO_UA }, cf: { cacheTtl: 604800 } });
+        type = r.headers.get('Content-Type') || '';
+        if (r.ok && type.startsWith('image/') && (+r.headers.get('Content-Length') || 0) <= 12e6) { img = r; break; }
+        r.body?.cancel();
+      } catch {}
+    }
+  }
+  if (!img) return fail(502, 'Could not load the photo.');
+  const res = new Response(img.body, { headers: { 'Content-Type': type, 'Cache-Control': 'public, max-age=604800', 'X-Photo-Credit': encodeURIComponent(pick.credit).slice(0, 400) } });
+  ctx.waitUntil(cache.put(key, res.clone()));
+  return res;
+}
+
 /* ── Roblox Studio sync ──────────────────────────────────────
    POST /api/sync        (signed in) { code?, spec } → { code }   stores the UI tree under a sync code
    GET  /api/sync/<code> (public, the code is the secret)        → spec, read by the Studio plugin
@@ -321,6 +379,7 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === '/api/ai' || url.pathname === '/api/ai/') return aiChat(request, env);
     if (url.pathname === '/api/ai/quota') return aiQuota(request, env);
+    if (url.pathname === '/api/photo') return request.method === 'GET' ? photo(request, env, ctx, url) : fail(405, 'Method not allowed', { Allow: 'GET' });
     if (url.pathname === '/api/sync') return request.method === 'POST' ? syncPut(request, env) : fail(405, 'Method not allowed', { Allow: 'POST' });
     const sm = /^\/api\/sync\/([^/]+)$/.exec(url.pathname);
     if (sm) return request.method === 'GET' ? syncGet(request, env, ctx, sm[1]) : fail(405, 'Method not allowed', { Allow: 'GET' });

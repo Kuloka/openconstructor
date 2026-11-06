@@ -17,6 +17,7 @@ Drop ready-made components onto one shared canvas, move them around freely, and 
 - **Background editor** — solid, linear, radial and mesh gradients, dot / grid / line / noise patterns, or raw CSS.
 - **⚗ Fusion** — right-click an element → *fuse with…* → click another: the AI breeds a new component that does the first one's job in the second one's visual style.
 - **AI assistant** — 20 free generations a day when signed in (GPT-OSS 120B via a small server proxy), or bring your own key for OpenRouter, Google Gemini, Groq, Cerebras, Mistral, DeepSeek, OpenAI, Anthropic, xAI or Together — those keys stay in your browser and go only to the provider you choose. Paste a screenshot to rebuild it with a vision model.
+- **Real photos & attachments** — the AI fills sites with stock photos (CC0, found by what should be in the picture) instead of grey boxes; press **+** or paste/drop to attach your logo, product photos or a text file to a request.
 - **Edit without code** — double-click to edit text in place, restyle any part, swap in your own image, tune every animation (speed, direction, repeats).
 - **Multi-select** — Shift-click or Shift-drag a box, move together, align & distribute; smart guides while dragging.
 - **Screens & prototypes** — menu → shop → inventory: several screens in one project, link any button to `#screen` and it opens that screen in ▶ play, in the published page and in the Roblox export.

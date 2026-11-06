@@ -201,10 +201,11 @@ export const InputBar = memo(function InputBar({
 
   const handleSubmit = useCallback(() => {
     const trimmed = input.trim();
-    if (!trimmed || isStreaming || disabled) return;
+    // attachments alone are enough to send
+    if ((!trimmed && !attachedImages.length && !attachedFiles.length) || isStreaming || disabled) return;
     onSend({ role: "user", content: trimmed });
     setInput("");
-  }, [input, isStreaming, disabled, onSend, setInput]);
+  }, [input, isStreaming, disabled, onSend, setInput, attachedImages.length, attachedFiles.length]);
 
   const handleInfoBarClose = useCallback(() => {
     setIsInfoBarOpen(false);
@@ -541,7 +542,7 @@ export const InputBar = memo(function InputBar({
                   onClick={() => {
                     if (isStreaming) {
                       onStop();
-                    } else if (hasInput) {
+                    } else if (hasInput || hasContextItems) {
                       handleSubmit();
                     }
                   }}
@@ -551,7 +552,7 @@ export const InputBar = memo(function InputBar({
                     state={
                       isStreaming
                         ? "streaming"
-                        : hasInput && !disabled
+                        : (hasInput || hasContextItems) && !disabled
                           ? "typing"
                           : "idle"
                     }
