@@ -910,4 +910,5 @@ export default {
   "🔓 unlock position": "🔓 открепить",
   "locked: the block stays put (right-click → unlock)": "закреплено: блок не сдвинется (правый клик → открепить)",
   "unlocked: the block can be moved again": "откреплено: блок снова можно двигать",
+  "ai models ↗": "ии-модели ↗",
 };

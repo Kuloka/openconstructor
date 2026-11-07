@@ -907,4 +907,5 @@ export default {
   "🔓 unlock position": "🔓 desbloquear posición",
   "locked: the block stays put (right-click → unlock)": "bloqueado: el bloque no se mueve (clic derecho → desbloquear)",
   "unlocked: the block can be moved again": "desbloqueado: el bloque se puede mover",
+  "ai models ↗": "modelos de IA ↗",
 };

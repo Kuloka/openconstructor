@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Free AI models for building websites — tested · openconstructor</title>
+<link rel="canonical" href="https://openconstructor.pw/ai-models">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<meta name="description" content="We gave the same landing page task to every free AI model on Groq and OpenRouter: speed, answer format and design quality, with screenshots. Plus the cheapest paid models by cost per page.">
+<meta name="theme-color" content="#0c0a09">
+<meta property="og:title" content="Free AI models for building websites — tested">
+<meta property="og:description" content="Same task, every free model: speed, reliability and design, with screenshots.">
+<meta property="og:url" content="https://openconstructor.pw/ai-models">
+<meta property="og:image" content="https://openconstructor.pw/og.png">
+<link rel="stylesheet" href="/pages.css">
+<style>
+  main.wide { max-width: 1120px; }
+  .top { max-width: 1120px; }
+  .tbl { overflow-x: auto; margin: 14px 0; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+  .tbl table { min-width: 820px; font-size: 14px; }
+  .tbl th { position: sticky; top: 0; background: #1c1716; font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+  .tbl tr:last-child td { border-bottom: 0; }
+  .tbl td small { display: block; color: var(--muted); font-size: 12px; }
+  .tbl td small code { padding: 0; background: none; font-size: 11.5px; color: var(--muted); }
+  .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .rk { color: var(--muted); font: 600 13px ui-monospace, Consolas, monospace; }
+  .score { color: var(--accent-2); font-size: 17px; }
+  .bar { display: inline-block; width: 60px; height: 6px; margin-right: 6px; border-radius: 3px; background: #2a2321; vertical-align: middle; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: linear-gradient(90deg, #e4572e, #f0a07a); }
+  .picks { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 18px 0; }
+  .picks div { padding: 16px 18px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+  .picks em { color: var(--accent-2); font: 600 11px ui-monospace, Consolas, monospace; font-style: normal; letter-spacing: .08em; text-transform: uppercase; }
+  .picks b { display: block; margin: 4px 0; color: var(--head); font-size: 17px; }
+  .picks p { margin: 0; font-size: 14px; line-height: 1.6; }
+  .shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; margin: 16px 0; }
+  .shots figure { margin: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+  .shots img { display: block; width: 100%; height: auto; border-bottom: 1px solid var(--line); }
+  .shots figcaption { display: flex; justify-content: space-between; gap: 8px; padding: 8px 12px; font-size: 13px; }
+  .shots figcaption b { color: var(--head); font-weight: 600; }
+  .shots figcaption span { color: var(--accent-2); white-space: nowrap; }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="home" href="/"><img src="/favicon.svg" alt="" width="24" height="24"><span><i>open</i>constructor</span></a>
+  <nav aria-label="Guides">
+    <a href="/gallery">Gallery</a>
+    <a href="/ai-models" aria-current="page">AI models</a>
+    <a href="/components">Components</a>
+    <a href="/changelog">What's new</a>
+  </nav>
+</header>
+<main class="wide">
+  <div class="kicker">Tested November 7, 2026</div>
+  <h1>Free AI models for building websites</h1>
+  <p class="lead">Every free text model on Groq and OpenRouter got the same two tasks from the openconstructor editor: build a coffee-shop landing page, and answer a short CSS question. We measured the time, checked the answer format and looked at the result.</p>
+
+  <div class="picks">
+    <div><em>Best design</em><b>Qwen 3.8 27B · Groq</b><p>Clearly the nicest pages. On the free plan — about one page a minute.</p></div>
+    <div><em>Fast &amp; reliable</em><b>GPT-OSS 120B · Groq</b><p>A full page in ~2 seconds, never broke the format. What the free AI uses first.</p></div>
+    <div><em>Best on OpenRouter</em><b>Nemotron 3 Ultra 550B</b><p>Polished result with icons; takes ~40 seconds.</p></div>
+  </div>
+
+  <h2>Free models — rating</h2>
+  <p>Score = design 65% + speed 20% + reliability 15%. Design is a 0–10 visual grade of the landing page; speed is the time to the full answer; reliability counts broken formats and rate limits.</p>
+  <div class="tbl"><table>
+    <tr><th>#</th><th>Model</th><th class="num">Score</th><th>Design</th><th class="num">Page</th><th class="num">Question</th><th>Notes</th></tr>
+    <tr><td class="rk">1</td><td><b>Qwen 3.8 27B</b><small>Groq · <code>qwen/qwen3.8-27b</code></small></td><td class="num"><b class="score">8.4</b></td><td><span class="bar"><i style="width:90%"></i></span> 9</td><td class="num">5.0 s</td><td class="num">—</td><td>Best design by far: serif headings, icons, warm palette. Free plan allows about one page a minute; the next request right after gets rate-limited.</td></tr><tr><td class="rk">2</td><td><b>Nemotron 3 Ultra 550B</b><small>OpenRouter · <code>nvidia/nemotron-3-ultra-550b-a55b:free</code></small></td><td class="num"><b class="score">7.8</b></td><td><span class="bar"><i style="width:85%"></i></span> 8.5</td><td class="num">38.0 s</td><td class="num">5.7 s</td><td>Polished, complete page with icons and footer. Slow, but reliable.</td></tr><tr><td class="rk">3</td><td><b>GPT-OSS 120B</b><small>Groq · <code>openai/gpt-oss-120b</code></small></td><td class="num"><b class="score">7.4</b></td><td><span class="bar"><i style="width:60%"></i></span> 6</td><td class="num">2.3 s</td><td class="num">0.7 s</td><td>Clean and simple. The fastest dependable choice — the default for the free AI.</td></tr><tr><td class="rk">4</td><td><b>North Mini Code</b><small>OpenRouter · <code>cohere/north-mini-code:free</code></small></td><td class="num"><b class="score">6.9</b></td><td><span class="bar"><i style="width:65%"></i></span> 6.5</td><td class="num">17.2 s</td><td class="num">1.2 s</td><td>Neat cards with icons; plain hero.</td></tr><tr><td class="rk">5</td><td><b>Flint v1.0</b><small>OpenRouter · <code>recursive/flint-v1.0:free</code></small></td><td class="num"><b class="score">6.8</b></td><td><span class="bar"><i style="width:75%"></i></span> 7.5</td><td class="num">40.5 s</td><td class="num">4.1 s</td><td>Tasteful serif look, good menu cards. Slow.</td></tr><tr><td class="rk">6</td><td><b>GPT-OSS 20B</b><small>Groq · <code>openai/gpt-oss-20b</code></small></td><td class="num"><b class="score">6.8</b></td><td><span class="bar"><i style="width:50%"></i></span> 5</td><td class="num">1.1 s</td><td class="num">0.4 s</td><td>Fastest of all, but plainer; menu links came out unstyled blue.</td></tr><tr><td class="rk">7</td><td><b>LFM 2.5 2.6B</b><small>OpenRouter · <code>liquid/lfm-2.5-2.6b:free</code></small></td><td class="num"><b class="score">6.7</b></td><td><span class="bar"><i style="width:55%"></i></span> 5.5</td><td class="num">5.1 s</td><td class="num">0.9 s</td><td>Tiny and quick; bold but generic colours.</td></tr><tr><td class="rk">8</td><td><b>Nemotron 3.5 Super VL</b><small>OpenRouter · <code>nvidia/nemotron-3.5-super-vl:free</code></small></td><td class="num"><b class="score">6.5</b></td><td><span class="bar"><i style="width:65%"></i></span> 6.5</td><td class="num">33.4 s</td><td class="num">4.1 s</td><td>Solid, a bit plain. Can also read screenshots.</td></tr><tr><td class="rk">9</td><td><b>Nemotron 3 Nano Omni 30B</b><small>OpenRouter · <code>nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free</code></small></td><td class="num"><b class="score">5.3</b></td><td><span class="bar"><i style="width:40%"></i></span> 4</td><td class="num">16.8 s</td><td class="num">5.1 s</td><td>Very small layout, little content.</td></tr><tr><td class="rk">10</td><td><b>Nemotron 3.5 Lightning</b><small>OpenRouter · <code>nvidia/nemotron-3.5-lightning:free</code></small></td><td class="num"><b class="score">5.2</b></td><td><span class="bar"><i style="width:50%"></i></span> 5</td><td class="num">43.0 s</td><td class="num">10.8 s</td><td>Narrow menu column, slow despite the name.</td></tr><tr><td class="rk">11</td><td><b>Dots 3 Note (preview)</b><small>OpenRouter · <code>dots-studio/dots-3-note-preview:free</code></small></td><td class="num"><b class="score">4.5</b></td><td><span class="bar"><i style="width:40%"></i></span> 4</td><td class="num">70.2 s</td><td class="num">10.0 s</td><td>Very slow; the menu section came out cut off.</td></tr>
+  </table></div>
+  <p class="muted" style="color:var(--muted);font-size:14px">Not rated this time:</p>
+  <ul style="font-size:14px"><li><b>Gemma 4 31B</b> <code>google/gemma-4-31b-it:free</code> — busy at the provider (429) in every attempt</li><li><b>Gemma 4 26B</b> <code>google/gemma-4-26b-a4b-it:free</code> — busy at the provider (429) in every attempt</li><li><b>Xing 4.0 29B</b> <code>xingchen-agi/xing4.0-29b-a4b:free</code> — answered the question; the page request was rate-limited</li><li><b>LFM 3 1.7B</b> <code>liquid/lfm-3-1.7b:free</code> — ran out of tokens and broke the answer format</li></ul>
+
+  <h2>What they built</h2>
+  <p>The landing pages exactly as each model returned them (top of the page).</p>
+  <div class="shots"><figure><img src="/ai-models/qwen3.8-27b.webp" alt="Landing page made by Qwen 3.8 27B" loading="lazy" width="640" height="444"><figcaption><b>1. Qwen 3.8 27B</b><span>8.4 / 10</span></figcaption></figure><figure><img src="/ai-models/nemotron-3-ultra-550b-a55b.webp" alt="Landing page made by Nemotron 3 Ultra 550B" loading="lazy" width="640" height="444"><figcaption><b>2. Nemotron 3 Ultra 550B</b><span>7.8 / 10</span></figcaption></figure><figure><img src="/ai-models/gpt-oss-120b.webp" alt="Landing page made by GPT-OSS 120B" loading="lazy" width="640" height="444"><figcaption><b>3. GPT-OSS 120B</b><span>7.4 / 10</span></figcaption></figure><figure><img src="/ai-models/north-mini-code.webp" alt="Landing page made by North Mini Code" loading="lazy" width="640" height="444"><figcaption><b>4. North Mini Code</b><span>6.9 / 10</span></figcaption></figure><figure><img src="/ai-models/flint-v1.0.webp" alt="Landing page made by Flint v1.0" loading="lazy" width="640" height="444"><figcaption><b>5. Flint v1.0</b><span>6.8 / 10</span></figcaption></figure><figure><img src="/ai-models/gpt-oss-20b.webp" alt="Landing page made by GPT-OSS 20B" loading="lazy" width="640" height="444"><figcaption><b>6. GPT-OSS 20B</b><span>6.8 / 10</span></figcaption></figure><figure><img src="/ai-models/lfm-2.5-2.6b.webp" alt="Landing page made by LFM 2.5 2.6B" loading="lazy" width="640" height="444"><figcaption><b>7. LFM 2.5 2.6B</b><span>6.7 / 10</span></figcaption></figure><figure><img src="/ai-models/nemotron-3.5-super-vl.webp" alt="Landing page made by Nemotron 3.5 Super VL" loading="lazy" width="640" height="444"><figcaption><b>8. Nemotron 3.5 Super VL</b><span>6.5 / 10</span></figcaption></figure><figure><img src="/ai-models/nemotron-3-nano-omni-30b-a3b-reasoning.webp" alt="Landing page made by Nemotron 3 Nano Omni 30B" loading="lazy" width="640" height="444"><figcaption><b>9. Nemotron 3 Nano Omni 30B</b><span>5.3 / 10</span></figcaption></figure><figure><img src="/ai-models/nemotron-3.5-lightning.webp" alt="Landing page made by Nemotron 3.5 Lightning" loading="lazy" width="640" height="444"><figcaption><b>10. Nemotron 3.5 Lightning</b><span>5.2 / 10</span></figcaption></figure><figure><img src="/ai-models/dots-3-note-preview.webp" alt="Landing page made by Dots 3 Note (preview)" loading="lazy" width="640" height="444"><figcaption><b>11. Dots 3 Note (preview)</b><span>4.5 / 10</span></figcaption></figure></div>
+
+  <h2>Cheapest paid models — cost per page</h2>
+  <p>Prices per 1 million tokens on OpenRouter. A typical landing page is about 2,000 tokens in and 3,500 out. These were not part of the test above.</p>
+  <div class="tbl"><table>
+    <tr><th>Model</th><th class="num">Input / 1M</th><th class="num">Output / 1M</th><th class="num">One page</th><th class="num">Pages per $1</th></tr>
+    <tr><td><b>GPT-OSS 120B</b><small><code>openai/gpt-oss-120b</code></small></td><td class="num">$0.025</td><td class="num">$0.094</td><td class="num">$0.0004</td><td class="num"><b>2,638</b></td></tr><tr><td><b>Mistral Small 24B</b><small><code>mistralai/mistral-small-24b-instruct-2501</code></small></td><td class="num">$0.050</td><td class="num">$0.080</td><td class="num">$0.0004</td><td class="num"><b>2,631</b></td></tr><tr><td><b>Qwen 3.7 Flash</b><small><code>qwen/qwen3.7-flash</code></small></td><td class="num">$0.030</td><td class="num">$0.130</td><td class="num">$0.0005</td><td class="num"><b>1,941</b></td></tr><tr><td><b>GPT-OSS 20B</b><small><code>openai/gpt-oss-20b</code></small></td><td class="num">$0.030</td><td class="num">$0.130</td><td class="num">$0.0005</td><td class="num"><b>1,941</b></td></tr><tr><td><b>DeepSeek V4 Flash</b><small><code>deepseek/deepseek-v4-flash</code></small></td><td class="num">$0.091</td><td class="num">$0.182</td><td class="num">$0.0008</td><td class="num"><b>1,221</b></td></tr><tr><td><b>Mistral Small 3.2</b><small><code>mistralai/mistral-small-3.2-24b-instruct</code></small></td><td class="num">$0.075</td><td class="num">$0.200</td><td class="num">$0.0008</td><td class="num"><b>1,176</b></td></tr><tr><td><b>Qwen3 32B</b><small><code>qwen/qwen3-32b</code></small></td><td class="num">$0.080</td><td class="num">$0.280</td><td class="num">$0.0011</td><td class="num"><b>877</b></td></tr><tr><td><b>GPT-5 nano</b><small><code>openai/gpt-5-nano</code></small></td><td class="num">$0.050</td><td class="num">$0.400</td><td class="num">$0.0015</td><td class="num"><b>666</b></td></tr><tr><td><b>Gemini 2.5 Flash-Lite</b><small><code>google/gemini-2.5-flash-lite</code></small></td><td class="num">$0.100</td><td class="num">$0.400</td><td class="num">$0.0016</td><td class="num"><b>625</b></td></tr><tr><td><b>Claude Haiku 5.5</b><small><code>anthropic/claude-haiku-5.5</code></small></td><td class="num">$0.100</td><td class="num">$0.500</td><td class="num">$0.0019</td><td class="num"><b>512</b></td></tr><tr><td><b>GLM 5.3 Flash</b><small><code>z-ai/glm-5.3-flash</code></small></td><td class="num">$0.150</td><td class="num">$0.500</td><td class="num">$0.0021</td><td class="num"><b>487</b></td></tr>
+  </table></div>
+
+  <h2>How it was tested</h2>
+  <ul>
+    <li>The editor's own instructions: a one-line JSON header, then the HTML and CSS in one code block; questions answered as text, without building anything.</li>
+    <li>One attempt per model and task, low reasoning effort where supported, up to 8,000 output tokens, pauses between requests.</li>
+    <li>“Format” means the answer could be placed on the canvas (or shown as text for the question) without a retry.</li>
+    <li>Free tiers change often: models appear, disappear and get rate-limited. Groq removed Llama 3.3 70B before this test.</li>
+  </ul>
+  <p><a class="cta small" href="/">Try them in the editor →</a></p>
+</main>
+</body>
+</html>
