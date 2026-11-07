@@ -640,4 +640,8 @@ export default {
   "☁ cloud projects": "☁ proyectos en la nube",
   "opened \"{0}\"": "se abrió «{0}»",
   "Delete \"{0}\" from this device? This can't be undone.": "¿Eliminar «{0}» de este dispositivo? No se puede deshacer.",
+  "remember keys on this device (encrypted, never sent to our server)": "recordar las claves en este dispositivo (cifradas, nunca se envían a nuestro servidor)",
+  "could not save keys on this device": "no se pudieron guardar las claves en este dispositivo",
+  "↷ redo": "↷ rehacer",
+  "Redo (Ctrl+Shift+Z or Ctrl+Y)": "Rehacer (Ctrl+Shift+Z o Ctrl+Y)",
 };

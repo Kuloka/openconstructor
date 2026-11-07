@@ -2,6 +2,7 @@
 let presets = [];
 const presetsReady = import('./presets.js').then(m => { presets = m.presets; stats.presets = presets.length; renderLibrary(); return presets; });
 import { t, lang, AI_LANG } from './i18n.js';
+import * as vault from './keyvault.js';
 import {CATEGORIES} from './categories.js';
 import { TARGETS } from './export-targets.js'; // the converters themselves (exporters.js) load on first export
 import { PRESETS as BG_PRESETS, DEFAULT_SPEC as BG_DEFAULT, toCSS as bgCSS, luminance as bgLum, mountBackgroundEditor } from './background.js';
@@ -23,8 +24,11 @@ document.querySelectorAll('.oc-logo').forEach(el => el.innerHTML = logoSvg);
 let items = store.get('form-canvas-v3', []);
 if (!Array.isArray(items)) items = [];
 items.forEach((it, i) => { if (typeof it.x !== 'number' || typeof it.y !== 'number') { it.x = 48 + (i % 3) * 320; it.y = 48 + Math.floor(i / 3) * 200; } });
-let selected = null, editing = null, history = [];
-function checkpoint(){ history.push(JSON.stringify(items)); if (history.length > 50) history.shift(); }
+let selected = null, editing = null, history = [], future = [];
+// Undo keeps up to 50 states; a new change clears the redo list
+function pushHistory(snap){ history.push(snap); if (history.length > 50) history.shift(); future = []; syncUndo(); }
+function checkpoint(){ pushHistory(JSON.stringify(items)); }
+function syncUndo(){ const u = document.getElementById('undo'), r = document.getElementById('redo'); if (u) u.disabled = !history.length; if (r) r.disabled = !future.length; }
 function persist(){ store.set('form-canvas-v3', items); window.dispatchEvent(new CustomEvent('oc:changed')); }
 
 // Project name in the header
@@ -288,7 +292,7 @@ addEventListener('pointermove', e => {
 });
 addEventListener('pointerup', () => {
   if (!resizing) return;
-  history.push(resizing.before); resizing = null;
+  pushHistory(resizing.before); resizing = null;
   canvas.classList.remove('resizing-page'); sizeTip.classList.add('hidden');
   setPageSize(page.w, page.h);
 });
@@ -538,7 +542,7 @@ const endDrag = () => {
   showGuides([]);
   if (!drag) return;
   drag.el.classList.remove('dragging');
-  if (drag.moved) { history.push(drag.snapshot); layout(); persist(); }
+  if (drag.moved) { pushHistory(drag.snapshot); layout(); persist(); }
   drag = null;
 };
 board.addEventListener('pointerup', endDrag);
@@ -656,7 +660,8 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeCtx();
   if (e.target.closest('input, textarea, select, [contenteditable]') || document.querySelector('.modal:not(.hidden)') || document.querySelector('.wl')) return;
   const mod = e.ctrlKey || e.metaKey;
-  if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); $('undo').click(); return; }
+  if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); $(e.shiftKey ? 'redo' : 'undo').click(); return; }
+  if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); $('redo').click(); return; }
   if (mod && (e.key === '=' || e.key === '+')) { e.preventDefault(); setZoom(zoom + .1); return; }
   if (mod && e.key === '-') { e.preventDefault(); setZoom(zoom - .1); return; }
   if (mod && e.key === '0') { e.preventDefault(); fitZoom(); return; }
@@ -770,7 +775,15 @@ $('saveCode').onclick = () => {
   $('codeModal').classList.add('hidden');
 };
 $('copyCode').onclick = async () => { try { await navigator.clipboard.writeText($('codeInput').value); $('copyCode').textContent = 'copied'; setTimeout(() => $('copyCode').textContent = 'copy', 1500); } catch { $('codeInput').select(); document.execCommand('copy'); } };
-$('undo').onclick = () => { if (history.length) { items = JSON.parse(history.pop()); if (!items.some(x => x.id === selected)) selected = null; render(); } };
+function stepHistory(from, to){
+  if (!from.length) return;
+  to.push(JSON.stringify(items)); if (to.length > 50) to.shift();
+  items = JSON.parse(from.pop()); if (!items.some(x => x.id === selected)) selected = null;
+  picked.clear(); render(); syncUndo();
+}
+$('undo').onclick = () => stepHistory(history, future);
+$('redo').onclick = () => stepHistory(future, history);
+syncUndo();
 
 // Export menu: HTML, exact converters (Roblox Luau, LÖVE, React, Vue, Svelte) and AI-assisted ports
 const fileBase = () => (nameEl.textContent.trim() || 'interface').replace(/[\\/:*?"<>|\s]+/g, '-');
@@ -971,11 +984,33 @@ const fmtUsd = v => '$' + (v >= 10 ? Math.round(v) : v >= 1 ? +v.toFixed(2) : +v
 const fmtPrice = pr => `${fmtUsd(pr[0])} · ${fmtUsd(pr[1])}`;
 const fmtCtx = n => !n ? '' : n >= 1e6 ? (n / 1e6).toFixed(n % 1e6 ? 1 : 0) + 'M' : Math.round(n / 1e3) + 'K';
 
-// Keys live until the tab is closed by default; the "remember" checkbox stores them in localStorage
-let remember = store.get('oc-remember-keys', false);
+// Keys are remembered on this device by default, encrypted (keyvault.js), and shared by every tab.
+// With "remember" off they live only in this tab (sessionStorage) and the vault is emptied.
+let remember = store.get('oc-keys-remember', true);
 let keys = {};
-try { keys = JSON.parse((remember ? localStorage : sessionStorage).getItem('oc-keys') || '{}') || {}; } catch {}
-function saveKeys(){ try { const s = JSON.stringify(keys); (remember ? localStorage : sessionStorage).setItem('oc-keys', s); (remember ? sessionStorage : localStorage).removeItem('oc-keys'); store.set('oc-remember-keys', remember); } catch {} }
+const SESSION_KEYS = 'oc-keys-session';
+function saveKeys(){
+  store.set('oc-keys-remember', remember);
+  if (remember) {
+    try { sessionStorage.removeItem(SESSION_KEYS); } catch {}
+    vault.saveKeys(keys).catch(() => setState('could not save keys on this device', 'error'));
+  } else {
+    try { sessionStorage.setItem(SESSION_KEYS, JSON.stringify(keys)); } catch {}
+    vault.clearKeys().catch(() => {});
+  }
+}
+async function readKeys(){
+  if (remember) return vault.loadKeys();
+  try { return JSON.parse(sessionStorage.getItem(SESSION_KEYS) || '{}') || {}; } catch { return {}; }
+}
+// Another tab added, changed or removed a key: pick it up here too
+vault.onKeysChanged(async () => {
+  if (!remember) return;
+  const next = await vault.loadKeys().catch(() => null); if (!next) return;
+  const changed = PROVIDERS.filter(p => (next[p.id] || '') !== (keys[p.id] || ''));
+  keys = next; changed.forEach(loadProvider);
+  if (!changed.length) { renderProviders(); renderPicker(); }
+});
 
 const AUTO = { id: 'openrouter/free', name: 'Auto', vendor: 'OpenRouter', note: 'best available model' };
 const modelsBy = {}, modelErr = {}, loading = {};
@@ -1650,7 +1685,7 @@ export const studio = {
   },
   // Switch the canvas to another screen's content: no undo step (undo history is per screen)
   swap({ items: list = [], page: pg = {} }){
-    items = cleanItems(list); history = [];
+    items = cleanItems(list); history = []; future = []; syncUndo();
     page = cleanPage({ ...pg }); store.set('oc-page', page); syncPageSize(); syncSwatches(); drawZones();
     selected = null; picked.clear(); for (const el of nodes.values()) el._key = null; render(); requestAnimationFrame(fitZoom);
   },
@@ -1697,4 +1732,5 @@ $('canvasEmpty').addEventListener('click', e => { const b = e.target.closest('[d
 render();
 renderChat();
 requestAnimationFrame(fitZoom);
-loadModels();
+// Keys are decrypted first, then each provider's model list loads
+readKeys().then(k => { keys = k || {}; }).catch(() => {}).finally(loadModels);

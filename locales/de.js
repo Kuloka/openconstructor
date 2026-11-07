@@ -640,4 +640,8 @@ export default {
   "☁ cloud projects": "☁ Cloud-Projekte",
   "opened \"{0}\"": "„{0}“ geöffnet",
   "Delete \"{0}\" from this device? This can't be undone.": "„{0}“ von diesem Gerät löschen? Das kann nicht rückgängig gemacht werden.",
+  "remember keys on this device (encrypted, never sent to our server)": "Schlüssel auf diesem Gerät merken (verschlüsselt, nie an unseren Server gesendet)",
+  "could not save keys on this device": "Schlüssel konnten auf diesem Gerät nicht gespeichert werden",
+  "↷ redo": "↷ wiederholen",
+  "Redo (Ctrl+Shift+Z or Ctrl+Y)": "Wiederholen (Strg+Umschalt+Z oder Strg+Y)",
 };

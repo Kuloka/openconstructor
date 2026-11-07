@@ -638,4 +638,8 @@ export default {
   "☁ cloud projects": "☁ bulut projeleri",
   "opened \"{0}\"": "“{0}” açıldı",
   "Delete \"{0}\" from this device? This can't be undone.": "“{0}” bu cihazdan silinsin mi? Bu geri alınamaz.",
+  "remember keys on this device (encrypted, never sent to our server)": "anahtarları bu cihazda hatırla (şifreli, sunucumuza asla gönderilmez)",
+  "could not save keys on this device": "anahtarlar bu cihaza kaydedilemedi",
+  "↷ redo": "↷ yinele",
+  "Redo (Ctrl+Shift+Z or Ctrl+Y)": "Yinele (Ctrl+Shift+Z veya Ctrl+Y)",
 };

@@ -643,4 +643,8 @@ export default {
   "☁ cloud projects": "☁ облачные проекты",
   "opened \"{0}\"": "открыт «{0}»",
   "Delete \"{0}\" from this device? This can't be undone.": "Удалить «{0}» с этого устройства? Это нельзя отменить.",
+  "remember keys on this device (encrypted, never sent to our server)": "запомнить ключи на этом устройстве (в зашифрованном виде, на наш сервер не отправляются)",
+  "could not save keys on this device": "не удалось сохранить ключи на этом устройстве",
+  "↷ redo": "↷ повторить",
+  "Redo (Ctrl+Shift+Z or Ctrl+Y)": "Повторить (Ctrl+Shift+Z или Ctrl+Y)",
 };

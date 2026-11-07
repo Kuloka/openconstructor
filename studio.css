@@ -657,3 +657,6 @@ body.resizing iframe { pointer-events: none; }
 .node.has-live iframe { opacity: 0; }
 .canvas.playing .node .oc-3d-live { cursor: grab; }
 .canvas.playing .node .oc-3d-live:active { cursor: grabbing; }
+
+/* undo / redo with nothing to step to */
+#undo:disabled, #redo:disabled { opacity: .4; cursor: default; }

@@ -88,6 +88,7 @@
     <div class="tb-center"><span class="muted">~/</span><span id="projectName" contenteditable="plaintext-only" spellcheck="false" title="Click to rename">my-interface</span><span class="muted">.html</span></div>
     <div class="tb-right">
       <button class="btn" id="undo" title="Undo (Ctrl+Z)">↶ undo</button>
+      <button class="btn" id="redo" title="Redo (Ctrl+Shift+Z or Ctrl+Y)">↷ redo</button>
       <button class="btn primary" id="export" title="Export: HTML, Roblox Luau, LÖVE, React, Vue, Svelte and more">export ↓</button>
     </div>
   </header>
@@ -211,7 +212,7 @@
 
 <div class="ctx hidden" id="ctxMenu" role="menu"></div>
 
-<div class="modal hidden" id="settings"><div class="modal-card wide"><div class="modal-head"><h2>ai providers</h2><button class="btn icon" data-close="settings">×</button></div><p class="muted">Connect one or more services — their models will appear in the list under the chat. Your key is sent only to the provider you pick. Google Gemini and Groq are the easiest to start with.</p><div class="providers" id="providers"></div><div class="modal-foot"><label class="check"><input type="checkbox" id="rememberKeys"> remember keys on this device</label><span class="sb-spacer"></span><button class="btn" id="forgetKeys">forget all keys</button><button class="btn primary" data-close="settings">done</button></div></div></div>
+<div class="modal hidden" id="settings"><div class="modal-card wide"><div class="modal-head"><h2>ai providers</h2><button class="btn icon" data-close="settings">×</button></div><p class="muted">Connect one or more services — their models will appear in the list under the chat. Your key is sent only to the provider you pick. Google Gemini and Groq are the easiest to start with.</p><div class="providers" id="providers"></div><div class="modal-foot"><label class="check"><input type="checkbox" id="rememberKeys"> remember keys on this device (encrypted, never sent to our server)</label><span class="sb-spacer"></span><button class="btn" id="forgetKeys">forget all keys</button><button class="btn primary" data-close="settings">done</button></div></div></div>
 <div class="modal hidden" id="codeModal"><div class="modal-card"><div class="modal-head"><h2 id="codeTitle">element code</h2><button class="btn icon" data-close="codeModal">×</button></div><p class="muted">HTML and CSS. Scripts and network requests are disabled in the preview.</p><label class="field">Name<input id="codeName" maxlength="80"></label><label class="field">HTML + CSS<textarea id="codeInput" spellcheck="false"></textarea></label><div class="modal-actions"><button class="btn" id="copyCode">copy</button><button class="btn primary" id="saveCode">save</button></div></div></div>
 <script type="module" src="/src/main.jsx"></script>
 </body>
