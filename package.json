@@ -23,8 +23,10 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "npm run build && wrangler dev",
-    "deploy": "npm run build && wrangler deploy",
-    "deploy:domains": "wrangler deploy -c wrangler.domains.jsonc"
+    "deploy": "npm test && npm run build && wrangler deploy",
+    "deploy:domains": "wrangler deploy -c wrangler.domains.jsonc",
+    "test": "node --test \"tests/unit/*.test.js\"",
+    "test:e2e": "node --test --test-concurrency=1 tests/e2e/run.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.158.0"

@@ -8,6 +8,11 @@ import {CATEGORIES} from './categories.js';
 import { TARGETS } from './export-targets.js'; // the converters themselves (exporters.js) load on first export
 import { PRESETS as BG_PRESETS, DEFAULT_SPEC as BG_DEFAULT, toCSS as bgCSS, luminance as bgLum, mountBackgroundEditor } from './background.js';
 import logoSvg from './src/logo.svg?raw';
+import { parseScene, parseAnswer } from './ai-parse.js';
+import { MD_RE, md } from './markdown.js';
+import { initChatUI, toBottom, typeText, retype, message, thinking } from './chat-ui.js';
+import { fixContrast as fixContrastIn } from './contrast.js';
+const fixContrast = (code, full) => fixContrastIn(code, full, { light: isLightPage(), w: page.w, h: page.h, nodeDoc });
 import { PROVIDERS, byId, listModels, chat, freeQuota } from './providers.js';
 import { signOut, user as authUser, openAuth } from './auth.js';
 import './donate.js';
@@ -1291,37 +1296,7 @@ $('forgetKeys').onclick = () => { keys = {}; saveKeys(); PROVIDERS.forEach(p => 
 renderPicker();
 
 /* ── AI chat ─────────────────────────────────────────────── */
-const toBottom = () => { const m = $('messages'); m.scrollTop = m.scrollHeight; };
-// Typewriter: types `text` into `el` (about one second whatever the length). A newer call on the same
-// element cancels the older one. Reduced motion: the text appears at once.
-function typeText(el, text, { speed = 16 } = {}){
-  text = t(String(text ?? ''));
-  const id = (el._typing = (el._typing || 0) + 1);
-  if (reduceMotion()) { el.textContent = text; toBottom(); return Promise.resolve(); }
-  const step = Math.max(1, Math.round(text.length / 70));
-  return new Promise(done => {
-    let i = 0; el.textContent = ''; el.classList.add('typing');
-    const tick = () => {
-      if (el._typing !== id) return done();
-      i = Math.min(text.length, i + step); el.textContent = text.slice(0, i); toBottom();
-      if (i < text.length) setTimeout(tick, speed); else { el.classList.remove('typing'); done(); }
-    };
-    tick();
-  });
-}
-// Erase what's there, then type the new text — used when a label changes
-function retype(el, text){
-  const id = (el._typing = (el._typing || 0) + 1);
-  if (reduceMotion() || !el.textContent) return typeText(el, text);
-  el.classList.add('typing');
-  return new Promise(done => {
-    const erase = () => {
-      if (el._typing !== id) return done();
-      const t = el.textContent; if (t.length) { el.textContent = t.slice(0, -2); setTimeout(erase, 12); } else typeText(el, text).then(done);
-    };
-    erase();
-  });
-}
+initChatUI({ setState: (...a) => setState(...a) });
 /* ── Chat history: one conversation per project, kept in this browser ──
    The last few turns also go to the model, so "make it brighter" works without repeating yourself. */
 const chatKey = (name = nameEl.textContent.trim() || 'my-interface') => 'oc-chat:' + name;
@@ -1347,7 +1322,7 @@ function renderChat(){
       box.append(d);
     }
     const n = document.createElement('div'); n.className = 'message ' + m.role; n.style.animation = 'none';
-    if (m.role === 'assistant') { n.setAttribute('data-no-i18n', ''); if (MD_RE.test(m.text)) { n.classList.add('md'); n.innerHTML = md(m.text); } else n.textContent = t(m.text); } else n.textContent = m.text;
+    if (m.role === 'assistant') { n.setAttribute('data-no-i18n', ''); if (MD_RE.test(m.text)) { n.classList.add('md'); n.innerHTML = md(m.text, t('copy')); } else n.textContent = t(m.text); } else n.textContent = m.text;
     box.append(n);
   }
   toBottom();
@@ -1368,226 +1343,8 @@ nameEl.addEventListener('blur', () => {
   if (now && now !== nameBefore) { const old = store.get(chatKey(nameBefore), []); if (old.length && !store.get(chatKey(now), []).length) store.set(chatKey(now), old); switchChat(); }
 });
 
-const MD_RE = /```|^\s*([-*•]|\d+[.)]|#{1,4})\s|\*\*|`[^`]+`|\[[^\]]+\]\(https?:/m;
-function mdInline(s){
-  return escapeHTML(s)
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
-    .replace(/(^|[\s(])\*([^*\s][^*]*)\*(?=[\s.,!?)]|$)/g, '$1<i>$2</i>')
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
-}
-function md(src){
-  const parts = String(src).replace(/\r/g, '').split(/```([\w+-]*)[ \t]*\n?([\s\S]*?)(?:```|$)/);
-  let out = '';
-  for (let i = 0; i < parts.length; i += 3) {
-    let list = '', para = [];
-    const flush = () => { if (para.length) out += `<p>${para.join('<br>')}</p>`; para = []; };
-    const closeList = () => { if (list) out += `</${list}>`; list = ''; };
-    for (const line of parts[i].split('\n')) {
-      let m;
-      if (!line.trim()) { flush(); closeList(); }
-      else if ((m = line.match(/^\s*#{1,4}\s+(.*)/))) { flush(); closeList(); out += `<h4>${mdInline(m[1])}</h4>`; }
-      else if ((m = line.match(/^\s*(?:([-*•])|(\d+)[.)])\s+(.*)/))) {
-        flush(); const kind = m[1] ? 'ul' : 'ol';
-        if (list !== kind) { closeList(); out += `<${kind}>`; list = kind; }
-        out += `<li>${mdInline(m[3])}</li>`;
-      } else { closeList(); para.push(mdInline(line)); }
-    }
-    flush(); closeList();
-    if (parts[i + 2] != null && parts[i + 2].trim()) out += `<div class="md-pre"><button type="button" class="md-copy">${t('copy')}</button><pre><code>${escapeHTML(parts[i + 2].replace(/\n$/, ''))}</code></pre></div>`;
-  }
-  return out;
-}
-function message(text, role){
-  const node = document.createElement('div'); node.className = 'message ' + role;
-  $('messages').append(node);
-  if (role !== 'assistant') { node.textContent = text; toBottom(); return node; }
-  node.setAttribute('data-no-i18n', ''); text = t(String(text ?? ''));
-  if (!MD_RE.test(text) && text.length < 280) { typeText(node, text); return node; }
-  // longer answers: rendered Markdown, blocks fading in one after another
-  node.classList.add('md'); node.innerHTML = md(text);
-  if (!reduceMotion()) [...node.children].forEach((b, i) => { b.style.animation = `msg-in .3s ${Math.min(i, 14) * 70}ms both cubic-bezier(.2,.7,.2,1)`; });
-  toBottom(); setTimeout(toBottom, Math.min(node.children.length, 15) * 70 + 320);
-  return node;
-}
-$('messages').addEventListener('click', e => {
-  const b = e.target.closest('.md-copy'); if (!b) return;
-  navigator.clipboard?.writeText(b.nextElementSibling.textContent).then(() => { b.textContent = t('copied'); setTimeout(() => { b.textContent = t('copy'); }, 1200); });
-});
 
-// "Thinking" panel: a checklist that grows step by step, each label typed out; the title retypes
-// "thinking" → "composing" when the answer arrives, and the real code is typed into a small window
-// while it's placed. At the end it folds into "thought for 7s" (click to see the steps again).
-// Returns end(): end() removes it (error), end.compose(name, code), end.answer(), end.finish().
-function thinking({ ghost = false } = {}){
-  const node = document.createElement('div');
-  node.className = 'message assistant thinking';
-  node.innerHTML = `<button class="th-head" type="button" aria-expanded="true"><span class="oc-logo thinking-logo" aria-hidden="true">${logoSvg}</span><span class="th-title"></span><span class="th-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="th-time">0s</span></button><ol class="th-steps"></ol><div class="th-reason" hidden></div><div class="th-live" hidden></div><pre class="th-code" hidden><code></code></pre>`;
-  $('messages').append(node); toBottom();
-  const title = node.querySelector('.th-title'), list = node.querySelector('.th-steps'), time = node.querySelector('.th-time');
-  const t0 = Date.now();
-  let queue = Promise.resolve(), over = false, stepAt = t0;
-  // a shimmering placeholder over the canvas: something is being built there
-  let ghostEl = null;
-  const cv = $('canvas')?.getBoundingClientRect();
-  if (ghost && cv && cv.width > 200 && !reduceMotion()) {
-    ghostEl = document.createElement('div'); ghostEl.className = 'th-ghost'; ghostEl.setAttribute('aria-hidden', 'true');
-    ghostEl.innerHTML = '<i class="g1"></i><i class="g2"></i><i class="g3"></i><span class="g-row"><i></i><i></i><i></i></span>';
-    ghostEl.style.left = cv.left + cv.width / 2 + 'px'; ghostEl.style.top = cv.top + cv.height / 2 + 'px';
-    document.body.append(ghostEl);
-    $('canvasEmpty')?.style.setProperty('visibility', 'hidden');
-  }
-  const dropGhost = () => { const g = ghostEl; ghostEl = null; if (!g) return; $('canvasEmpty')?.style.removeProperty('visibility'); g.classList.add('out'); setTimeout(() => g.remove(), 260); };
-  // steps run one after another so each label finishes typing before the next starts
-  const step = label => (queue = queue.then(() => {
-    if (over) return;
-    const prev = list.querySelector('li.run');
-    if (prev) { prev.classList.replace('run', 'done'); const d = document.createElement('em'); d.className = 'th-took'; d.textContent = ((Date.now() - stepAt) / 1000).toFixed(1) + 's'; prev.append(d); }
-    stepAt = Date.now();
-    const li = document.createElement('li'); li.className = 'run';
-    li.innerHTML = '<i class="th-mark" aria-hidden="true"></i><span></span>';
-    list.append(li);
-    return typeText(li.lastChild, label);
-  }));
-  typeText(title, 'thinking');
-  setState('ai is thinking…', 'busy');
-  // While waiting for the model: the usual stages of building a UI, paced by elapsed time
-  const plan = [[0, 'reading your request'], [700, 'thinking it through'], [3500, 'planning the layout'], [8000, 'choosing colors and type'], [14000, 'writing the code']];
-  const timers = plan.map(([at, label]) => setTimeout(() => step(label), at));
-  const clock = setInterval(() => { time.textContent = Math.floor((Date.now() - t0) / 1000) + 's'; }, 250);
-  const stopWaiting = () => { timers.forEach(clearTimeout); };
 
-  const end = () => { over = true; stopWaiting(); clearInterval(clock); dropGhost(); node.remove(); };
-  // Streaming: the model's reasoning and its answer show up live as they arrive
-  const codeLines = code => String(code).replace(/>\s*</g, '>\n<').replace(/([;{}])(?=[^\n])/g, '$1\n').split('\n').map(l => l.trim()).filter(Boolean);
-  let liveText = '', liveWhy = '', streamed = false, liveMode = '', liveRaf = 0;
-  const paintLive = () => {
-    liveRaf = 0; if (over) return;
-    if (liveWhy.trim()) { const r = node.querySelector('.th-reason'); r.hidden = false; r.textContent = liveWhy.slice(-500); }
-    const txt = liveText.replace(/<think>[\s\S]*?(<\/think>|$)/gi, '');
-    if (/^\s*\{[^}]*"action"\s*:\s*"(reply|answer|chat)"/i.test(txt)) {
-      if (liveMode !== 'reply') { liveMode = 'reply'; retype(title, 'answering'); dropGhost(); step('writing the answer'); }
-      const l = node.querySelector('.th-live'); l.hidden = false; l.textContent = txt.replace(/^\s*\{[^}]*\}\s*/, '').slice(-700);
-    } else if (/```|<[a-z]/i.test(txt)) {
-      if (liveMode !== 'code') { liveMode = 'code'; retype(title, 'composing'); ghostEl?.classList.add('build'); step('writing the code'); }
-      const pre = node.querySelector('.th-code'); pre.hidden = false;
-      const at = txt.indexOf('```');
-      pre.firstChild.textContent = codeLines(at >= 0 ? txt.slice(txt.indexOf('\n', at) + 1) : txt).slice(-8).join('\n');
-    }
-    toBottom();
-  };
-  end.live = (piece, why) => {
-    if (over) return;
-    if (!streamed) { streamed = true; stopWaiting(); }
-    liveText += piece || ''; liveWhy += why || '';
-    if (!liveRaf) liveRaf = requestAnimationFrame(paintLive);
-  };
-  end.liveReset = () => { liveText = ''; liveWhy = ''; liveMode = ''; };
-  // The answer arrived with code: show it being written, then the caller places it
-  end.compose = (name, code) => {
-    stopWaiting();
-    retype(title, 'composing'); ghostEl?.classList.add('build');
-    setState('composing…', 'busy');
-    step(`composing “${String(name || 'element').slice(0, 40)}”`);
-    return (queue = queue.then(async () => {
-      if (over || streamed) return; // already shown live
-      const pre = node.querySelector('.th-code'), out = pre.firstChild;
-      pre.hidden = false;
-      // for display only: one tag / CSS declaration per line, so compact code still "writes" line by line
-      const lines = codeLines(code).slice(0, 600);
-      if (reduceMotion()) { out.textContent = lines.slice(-8).join('\n'); return; }
-      // ~1.3s: show a moving window over the last lines as the code "writes itself"
-      const per = Math.max(1, Math.ceil(lines.length / 45));
-      for (let i = 0; i < lines.length && !over; i += per) {
-        out.textContent = lines.slice(Math.max(0, i + per - 8), i + per).join('\n');
-        pre.scrollTop = pre.scrollHeight; toBottom();
-        await new Promise(r => setTimeout(r, 28));
-      }
-    }));
-  };
-  end.step = label => { stopWaiting(); return step(label); };
-  end.answer = () => { stopWaiting(); dropGhost(); retype(title, 'answering'); return queue; };
-  // Fold into a one-line summary that stays in the chat
-  end.finish = (lastStep = 'done') => {
-    stopWaiting();
-    step(lastStep);
-    return (queue = queue.then(() => {
-      if (over) return;
-      over = true; clearInterval(clock); dropGhost();
-      list.querySelectorAll('li').forEach(li => li.className = 'done');
-      const s = Math.max(1, Math.round((Date.now() - t0) / 1000));
-      node.classList.add('folded');
-      node.querySelectorAll('.th-code, .th-live').forEach(x => { x.hidden = true; });
-      retype(title, `thought for ${s}s`); time.textContent = `${list.children.length} steps`;
-      const head = node.querySelector('.th-head');
-      head.setAttribute('aria-expanded', 'false');
-      head.onclick = () => { const open = node.classList.toggle('folded'); head.setAttribute('aria-expanded', String(!open)); };
-    }));
-  };
-  return end;
-}
-
-/* ── Readable text in AI answers ──
-   Models sometimes give a block a white background and forget the text color, so the text inherits
-   the light default: white on white. The code is rendered once in a hidden frame; every text whose
-   contrast with the background really under it is below 1.8:1 gets a dark or light color. */
-const rgbOf = s => { const m = String(s).match(/rgba?\(([\d.]+)[, ]+([\d.]+)[, ]+([\d.]+)(?:[, /]+([\d.]+%?))?/); if (!m) return null; const a = m[4] == null ? 1 : m[4].endsWith('%') ? parseFloat(m[4]) / 100 : +m[4]; return [+m[1], +m[2], +m[3], a]; };
-const lumOf = ([r, g, b]) => { const f = c => (c /= 255) <= .03928 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4; return .2126 * f(r) + .7152 * f(g) + .0722 * f(b); };
-const contrast = (a, b) => { const x = lumOf(a), y = lumOf(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
-// The color behind an element: the nearest solid background going up; a gradient counts as the average
-// of its colors; a photo (url) means "can't tell" and the text is left alone.
-function backdrop(el, win, pageRGB){
-  for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
-    const cs = win.getComputedStyle(n);
-    if (cs.backgroundImage && cs.backgroundImage !== 'none') {
-      if (/url\(/.test(cs.backgroundImage)) return null;
-      const stops = [...cs.backgroundImage.matchAll(/rgba?\([^)]+\)/g)].map(m => rgbOf(m[0])).filter(c => c && c[3] > .4);
-      if (stops.length) return [0, 1, 2].map(i => stops.reduce((s, c) => s + c[i], 0) / stops.length);
-    }
-    const bg = rgbOf(cs.backgroundColor);
-    if (bg && bg[3] >= .5) return bg;
-  }
-  return pageRGB;
-}
-function fixContrast(code, full){
-  return new Promise(resolve => {
-    const light = isLightPage();
-    const frame = document.createElement('iframe');
-    frame.setAttribute('sandbox', 'allow-same-origin');
-    frame.style.cssText = `position:fixed;left:-20000px;top:0;width:${page.w}px;height:${page.h}px;visibility:hidden;pointer-events:none`;
-    let done = false;
-    const finish = out => { if (done) return; done = true; frame.remove(); resolve(out); };
-    setTimeout(() => finish(code), 3000);
-    frame.onload = () => {
-      try {
-        const doc = frame.contentDocument, win = frame.contentWindow, root = doc?.getElementById('__root');
-        if (!root) return; // the empty first load, before srcdoc
-        const pageRGB = light ? [250, 250, 250] : [12, 10, 9];
-        const all = [...root.querySelectorAll('*')], marks = new Map();
-        all.forEach((el, i) => {
-          if (/^(STYLE|SCRIPT|SVG|PATH|IMG|BR|INPUT|TEXTAREA|SELECT)$/i.test(el.tagName) || el.closest('svg')) return;
-          if (![...el.childNodes].some(n => n.nodeType === 3 && n.nodeValue.trim())) return;
-          const cs = win.getComputedStyle(el);
-          if (cs.display === 'none' || cs.visibility === 'hidden') return;
-          const fill = rgbOf(cs.webkitTextFillColor);
-          if (fill && fill[3] === 0) return; // gradient text (background-clip:text)
-          const ink = rgbOf(cs.color), bg = backdrop(el, win, pageRGB);
-          if (!ink || ink[3] < .3 || !bg) return;
-          if (contrast(ink, bg) < 1.8) marks.set(i, lumOf(bg) > .4 ? 'd' : 'l');
-        });
-        if (!marks.size) return finish(code);
-        // Same parse in a template, so the marks land on the same elements in the source code
-        const tpl = document.createElement('template'); tpl.innerHTML = code;
-        const copy = [...tpl.content.querySelectorAll('*')];
-        if (copy.length !== all.length || copy.some((el, i) => el.tagName !== all[i].tagName)) return finish(code);
-        marks.forEach((v, i) => copy[i].setAttribute('data-oc-ink', v));
-        finish(tpl.innerHTML + (code.includes('[data-oc-ink=d]') ? '' : '<style>[data-oc-ink=d]{color:#18181b!important}[data-oc-ink=l]{color:#fafafa!important}</style>'));
-      } catch { finish(code); }
-    };
-    frame.srcdoc = nodeDoc({ code, full });
-    document.body.append(frame);
-  });
-}
 
 /* ── Photos and attachments in AI answers ──
    The model writes src="photo:latte art" / url('photo:cozy cafe?portrait') for stock photos and
@@ -1640,92 +1397,6 @@ async function resolveMedia(code, attachments = [], onPhotos, kept = []){
   });
 }
 
-// Answer format: a one-line JSON header (no code) followed by the code in a ```html block.
-// Code outside JSON can't break on escaping, and a missing closing fence (cut-off answer) is tolerated.
-// Older JSON-with-"code" answers and bare HTML are still understood.
-function firstJSON(text){
-  const a = text.indexOf('{'); if (a < 0) return null;
-  let depth = 0, inStr = false, esc = false;
-  for (let i = a; i < text.length; i++) {
-    const ch = text[i];
-    if (inStr) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false; continue; }
-    if (ch === '"') inStr = true; else if (ch === '{') depth++; else if (ch === '}' && --depth === 0) return { json: text.slice(a, i + 1), end: i + 1 };
-  }
-  return null;
-}
-// Models often put raw line breaks / tabs inside JSON strings; escape control characters that sit inside strings.
-function looseJSON(text){
-  try { return JSON.parse(text); } catch {}
-  let out = '', inStr = false, esc = false;
-  for (const ch of text) {
-    if (inStr) {
-      if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false;
-      else if (ch === '\n') { out += '\\n'; continue; } else if (ch === '\r') continue; else if (ch === '\t') { out += '\\t'; continue; }
-    } else if (ch === '"') inStr = true;
-    out += ch;
-  }
-  return JSON.parse(out);
-}
-const HTML_START = /<(style|div|section|header|main|button|form|nav|article|aside|footer|ul|h1|a)\b/i;
-// A 3D answer: header {"action":"scene3d",…} then a ```json block with the scene (see scene3d.js)
-function parseScene(content){
-  const raw = String(content).replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-  const head = firstJSON(raw); if (!head) return null;
-  let h; try { h = looseJSON(head.json); } catch { return null; }
-  if (!h || !/^(scene3d|3d|model3d)$/i.test(String(h.action || ''))) return null;
-  const rest = raw.slice(head.end);
-  const fence = rest.match(/```(?:json|JSON)?[ \t]*\r?\n([\s\S]*?)(?:\r?\n```|$)/);
-  const body = fence ? fence[1] : (firstJSON(rest)?.json || '');
-  let scene; try { scene = looseJSON(body.replace(/```\s*$/, '').trim()); } catch { throw Error('The 3D scene could not be read'); }
-  if (!scene || !Array.isArray(scene.objects) || !scene.objects.length) throw Error('The 3D scene is empty');
-  return { ...h, action: 'scene3d', scene };
-}
-function parseAnswer(content){
-  const raw = String(content).replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-  // a chat answer: {"action":"reply"} header, then free Markdown (which may contain code — it is not a component)
-  if (raw.startsWith('{')) {
-    const j = firstJSON(raw);
-    if (j) { try { const h = looseJSON(j.json); if (/^(reply|answer|chat)$/i.test(String(h.action || ''))) return { action: 'reply', reply: raw.slice(j.end).trim() || String(h.reply || '') }; } catch {} }
-  }
-  const fence = raw.match(/```(?:html|HTML)?[ \t]*\r?\n([\s\S]*?)(?:\r?\n```|$)/);
-  if (fence && /<[a-z!]/i.test(fence[1])) {
-    const before = raw.slice(0, fence.index);
-    let head = {};
-    try { const j = firstJSON(before); if (j) head = looseJSON(j.json); } catch {}
-    return { action: 'add', ...head, code: fence[1].replace(/```\s*$/, '').trim() };
-  }
-  let text = raw.replace(/^\s*```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
-  const bare = () => HTML_START.test(text) ? { action: 'add', name: 'New element', code: text.slice(text.search(HTML_START)) } : null;
-  // JSON must start before any markup, otherwise the first "{" is CSS
-  const j = text.search(HTML_START) >= 0 && text.indexOf('{') > text.search(HTML_START) ? null : firstJSON(text);
-  if (!j) {
-    // an old-style {"code":"…"} answer that was cut off: unescape what arrived
-    const cut = text.match(/^\s*\{[\s\S]*?"code"\s*:\s*"([\s\S]*)$/);
-    if (cut) { try { return { action: 'add', name: (text.match(/"name"\s*:\s*"([^"]*)"/) || [])[1] || 'New element', code: looseJSON('"' + cut[1].replace(/\\+$/, '').replace(/"\s*,\s*"(reply|name|full|action)"[\s\S]*$/, '') + '"') }; } catch {} }
-    // no JSON at all: accept plain HTML/CSS, or plain text as a chat reply
-    const b = bare(); if (b) return b;
-    if (text && !/[{}<>]/.test(text)) return { action: 'reply', reply: text };
-    throw Error('The model answered in an unexpected format');
-  }
-  text = j.json;
-  let result;
-  try { result = looseJSON(text); }
-  catch (e) {
-    // legacy format cut mid-string: salvage the "code" value as far as it goes
-    const m = text.match(/"code"\s*:\s*"([\s\S]*)/);
-    if (!m) throw e;
-    result = { action: 'add', code: looseJSON('"' + m[1].replace(/"\s*[,}][\s\S]*$/, '').replace(/\\?$/, '') + '"') };
-  }
-  if (typeof result.code === 'string') {
-    let code = result.code;
-    for (let i = 0; i < 2 && /\\[nt"]/.test(code) && !/\n/.test(code.replace(/\\n/g, '')); i++) {
-      code = code.replace(/\\r\\n|\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-    }
-    code = code.replace(/>\s*(\\n)+\s*</g, '>\n<').replace(/^(\s*\\n)+|(\\n\s*)+$/g, '');
-    result.code = code;
-  }
-  return result;
-}
 
 /* ── Attachments from the chat box (+): images and text files go along with the next request ── */
 let pendingAttachments = [];
