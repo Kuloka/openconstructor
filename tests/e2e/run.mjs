@@ -145,3 +145,12 @@ scenario('change requests update the page even when the model says "add"', async
   list = await ed.items();
   assert.equal(list.length, 2, 'a really new section is added');
 });
+
+scenario('the AI knows the current year; old copyright years get fixed', async (ed, o) => {
+  o.reply = () => block('Footer', '<footer style="padding:20px;background:#111;color:#eee">© 2024 Bean There · since 2019</footer>', { full: true });
+  await ed.ask('footer'); await ed.idle();
+  const year = new Date().getFullYear();
+  assert.ok(ed.posts.at(-1).includes(`the current year is ${year}`));
+  const [it] = await ed.items();
+  assert.match(it.code, new RegExp(`© ${year} Bean There · since 2019`));
+});

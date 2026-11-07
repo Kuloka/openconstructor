@@ -962,7 +962,7 @@ async function editPart(id, html, ask){
   message(`✦ <${tag}>: ${ask}`, 'user'); logChat('user', `✦ <${tag}>: ${ask}`);
   const stop = thinking({ ghost: false });
   try {
-    const system = `You edit ONE fragment of an HTML component. Reply with ONLY one \`\`\`html block that contains the new version of the fragment and nothing else. Change only what the request asks; keep its text language, classes and everything else. If new CSS is needed, put ONE <style> block first inside the html block, with new class names starting with "ocx-". No JavaScript, no external URLs. Text must stay readable (explicit colors on changed backgrounds).`;
+    const system = `Today is ${new Date().toISOString().slice(0, 10)} (the current year is ${new Date().getFullYear()}). You edit ONE fragment of an HTML component. Reply with ONLY one \`\`\`html block that contains the new version of the fragment and nothing else. Change only what the request asks; keep its text language, classes and everything else. If new CSS is needed, put ONE <style> block first inside the html block, with new class names starting with "ocx-". No JavaScript, no external URLs. Text must stay readable (explicit colors on changed backgrounds).`;
     const user = `Component CSS (for reference):\n${css}\n\nFragment:\n${target.outerHTML.slice(0, 20000)}\n\nRequest: ${ask}`;
     const content = await chat(p, key, m.id, system, user, [], (piece, why) => stop.live(piece, why));
     const raw = String(content || '').replace(/<think>[\s\S]*?<\/think>/gi, '');
@@ -976,7 +976,7 @@ async function editPart(id, html, ask){
       const first = tpl.content.querySelector('style');
       if (first) first.textContent += '\n' + extra; else { const st = document.createElement('style'); st.textContent = extra; tpl.content.prepend(st); }
     }
-    const code = await fixContrast(tpl.innerHTML, x.full);
+    const code = await fixContrast(fixYear(tpl.innerHTML), x.full);
     await stop.finish('updated the part'); setState('part updated', 'ok');
     checkpoint(); items = items.map(i => i.id === id ? { ...i, code } : i); render();
     message('Done — only that part changed. Ctrl+Z to undo.', 'assistant'); logChat('assistant', 'part updated');
@@ -1512,7 +1512,9 @@ function brandRules(){
   ].filter(Boolean).join('; ');
   return `- BRAND KIT — follow it exactly in every block: ${parts}. Build the palette only from these colours (plus neutrals and tints of them); no other accent colours, no generic purple-blue gradients unless they are the brand colours.\n`;
 }
-const withBrand = code => page.brand?.logo ? String(code).replace(/brand:logo/g, page.brand.logo) : code;
+const YEAR = new Date().getFullYear();
+const fixYear = code => String(code).replace(/(©|&copy;|\(c\)|copyright)(\s*)(20\d\d)(?![\d–-])/gi, (m, sign, sp, y) => +y < YEAR ? sign + sp + YEAR : m);
+const withBrand = code => { code = fixYear(code); return page.brand?.logo ? code.replace(/brand:logo/g, page.brand.logo) : code; };
 
 async function runAI(request, custom = {}){
   const m = current(), p = byId(m.pid), key = keys[m.pid];
@@ -1555,7 +1557,7 @@ shapes: box (size [w,h,d], rounded), sphere (radius), cylinder (radius or radius
 Each object: name, position [x,y,z] in meters (y up, ground at y=0, a chair is ~0.9 m tall), rotation [x,y,z] in degrees, scale, color "#hex", metalness 0-1, roughness 0-1, emissive "#hex" + emissiveIntensity for glow, opacity, flat:true for a low-poly look, animate {"spin":[0,45,0] deg/s, "bob":0.05, "pulse":0.05}, children (positions relative to the parent).
 Build recognizable things from MANY well-placed parts (a chair = seat + backrest + 4 legs; a character = body, head, eyes, arms, legs), with a coherent palette. Omit "camera" to auto-frame. Leave background null to sit on the page. For a change to a 3D Current element, return the WHOLE updated scene.
 - Do not style html or body; use unique class names with a shared prefix.
-${brandRules()}- Clean, modern design: spacing, heading hierarchy, rounded corners, shadows, hover states. Respect prefers-reduced-motion for animations.
+${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current year is ${new Date().getFullYear()}. Use it for copyright lines, dates and \"since\"/\"years\" texts; never write an older year as the current one.\n- Clean, modern design: spacing, heading hierarchy, rounded corners, shadows, hover states. Respect prefers-reduced-motion for animations.
 - Write all UI text in the components in the same language as the user's request.
 - Keep the code compact (no comments, no repeated boilerplate) so the answer fits in one response.`;
   // photos already in the selected element travel as short kept:N tokens, not megabytes of base64
