@@ -1,6 +1,6 @@
 // Cloudflare Worker for openconstructor.pw
 // /p/<slug> -> a page published from the editor (Supabase table `pages`, see supabase/publish.sql)
-//   forms on it post to /api/form/<slug> (stored in `form_submissions`), each visit counts a view (supabase/manage.sql)
+//   forms on it post to /api/form/<slug> (stored in `form_submissions`, the author gets an e-mail via Resend), each visit counts a view (supabase/manage.sql)
 // /api/ai, /api/ai/quota -> free AI without a key for signed-in users (Groq, quota in supabase/ai.sql)
 // everything else -> the static site (assets binding, SPA fallback)
 
@@ -107,7 +107,7 @@ async function countView(request, env, slug){
 }
 
 // A form sent from a published page: stored for the page's author (see supabase/manage.sql)
-async function formSubmit(request, env, slug){
+async function formSubmit(request, env, ctx, slug){
   const back = { href: `${HOME}/p/${slug}`, label: 'back to the page' };
   if (!SLUG_RE.test(slug)) return notice(404, 'page not found', 'There is no published page at this address.');
   if ((+request.headers.get('content-length') || 0) > 60000) return notice(413, 'too much text', 'The form is too large to send.', back);
@@ -143,7 +143,43 @@ async function formSubmit(request, env, slug){
     console.error('form: store failed', slug, err?.message);
     return notice(502, 'not sent', 'Your message could not be sent right now. Please try again in a minute.', back);
   }
+  ctx.waitUntil(notifyAuthor(env, slug, data).catch(err => console.error('form: e-mail failed', slug, err?.message)));
   return thanks();
+}
+
+// E-mail the page's author about a new form message (Resend). Needs two secrets:
+//   RESEND_API_KEY             — wrangler secret put RESEND_API_KEY
+//   SUPABASE_SERVICE_ROLE_KEY  — to look up the author's address (it never leaves the worker)
+// MAIL_FROM (optional var) — a sender on a domain verified in Resend, default forms@openconstructor.pw
+async function notifyAuthor(env, slug, data){
+  if (!env.RESEND_API_KEY || !env.SUPABASE_SERVICE_ROLE_KEY) return;
+  const svc = { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, Accept: 'application/json' };
+  const base = `${env.SUPABASE_URL}/rest/v1/pages?slug=eq.${encodeURIComponent(slug)}`;
+  let r = await fetch(base + '&select=owner,title,notify_email', { headers: svc });
+  if (r.status === 400) r = await fetch(base + '&select=owner,title', { headers: svc });
+  if (!r.ok) throw new Error(`pages ${r.status}`);
+  const page = (await r.json())[0];
+  if (!page || page.notify_email === false) return;
+  const u = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${page.owner}`, { headers: svc });
+  if (!u.ok) throw new Error(`user ${u.status}`);
+  const to = (await u.json())?.email;
+  if (!to) return;
+  const rows = Object.entries(data).map(([k, v]) => [k, [].concat(v).join(', ')]);
+  const replyTo = rows.map(([, v]) => v).find(v => /^[^\s@<>]+@[^\s@<>]+\.[a-z]{2,}$/i.test(v.trim()));
+  const pageUrl = `${HOME}/p/${slug}`, title = page.title || slug;
+  const html = `<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:560px;margin:0 auto;color:#18181b">
+<p style="margin:0 0 4px;color:#71717a;font-size:13px">New message from your page</p>
+<h2 style="margin:0 0 16px;font-size:20px"><a href="${pageUrl}" style="color:#e4572e;text-decoration:none">${esc(title)}</a></h2>
+<table style="width:100%;border-collapse:collapse;font-size:14px">${rows.map(([k, v]) => `<tr><td style="padding:8px 12px 8px 0;color:#71717a;vertical-align:top;white-space:nowrap">${esc(k)}</td><td style="padding:8px 0;white-space:pre-wrap">${esc(v)}</td></tr>`).join('')}</table>
+<p style="margin:20px 0 0;color:#71717a;font-size:12px">All messages are in the editor: publish → your published pages → ✉. ${replyTo ? 'Reply to this e-mail to answer the sender.' : ''} To stop these e-mails, switch off ✉ e-mail for this page there.</p>
+<p style="margin:8px 0 0;color:#a1a1aa;font-size:12px">openconstructor · <a href="${HOME}" style="color:#a1a1aa">openconstructor.pw</a></p></div>`;
+  const text = `New message from ${pageUrl}\n\n${rows.map(([k, v]) => `${k}: ${v}`).join('\n')}\n\nAll messages: open the editor → publish → your published pages → ✉.`;
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: env.MAIL_FROM || 'openconstructor <forms@openconstructor.pw>', to: [to], subject: `New message from /p/${slug}`, html, text, ...(replyTo ? { reply_to: replyTo.trim() } : {}) }),
+  });
+  if (!res.ok) throw new Error(`resend ${res.status} ${(await res.text()).slice(0, 200)}`);
 }
 
 async function servePage(request, env, ctx, slug){
@@ -476,7 +512,7 @@ export default {
     const sm = /^\/api\/sync\/([^/]+)$/.exec(url.pathname);
     if (sm) return request.method === 'GET' ? syncGet(request, env, ctx, sm[1]) : fail(405, 'Method not allowed', { Allow: 'GET' });
     const fm = /^\/api\/form\/([^/]+)$/.exec(url.pathname);
-    if (fm) return request.method === 'POST' ? formSubmit(request, env, decodeURIComponent(fm[1])) : fail(405, 'Method not allowed', { Allow: 'POST' });
+    if (fm) return request.method === 'POST' ? formSubmit(request, env, ctx, decodeURIComponent(fm[1])) : fail(405, 'Method not allowed', { Allow: 'POST' });
     if (url.pathname.startsWith('/api/')) return fail(404, 'Not found');
     const m = /^\/p\/([^/]+)\/?$/.exec(url.pathname);
     if (m) { let slug = ''; try { slug = decodeURIComponent(m[1]); } catch {} return servePage(request, env, ctx, slug); }

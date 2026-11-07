@@ -820,4 +820,9 @@ export default {
   "Delete this message?": "Diese Nachricht löschen?",
   "couldn't load messages: {0}": "Nachrichten konnten nicht geladen werden: {0}",
   "couldn't delete: {0}": "konnte nicht löschen: {0}",
+  "E-mail me about each form message": "Mir bei jeder Formularnachricht eine E-Mail senden",
+  "e-mail on": "E-Mail an",
+  "e-mail off": "E-Mail aus",
+  "form messages will also come by e-mail": "Formularnachrichten kommen jetzt auch per E-Mail",
+  "no e-mails for form messages": "keine E-Mails zu Formularnachrichten",
 };

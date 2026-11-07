@@ -820,4 +820,9 @@ export default {
   "Delete this message?": "¿Borrar este mensaje?",
   "couldn't load messages: {0}": "no se pudieron cargar los mensajes: {0}",
   "couldn't delete: {0}": "no se pudo borrar: {0}",
+  "E-mail me about each form message": "Envíame un correo por cada mensaje",
+  "e-mail on": "correo sí",
+  "e-mail off": "correo no",
+  "form messages will also come by e-mail": "los mensajes también llegarán por correo",
+  "no e-mails for form messages": "sin correos por los mensajes",
 };

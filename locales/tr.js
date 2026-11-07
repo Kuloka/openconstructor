@@ -818,4 +818,9 @@ export default {
   "Delete this message?": "Bu mesaj silinsin mi?",
   "couldn't load messages: {0}": "mesajlar yüklenemedi: {0}",
   "couldn't delete: {0}": "silinemedi: {0}",
+  "E-mail me about each form message": "Her form mesajı için bana e-posta gönder",
+  "e-mail on": "e-posta açık",
+  "e-mail off": "e-posta kapalı",
+  "form messages will also come by e-mail": "form mesajları e-postayla da gelecek",
+  "no e-mails for form messages": "form mesajları için e-posta yok",
 };

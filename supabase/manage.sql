@@ -5,11 +5,13 @@
 -- 1. Columns: `paused` is set by the author, `views` only by page_view() below
 alter table public.pages add column if not exists paused boolean not null default false;
 alter table public.pages add column if not exists views bigint not null default 0;
+-- e-mail the author about each form message (worker.js, via Resend); on by default
+alter table public.pages add column if not exists notify_email boolean not null default true;
 
 grant select (paused) on public.pages to anon;
 revoke insert, update on public.pages from authenticated;
-grant insert (slug, title, html, listed, source, remixed_from, paused) on public.pages to authenticated;
-grant update (title, html, listed, source, paused) on public.pages to authenticated;
+grant insert (slug, title, html, listed, source, remixed_from, paused, notify_email) on public.pages to authenticated;
+grant update (title, html, listed, source, paused, notify_email) on public.pages to authenticated;
 
 -- 2. updated_at changes only when the page itself changes (not on a view or a visibility switch),
 --    so the gallery order and "updated" dates stay meaningful

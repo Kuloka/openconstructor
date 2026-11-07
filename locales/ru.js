@@ -823,4 +823,9 @@ export default {
   "Delete this message?": "Удалить эту заявку?",
   "couldn't load messages: {0}": "не удалось загрузить заявки: {0}",
   "couldn't delete: {0}": "не удалось удалить: {0}",
+  "E-mail me about each form message": "Присылать мне письмо о каждой заявке",
+  "e-mail on": "письма вкл",
+  "e-mail off": "письма выкл",
+  "form messages will also come by e-mail": "заявки будут приходить и на почту",
+  "no e-mails for form messages": "писем о заявках не будет",
 };

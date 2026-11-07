@@ -216,7 +216,7 @@ let canManage = true; // false until supabase/manage.sql has been run (no paused
 async function loadList(){
   const list = $('#pubList');
   if (!me) { list.innerHTML = ''; return; }
-  let res = await supabase.from('pages').select('slug, title, updated_at, listed, paused, views').eq('owner', me.id).order('updated_at', { ascending: false });
+  let res = await supabase.from('pages').select('slug, title, updated_at, listed, paused, views, notify_email').eq('owner', me.id).order('updated_at', { ascending: false });
   canManage = !res.error;
   if (res.error) res = await supabase.from('pages').select('slug, title, updated_at, listed').eq('owner', me.id).order('updated_at', { ascending: false });
   if (res.error) { list.innerHTML = `<li class="pub-empty">couldn't load your pages: ${esc(res.error.message)}</li>`; return; }
@@ -236,6 +236,7 @@ async function loadList(){
         ${canManage ? `<button type="button" class="pub-chip" data-subs="${esc(p.slug)}" title="Messages sent through forms on this page">✉ ${counts[p.slug] || 0}</button>` : ''}
         <button type="button" class="pub-chip${p.listed ? ' on' : ''}" data-listed="${esc(p.slug)}" title="Who can find it">${p.listed ? 'in gallery' : 'link only'}</button>
         ${canManage ? `<button type="button" class="pub-chip${p.paused ? '' : ' on'}" data-paused="${esc(p.slug)}" title="Turn the page off without deleting it">${p.paused ? 'off' : 'on'}</button>` : ''}
+        ${canManage ? `<button type="button" class="pub-chip${p.notify_email === false ? '' : ' on'}" data-notify="${esc(p.slug)}" title="E-mail me about each form message">${p.notify_email === false ? 'e-mail off' : 'e-mail on'}</button>` : ''}
       </div>
     </div>
     <button class="btn pub-use" type="button" data-use="${esc(p.slug)}" title="Publish this project to this link">use</button>
@@ -245,7 +246,7 @@ async function loadList(){
 async function setFlag(slug, field, value){
   const { error } = await supabase.from('pages').update({ [field]: value }).eq('slug', slug).eq('owner', me.id);
   if (error) { studio.status(`couldn't change the page: ${error.message}`, 'error'); return; }
-  const msg = field === 'listed' ? (value ? 'shown in the gallery' : 'now only people with the link can open it') : (value ? 'page turned off' : 'page turned on');
+  const msg = field === 'listed' ? (value ? 'shown in the gallery' : 'now only people with the link can open it') : field === 'notify_email' ? (value ? 'form messages will also come by e-mail' : 'no e-mails for form messages') : (value ? 'page turned off' : 'page turned on');
   studio.status(`/p/${slug}: ${msg} · may take up to a minute`, 'ok');
   loadList();
 }
@@ -254,6 +255,8 @@ $('#pubList').addEventListener('click', async e => {
   if (use) { slugInput.value = use; check(); return; }
   const l = e.target.closest('[data-listed]')?.dataset.listed;
   if (l) { const p = pages.find(x => x.slug === l); return setFlag(l, 'listed', !p?.listed); }
+  const nt = e.target.closest('[data-notify]')?.dataset.notify;
+  if (nt) { const p = pages.find(x => x.slug === nt); return setFlag(nt, 'notify_email', p?.notify_email === false); }
   const pz = e.target.closest('[data-paused]')?.dataset.paused;
   if (pz) { const p = pages.find(x => x.slug === pz); return setFlag(pz, 'paused', !p?.paused); }
   const sb = e.target.closest('[data-subs]')?.dataset.subs;
