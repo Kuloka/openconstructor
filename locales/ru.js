@@ -911,4 +911,13 @@ export default {
   "locked: the block stays put (right-click → unlock)": "закреплено: блок не сдвинется (правый клик → открепить)",
   "unlocked: the block can be moved again": "откреплено: блок снова можно двигать",
   "ai models ↗": "ии-модели ↗",
+  "✦ AI image…": "✦ картинка от ИИ…",
+  "Let the free AI draw a picture for this place": "Пусть бесплатный ИИ нарисует картинку для этого места",
+  "AI picture…": "Картинка от ИИ…",
+  "Describe the picture (English works best):": "Опишите картинку (лучше по-английски):",
+  "the AI is drawing the picture…": "ИИ рисует картинку…",
+  "picture added": "картинка добавлена",
+  "picture added · Ctrl+Z after closing the editor to undo": "картинка добавлена · Ctrl+Z после закрытия редактора — отменить",
+  "editing ended before the picture was ready": "редактирование закрылось раньше, чем картинка была готова",
+  "Sign in to generate images with the free AI.": "Войдите, чтобы рисовать картинки бесплатным ИИ.",
 };

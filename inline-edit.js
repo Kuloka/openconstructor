@@ -4,6 +4,7 @@
 //  • Esc / "done" / clicking outside writes the result back into the element's code (one undo step).
 import { studio } from './studio.js';
 import { pickIcon } from './icons.js';
+import { aiImage, askPicture } from './ai-image.js';
 import './inline-edit.css';
 
 const $ = id => document.getElementById(id);
@@ -34,6 +35,7 @@ panel.innerHTML = `
   <div class="ins-sec">image</div>
   <div class="ins-media">
     <button class="btn" data-ins="image" title="Put your own picture here: replaces an icon/image, or fills a block">🖼 use my image…</button>
+    <button class="btn" data-ins="aiimage" title="Let the free AI draw a picture for this place">✦ AI image…</button>
     <button class="btn" data-ins="noimage" title="Remove the picture you added">remove</button>
     <button class="btn" data-ins="icon" title="Replace the icon here with another one, or put an icon before the text">★ icon…</button>
   </div>
@@ -83,8 +85,9 @@ function toDataURL(file, max = 640){
     img.src = url;
   });
 }
-imgInput.onchange = async () => {
-  const file = imgInput.files[0]; imgInput.value = '';
+imgInput.onchange = () => { const file = imgInput.files[0]; imgInput.value = ''; applyImage(file); };
+// A picture (file or blob) into the picked part: replaces an image/icon, or fills the block
+async function applyImage(file){
   let el = session?.picked; if (!file || !el) return;
   if (file.size > 20e6) { studio.status('image is too large (max 20 MB)', 'warn'); return; }
   const data = await toDataURL(file).catch(() => null); if (!data || !session) return;
@@ -238,6 +241,16 @@ panel.addEventListener('click', e => {
   if (a === 'done') return finish();
   const el = session.picked; if (!el) return;
   if (a === 'image') return imgInput.click();
+  if (a === 'aiimage') {
+    const hint = el.getAttribute('alt') || el.closest('section,article,div')?.querySelector('h1,h2,h3')?.textContent?.trim().slice(0, 80) || '';
+    const what = askPicture(hint); if (!what) return;
+    const keep = session; studio.status('the AI is drawing the picture…', 'busy');
+    e.target.closest('button').disabled = true;
+    aiImage(what).then(blob => { if (session !== keep) return studio.status('editing ended before the picture was ready', 'warn'); applyImage(blob); studio.status('picture added · Ctrl+Z after closing the editor to undo', 'ok'); })
+      .catch(err => studio.status(err.message, 'error'))
+      .finally(() => { const b = panel.querySelector('[data-ins="aiimage"]'); if (b) b.disabled = false; });
+    return;
+  }
   if (a === 'icon') { pickIcon().then(svg => { if (svg && session?.picked) placeIcon(svg); }); return; }
   if (a === 'noimage') {
     if (el.tagName === 'IMG' && el.src.startsWith('data:')) { el.remove(); session.dirty = true; return pick(null); }

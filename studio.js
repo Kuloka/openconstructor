@@ -660,6 +660,17 @@ addEventListener('pointerdown', e => { if (!ctx.contains(e.target)) closeCtx(); 
 addEventListener('blur', closeCtx);
 canvas.addEventListener('scroll', closeCtx);
 // A standalone icon on the canvas (recolour it with ✎ edit text & style)
+// ✦ a picture drawn by the free AI, as its own block on the canvas
+async function addAIPicture(){
+  const { aiImage, askPicture } = await import('./ai-image.js');
+  const what = askPicture(); if (!what) return;
+  setState('the AI is drawing the picture…', 'busy');
+  try {
+    const data = await toDataURL(await aiImage(what), 1200, .8);
+    add('AI picture', `<style>.oc-aipic{display:block;width:480px;max-width:100%;aspect-ratio:1;object-fit:cover;border-radius:12px}</style><img class="oc-aipic" src="${data}" alt="${escapeHTML(what.slice(0, 120))}">`);
+    setState('picture added', 'ok');
+  } catch (err) { setState(err.message, 'error'); }
+}
 async function addIcon(){
   const svg = await pickIcon(); if (!svg) return;
   add('Icon', `<style>.oc-icon{display:grid;place-items:center;width:64px;height:64px;color:${isLightPage() ? '#18181b' : '#f2ece9'}}.oc-icon svg{width:48px;height:48px}</style><div class="oc-icon">${svg}</div>`);
@@ -1724,6 +1735,7 @@ export const studio = {
     ...presets.map(p => ({ name: p.name, category: p.category, add: () => add(p.name, p.code, { full: p.full }) })),
   ],
   addIcon: () => addIcon(),
+  addAIPicture: () => addAIPicture(),
   editPart: (id, html, ask) => editPart(id, html, ask),
   improve: id => improve(id ?? selected),
   recolorAll: mode => recolorAll(mode),

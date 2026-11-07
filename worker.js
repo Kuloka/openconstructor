@@ -497,7 +497,59 @@ function parseAiBody(raw){
   const max = Number.isFinite(+d.max_tokens) && +d.max_tokens > 0 ? Math.min(Math.floor(+d.max_tokens), AI_MAX_TOKENS) : AI_MAX_TOKENS;
   const body = { model, messages, max_tokens: max };
   if (model.startsWith('openai/gpt-oss')) body.reasoning_effort = 'low';
+  if (d.stream === true) body.stream = true;
   return { body };
+}
+
+// ---------- streaming free AI: every backend's stream becomes OpenAI-style SSE chunks ----------
+const sseChunk = (content, reasoning, finish) => `data: ${JSON.stringify({ choices: [{ delta: { ...(content ? { content } : {}), ...(reasoning ? { reasoning } : {}) }, finish_reason: finish || null }] })}\n\n`;
+// Workers AI (OpenAI chunks, or {response} for older models) and OpenAI-compatible SSE → slim OpenAI chunks
+function normalizeSSE(){
+  const dec = new TextDecoder(), enc = new TextEncoder();
+  let buf = '';
+  const line = (l, ctrl) => {
+    l = l.trim(); if (!l.startsWith('data:')) return;
+    const d = l.slice(5).trim(); if (!d || d === '[DONE]') return;
+    let j; try { j = JSON.parse(d); } catch { return; }
+    if (j.error) { ctrl.enqueue(enc.encode(`data: ${JSON.stringify({ error: { message: String(j.error.message || j.error) } })}\n\n`)); return; }
+    const ch = j.choices?.[0];
+    const content = ch?.delta?.content ?? (typeof j.response === 'string' ? j.response : ''), reasoning = ch?.delta?.reasoning ?? ch?.delta?.reasoning_content ?? '';
+    const finish = ch?.finish_reason === 'length' ? 'length' : ch?.finish_reason ? 'stop' : null;
+    if (content || reasoning || finish) ctrl.enqueue(enc.encode(sseChunk(content, reasoning, finish)));
+  };
+  return new TransformStream({
+    transform(chunk, ctrl){ buf += dec.decode(chunk, { stream: true }); let i; while ((i = buf.indexOf('\n')) >= 0) { line(buf.slice(0, i), ctrl); buf = buf.slice(i + 1); } },
+    flush(ctrl){ if (buf) line(buf, ctrl); ctrl.enqueue(enc.encode('data: [DONE]\n\n')); },
+  });
+}
+// A whole (non-streamed) completion as a one-chunk stream, so the client handles one format
+const oneShotSSE = text => { let content = ''; try { content = JSON.parse(text).choices?.[0]?.message?.content || ''; } catch {} return new Response(sseChunk(content, '', 'stop') + 'data: [DONE]\n\n').body; };
+// Like callUpstream, but returns { status, stream } — falls through to the next backend until one starts answering
+async function callUpstreamStream(env, body){
+  let last = null;
+  for (const b of freeBackends(env)) {
+    let r;
+    if (b.id === 'workers-ai') {
+      try {
+        const out = await env.AI.run(b.model, { messages: body.messages, max_tokens: Math.min(body.max_tokens, 4096), stream: true });
+        if (out instanceof ReadableStream) return { status: 200, be: b.id, stream: out.pipeThrough(normalizeSSE()) };
+        const content = typeof out === 'string' ? out : out?.response ?? out?.choices?.[0]?.message?.content ?? '';
+        return { status: 200, be: b.id, stream: new Response(sseChunk(content, '', 'stop') + 'data: [DONE]\n\n').body };
+      } catch (err) { const msg = String(err?.message || err); r = { status: /limit|quota|neurons|429/i.test(msg) ? 429 : 502, text: msg, be: b.id }; }
+    } else {
+      const headers = { Authorization: `Bearer ${env[b.secret]}`, 'Content-Type': 'application/json' };
+      if (b.id === 'openrouter') { headers['HTTP-Referer'] = 'https://openconstructor.pw'; headers['X-Title'] = 'openconstructor'; }
+      try {
+        const res = await fetch(b.url, { method: 'POST', headers, body: JSON.stringify({ model: b.model, messages: body.messages, max_tokens: body.max_tokens, stream: true, ...b.extra }) });
+        if (res.ok) return { status: 200, be: b.id, stream: /event-stream/i.test(res.headers.get('content-type') || '') ? res.body.pipeThrough(normalizeSSE()) : oneShotSSE(await res.text()) };
+        r = { status: res.status, text: await res.text(), be: b.id };
+      } catch (err) { r = { status: 502, text: String(err?.message || err), be: b.id }; }
+    }
+    last = r;
+    console.error('ai stream: backend failed, trying next', b.id, r.status, String(r.text).slice(0, 200));
+    if (!(r.status === 429 || r.status >= 500 || r.status === 402 || r.status === 401 || r.status === 403)) break;
+  }
+  return last || { status: 503, text: 'no backend', be: null };
 }
 
 async function aiChat(request, env){
@@ -514,29 +566,12 @@ async function aiChat(request, env){
   if (parsed.error) return parsed.error;
 
   // Called with the user's JWT: PostgREST rejects bad tokens, and auth.uid() is the user whose quota is counted
-  let q;
-  try {
-    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/consume_ai_quota`, {
-      method: 'POST', headers: sbHeaders(env, token), body: JSON.stringify({ daily_limit: AI_DAILY, global_limit: AI_GLOBAL }),
-    });
-    if (r.status === 401 || r.status === 403) return fail(401, 'Your session has expired. Sign in again to use the free AI.');
-    if (!r.ok) throw new Error(`supabase ${r.status}`);
-    q = await r.json();
-  } catch (err) {
-    console.error('ai: quota check failed', err?.message);
-    return fail(502, 'Could not check the free AI quota right now. Try again in a minute or add your own key.');
-  }
-  if (!q || typeof q !== 'object') return fail(502, 'Unexpected quota response.');
-  const limit = q.limit ?? AI_DAILY;
-  const quota = { 'X-OC-Quota': `${q.used ?? 0}/${limit}` };
-  if (!q.ok) {
-    if (q.reason === 'auth') return fail(401, 'Sign in to use the free openconstructor AI.');
-    if (q.reason === 'global') return fail(429, 'The free AI has reached its limit for today. Add your own key for unlimited use.', quota);
-    return fail(429, `Daily free limit reached (${limit}/day). Add your own key for unlimited use.`, quota);
-  }
+  const t = await takeQuota(env, token);
+  if (t.error) return t.error;
+  const quota = t.quota;
 
   let g;
-  try { g = await callUpstream(env, parsed.body); }
+  try { g = await (parsed.body.stream ? callUpstreamStream : callUpstream)(env, parsed.body); }
   catch (err) {
     console.error('ai: upstream unreachable', err?.message);
     return fail(502, 'The free AI is unreachable right now. Try again in a minute.', quota);
@@ -548,7 +583,60 @@ async function aiChat(request, env){
     if (g.status === 413 || (g.status === 400 && /context|too long|too large|tokens/i.test(text))) return fail(413, 'This request is too long for the free AI. Try a shorter prompt or add your own key.', quota);
     return fail(502, `The free AI failed (upstream ${g.status}). Try again or add your own key.`, quota);
   }
+  if (g.stream) return new Response(g.stream, { status: 200, headers: { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', ...quota } });
   return new Response(text, { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...quota } });
+}
+
+async function takeQuota(env, token){
+  let q;
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/consume_ai_quota`, {
+      method: 'POST', headers: sbHeaders(env, token), body: JSON.stringify({ daily_limit: AI_DAILY, global_limit: AI_GLOBAL }),
+    });
+    if (r.status === 401 || r.status === 403) return { error: fail(401, 'Your session has expired. Sign in again to use the free AI.') };
+    if (!r.ok) throw new Error(`supabase ${r.status}`);
+    q = await r.json();
+  } catch (err) {
+    console.error('ai: quota check failed', err?.message);
+    return { error: fail(502, 'Could not check the free AI quota right now. Try again in a minute or add your own key.') };
+  }
+  if (!q || typeof q !== 'object') return { error: fail(502, 'Unexpected quota response.') };
+  const limit = q.limit ?? AI_DAILY;
+  const quota = { 'X-OC-Quota': `${q.used ?? 0}/${limit}` };
+  if (!q.ok) {
+    if (q.reason === 'auth') return { error: fail(401, 'Sign in to use the free openconstructor AI.') };
+    if (q.reason === 'global') return { error: fail(429, 'The free AI has reached its limit for today. Add your own key for unlimited use.', quota) };
+    return { error: fail(429, `Daily free limit reached (${limit}/day). Add your own key for unlimited use.`, quota) };
+  }
+  return { quota };
+}
+
+// ---------- AI images: FLUX schnell on Workers AI, one picture = one free generation ----------
+async function image(request, env, url, test = false){
+  if (!test && request.method !== 'POST') return fail(405, 'Method not allowed', { Allow: 'POST' });
+  if (!env.AI) return fail(503, 'AI images are not available on this server.');
+  let prompt = 'latte art in a white cup on a wooden table, warm morning light', quota = {};
+  if (!test) {
+    const token = bearer(request);
+    if (!token) return fail(401, 'Sign in to generate images with the free AI.');
+    let d; try { d = await request.json(); } catch { return fail(400, 'Bad request.'); }
+    prompt = String(d?.prompt || '').replace(/\s+/g, ' ').trim().slice(0, 600);
+    if (prompt.length < 3) return fail(400, 'Describe the picture in a few words.');
+    const t = await takeQuota(env, token);
+    if (t.error) return t.error;
+    quota = t.quota;
+  }
+  try {
+    const out = await env.AI.run('@cf/black-forest-labs/flux-1-schnell', { prompt, steps: 6 });
+    if (!out?.image) throw new Error('empty image');
+    const bin = atob(out.image), bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Response(bytes, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-store', ...quota } });
+  } catch (err) {
+    const msg = String(err?.message || err);
+    console.error('image: failed', msg.slice(0, 200));
+    return fail(/limit|quota|neurons|429/i.test(msg) ? 503 : 502, 'The image could not be made right now. Try again in a minute.', quota);
+  }
 }
 
 async function aiQuota(request, env){
@@ -702,6 +790,7 @@ export default {
     if (url.pathname === '/api/domain') return domainApi(request, env, ctx, url);
     if (url.pathname === '/api/ai' || url.pathname === '/api/ai/') return aiChat(request, env);
     if (url.pathname === '/api/ai/quota') return aiQuota(request, env);
+    if (url.pathname === '/api/image') return image(request, env, url);
     if (url.pathname === '/api/photo') return request.method === 'GET' ? photo(request, env, ctx, url) : fail(405, 'Method not allowed', { Allow: 'GET' });
     if (url.pathname === '/api/sync') return request.method === 'POST' ? syncPut(request, env) : fail(405, 'Method not allowed', { Allow: 'POST' });
     const sm = /^\/api\/sync\/([^/]+)$/.exec(url.pathname);

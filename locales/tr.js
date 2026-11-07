@@ -906,4 +906,13 @@ export default {
   "locked: the block stays put (right-click → unlock)": "kilitlendi: blok yerinde kalır (sağ tık → kilidi aç)",
   "unlocked: the block can be moved again": "kilit açıldı: blok yeniden taşınabilir",
   "ai models ↗": "yapay zekâ modelleri ↗",
+  "✦ AI image…": "✦ yapay zekâ görseli…",
+  "Let the free AI draw a picture for this place": "Ücretsiz yapay zekâ buraya bir görsel çizsin",
+  "AI picture…": "Yapay zekâ görseli…",
+  "Describe the picture (English works best):": "Görseli tarif et (İngilizce en iyisi):",
+  "the AI is drawing the picture…": "yapay zekâ görseli çiziyor…",
+  "picture added": "görsel eklendi",
+  "picture added · Ctrl+Z after closing the editor to undo": "görsel eklendi · geri almak için düzenleyiciyi kapatıp Ctrl+Z",
+  "editing ended before the picture was ready": "görsel hazır olmadan düzenleme bitti",
+  "Sign in to generate images with the free AI.": "Ücretsiz yapay zekâ ile görsel üretmek için giriş yap.",
 };

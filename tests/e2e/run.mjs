@@ -18,9 +18,9 @@ if (!(await up(URL_))) {
 }
 process.on('exit', () => server?.kill());
 const only = process.env.ONLY || '';
-const scenario = (name, fn) => test(name, { skip: !!only && !name.includes(only) }, async () => {
+const scenario = (name, fn, setup = {}) => test(name, { skip: !!only && !name.includes(only) }, async () => {
   const opts = {};
-  const ed = await editor(URL_, { reply: p => opts.reply(p), lang: 'en' });
+  const ed = await editor(URL_, { reply: p => opts.reply(p), lang: 'en', ...setup });
   try { await fn(ed, opts); assert.deepEqual(ed.errors, [], 'page errors'); } finally { ed.close(); }
 });
 
@@ -154,3 +154,36 @@ scenario('the AI knows the current year; old copyright years get fixed', async (
   const [it] = await ed.items();
   assert.match(it.code, new RegExp(`© ${year} Bean There · since 2019`));
 });
+
+// the free built-in AI (no key) streams too; the server answers in OpenAI-style SSE
+const sse = chunks => chunks.map(c => 'data: ' + JSON.stringify(c) + '\n\n').join('') + 'data: [DONE]\n\n';
+const freeAnswer = block('Free page', '<section style="padding:30px;background:#111;color:#eee">Free AI</section>', { full: true });
+scenario('free AI: the answer streams live without a key', async (ed) => {
+  await ed.ask('a page'); await ed.idle();
+  assert.equal((await ed.items())[0]?.name, 'Free page');
+  assert.match(await ed.ev(`[...document.querySelectorAll('.th-reason')].pop()?.textContent || ''`), /planning/);
+  assert.equal(JSON.parse(globalThis.__freePost).stream, true);
+}, { connect: false, signedIn: true, routes: [{ match: u => /\/api\/ai$/.test(u), handle: rq => { globalThis.__freePost = rq.postData; return { type: 'text/event-stream', headers: [{ name: 'X-OC-Quota', value: '3/20' }], body: sse([{ choices: [{ delta: { reasoning: 'planning the page' } }] }, ...freeAnswer.match(/[\s\S]{1,20}/g).map(c => ({ choices: [{ delta: { content: c } }] })), { choices: [{ delta: {}, finish_reason: 'stop' }] }]) }; } }] });
+
+scenario('AI picture: drawn by the free model, placed as a block', async (ed) => {
+  await ed.ev(`(window.prompt = () => 'latte art on a table', 1)`);
+  await ed.ev(`(document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true })), 1)`); await sleep(300);
+  await ed.ev(`(() => { const i = document.getElementById('palInput'); i.value = 'AI picture'; i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); return 1; })()`);
+  await ed.until(`JSON.parse(localStorage.getItem('form-canvas-v3') || '[]').length === 1`);
+  const [it] = await ed.items();
+  assert.equal(it.name, 'AI picture');
+  assert.match(it.code, /<img class="oc-aipic" src="data:image\/(webp|jpeg)/);
+  assert.equal(JSON.parse(globalThis.__imgPost).prompt, 'latte art on a table');
+}, { connect: false, signedIn: true, routes: [{ match: u => /\/api\/image$/.test(u), handle: rq => { globalThis.__imgPost = rq.postData; return { type: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64') }; } }] });
+
+scenario('AI image in the inline editor fills the picked part', async (ed) => {
+  await ed.ev(`(window.prompt = () => 'mountain lake at dawn', 1)`);
+  await ed.ev(`(document.querySelector('[data-add]').click(), 1)`); await sleep(700);
+  const [before] = await ed.items();
+  await ed.ev(`(window.dispatchEvent(new CustomEvent('oc:edit-inline', { detail: ${JSON.stringify(before.id)} })), 1)`); await sleep(500);
+  await ed.ev(`(document.querySelector('[data-ins="aiimage"]').click(), 1)`); await sleep(1500);
+  await ed.ev(`(document.querySelector('[data-ins="done"]').click(), 1)`); await sleep(400);
+  const [after] = await ed.items();
+  assert.match(after.code, /data:image\/webp/);
+  assert.equal(JSON.parse(globalThis.__img2).prompt, 'mountain lake at dawn');
+}, { connect: false, signedIn: true, routes: [{ match: u => /\/api\/image$/.test(u), handle: rq => { globalThis.__img2 = rq.postData; return { type: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64') }; } }] });

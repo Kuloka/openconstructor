@@ -13,6 +13,7 @@ const ACTIONS = [
   ['Undo', 'Ctrl+Z', click('#undo')],
   ['Redo', 'Ctrl+Y', click('#redo')],
   ['Add icon…', '', () => studio.addIcon(), 'icons symbol'],
+  ['AI picture…', '✦', () => studio.addAIPicture(), 'image photo generate draw flux illustration'],
   ['Brand kit…', '', () => import('./brand.js').then(m => m.openBrand()), 'brand colours logo font style'],
   ['Make the selected block better', '✦', () => studio.selectedId() ? studio.improve() : studio.status('select a block first', 'warn'), 'improve design review polish'],
   ['Add your own HTML/CSS', '', click('#addCode'), 'custom code'],

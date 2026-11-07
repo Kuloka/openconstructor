@@ -99,21 +99,34 @@ async function readSSE(r, onEvent){
   }
 }
 const isSSE = r => /event-stream/i.test(r.headers.get('content-type') || '');
+async function readOpenAIStream(r, onDelta){
+  let text = '', cut = false;
+  await readSSE(r, e => {
+    if (e.error) throw Error(e.error.message || 'stream error');
+    const ch = e.choices?.[0]; if (!ch) return;
+    const piece = ch.delta?.content || '', why = ch.delta?.reasoning || ch.delta?.reasoning_content || '';
+    if (piece) text += piece;
+    if (piece || why) onDelta?.(piece, why);
+    if (ch.finish_reason === 'length') cut = true;
+  });
+  return { text, cut };
+}
 
 // One request. Returns { text, cut } — `cut` is true when the model stopped because it hit the length limit.
 // `images` are data: URLs (screenshots). Each API wants them in its own message format.
-// With onDelta(text, reasoning) the answer is streamed piece by piece (not for the proxy).
+// With onDelta(text, reasoning) the answer is streamed piece by piece (the free AI too).
 async function once(p, key, model, system, messages, onDelta){
   if (p.kind === 'proxy') {
     const token = await sessionToken();
     if (!token) throw Error('Sign in to use the free openconstructor AI');
-    const r = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ model, messages: [{ role: 'system', content: system }, ...messages] }) });
+    const r = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ model, messages: [{ role: 'system', content: system }, ...messages], ...(onDelta ? { stream: true } : {}) }) });
     readQuota(r);
     if (!r.ok) {
       const e = Error(await errorText(r));
       e.status = r.status; // 401 sign in, 429 daily limit, 503 not configured / busy
       throw e;
     }
+    if (isSSE(r)) return readOpenAIStream(r, onDelta);
     const d = await r.json();
     const ch = d.choices?.[0];
     return { text: ch?.message?.content || '', cut: ch?.finish_reason === 'length' };
@@ -144,18 +157,7 @@ async function once(p, key, model, system, messages, onDelta){
   // some providers reject reasoning_effort for some models — retry once without it
   if (!r.ok && r.status === 400 && extra.reasoning_effort) { delete extra.reasoning_effort; r = await fetch(`${p.base}/chat/completions`, { method: 'POST', headers, body: JSON.stringify({ model, ...extra, messages: [{ role: 'system', content: system }, ...messages] }) }); }
   if (!r.ok) throw Error(await errorText(r));
-  if (isSSE(r)) {
-    let text = '', cut = false;
-    await readSSE(r, e => {
-      if (e.error) throw Error(e.error.message || 'stream error');
-      const ch = e.choices?.[0]; if (!ch) return;
-      const piece = ch.delta?.content || '', why = ch.delta?.reasoning || ch.delta?.reasoning_content || '';
-      if (piece) text += piece;
-      if (piece || why) onDelta?.(piece, why);
-      if (ch.finish_reason === 'length') cut = true;
-    });
-    return { text, cut };
-  }
+  if (isSSE(r)) return readOpenAIStream(r, onDelta);
   const d = await r.json();
   const ch = d.choices?.[0], c = ch?.message?.content;
   return { text: Array.isArray(c) ? c.map(x => x.text || '').join('') : (c || ''), cut: ch?.finish_reason === 'length' };
@@ -170,7 +172,7 @@ export async function chat(p, key, model, system, user, images = [], onDelta = n
   const messages = [{ role: 'user', content }];
   let out = '';
   for (let i = 0; i < 4; i++) {
-    const { text, cut } = await once(p, key, model, system, messages, onDelta && p.kind !== 'proxy' ? onDelta : null);
+    const { text, cut } = await once(p, key, model, system, messages, onDelta);
     out += text;
     if (!cut || !text) break;
     messages.push({ role: 'assistant', content: text }, { role: 'user', content: 'You were cut off. Continue EXACTLY where you stopped — no repetition, no preamble, no code fence reopening.' });

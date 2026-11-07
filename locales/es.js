@@ -908,4 +908,13 @@ export default {
   "locked: the block stays put (right-click → unlock)": "bloqueado: el bloque no se mueve (clic derecho → desbloquear)",
   "unlocked: the block can be moved again": "desbloqueado: el bloque se puede mover",
   "ai models ↗": "modelos de IA ↗",
+  "✦ AI image…": "✦ imagen con IA…",
+  "Let the free AI draw a picture for this place": "Que la IA gratuita dibuje una imagen para este lugar",
+  "AI picture…": "Imagen con IA…",
+  "Describe the picture (English works best):": "Describe la imagen (mejor en inglés):",
+  "the AI is drawing the picture…": "la IA está dibujando la imagen…",
+  "picture added": "imagen añadida",
+  "picture added · Ctrl+Z after closing the editor to undo": "imagen añadida · Ctrl+Z tras cerrar el editor para deshacer",
+  "editing ended before the picture was ready": "la edición terminó antes de que la imagen estuviera lista",
+  "Sign in to generate images with the free AI.": "Inicia sesión para generar imágenes con la IA gratuita.",
 };
