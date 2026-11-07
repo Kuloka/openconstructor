@@ -642,4 +642,6 @@ export default {
   "could not save keys on this device": "anahtarlar bu cihaza kaydedilemedi",
   "↷ redo": "↷ yinele",
   "Redo (Ctrl+Shift+Z or Ctrl+Y)": "Yinele (Ctrl+Shift+Z veya Ctrl+Y)",
+  "Roblox UI builder": "Roblox arayüz oluşturucu",
+  "HTML to React, Vue & Svelte": "HTML’den React, Vue ve Svelte’e",
 };

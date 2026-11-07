@@ -644,4 +644,6 @@ export default {
   "could not save keys on this device": "no se pudieron guardar las claves en este dispositivo",
   "↷ redo": "↷ rehacer",
   "Redo (Ctrl+Shift+Z or Ctrl+Y)": "Rehacer (Ctrl+Shift+Z o Ctrl+Y)",
+  "Roblox UI builder": "Constructor de UI para Roblox",
+  "HTML to React, Vue & Svelte": "HTML a React, Vue y Svelte",
 };

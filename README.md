@@ -6,6 +6,8 @@
 
 <p align="center"><a href="https://openconstructor.pw"><b>openconstructor.pw</b></a> — try it live</p>
 
+<p align="center"><a href="https://openconstructor.pw/roblox-ui-builder">Roblox UI builder</a> · <a href="https://openconstructor.pw/ai-ui-generator">AI UI generator</a> · <a href="https://openconstructor.pw/components">220+ components</a> · <a href="https://openconstructor.pw/html-to-react-vue-svelte">HTML to React / Vue / Svelte</a> · <a href="https://openconstructor.pw/love2d-ui">LÖVE 2D UI</a> · <a href="https://openconstructor.pw/gallery">Gallery</a></p>
+
 ---
 
 Drop ready-made components onto one shared canvas, move them around freely, and ask an AI model to build or change anything on the page. When you're done, export a single self-contained HTML file.
@@ -22,7 +24,7 @@ Drop ready-made components onto one shared canvas, move them around freely, and 
 - **Edit without code** — double-click to edit text in place, restyle any part, swap in your own image, tune every animation (speed, direction, repeats).
 - **Multi-select** — Shift-click or Shift-drag a box, move together, align & distribute; smart guides while dragging.
 - **Screens & prototypes** — menu → shop → inventory: several screens in one project, link any button to `#screen` and it opens that screen in ▶ play, in the published page and in the Roblox export.
-- **Roblox Studio sync** — install the [plugin](public/roblox/openconstructor-sync.lua), press *Export → Sync to Roblox Studio*, paste the code in Studio: the UI lands in StarterGui with named buttons. *Live* mode re-syncs on every change, and your own button scripts are kept.
+- **Roblox Studio sync** ([guide](https://openconstructor.pw/roblox-ui-builder)) — install the [plugin](public/roblox/openconstructor-sync.lua), press *Export → Sync to Roblox Studio*, paste the code in Studio: the UI lands in StarterGui with named buttons. *Live* mode re-syncs on every change, and your own button scripts are kept.
 - **Game UI for Roblox** — 25 HUD components and 5 full screens (simulator, tycoon shop, shooter, obby, mobile RPG), Roblox safe-zone overlay, any page size from all four edges.
 - **Publish & share** — one-click public link, community gallery with **remix**, embed code, cloud projects, version history.
 - **VS Code–style layout** — resizable, movable, collapsible panels.

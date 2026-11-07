@@ -647,4 +647,6 @@ export default {
   "could not save keys on this device": "не удалось сохранить ключи на этом устройстве",
   "↷ redo": "↷ повторить",
   "Redo (Ctrl+Shift+Z or Ctrl+Y)": "Повторить (Ctrl+Shift+Z или Ctrl+Y)",
+  "Roblox UI builder": "Конструктор UI для Roblox",
+  "HTML to React, Vue & Svelte": "HTML в React, Vue и Svelte",
 };
