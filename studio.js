@@ -415,6 +415,13 @@ function remove(id){ const i = items.findIndex(x => x.id === id); if (i < 0) ret
 function duplicate(id){ const x = items.find(i => i.id === id); if (x) add(x.name, x.code, { full: x.full, scene: x.scene, pos: x.full ? undefined : { x: x.x + 24, y: x.y + 24 } }); }
 function toFront(id){ const i = items.findIndex(x => x.id === id); if (i < 0 || i === items.length - 1) return; checkpoint(); items.push(items.splice(i, 1)[0]); render(); }
 function toBack(id){ const i = items.findIndex(x => x.id === id); if (i <= 0) return; checkpoint(); items.unshift(items.splice(i, 1)[0]); render(); }
+// ✦ Make it better: a senior designer reviews the element and returns it improved; the reply lists the fixes
+const IMPROVE = `DESIGN REVIEW. Act as a senior product designer. Critically review the Current element: visual hierarchy, spacing rhythm and alignment, typography scale, contrast and readability, colour harmony, consistency, hover/focus states, awkward empty space, and how it would fit on a phone. Then return the COMPLETE improved element with action "update": the same purpose, content and language, noticeably better design. In "reply", list the 3-6 most important fixes you made as short lines starting with "• ".`;
+function improve(id){
+  const x = items.find(i => i.id === id); if (!x || x.scene) return;
+  select(id); window.dispatchEvent(new CustomEvent('oc:open-chat'));
+  runAI(`✦ ${t('Make it better')}: ${x.name}`, { targetId: id, ask: IMPROVE });
+}
 function editWithAI(id){ const x = items.find(i => i.id === id); if (!x) return; select(id); window.dispatchEvent(new CustomEvent('oc:open-chat')); prefillPrompt(`Change "${x.name}": `); }
 function scrollToItem(id){ const el = nodes.get(id); if (!el) return; canvas.scrollTo({ left: STAGE_PAD + el.offsetLeft * zoom - 80, top: STAGE_PAD + el.offsetTop * zoom - 80, behavior: 'smooth' }); }
 
@@ -608,6 +615,7 @@ async function addIcon(){
 function nodeMenu(id){
   return [
     { label: '✦ edit with ai', run: () => editWithAI(id) },
+    ...(items.find(i => i.id === id)?.scene ? [] : [{ label: '✦ make it better', run: () => improve(id) }]),
     { label: '⚗ fuse with…', run: () => startFusion(id) },
     { label: '✎ edit text & style', key: 'dbl-click', run: () => window.dispatchEvent(new CustomEvent('oc:edit-inline', { detail: id })) },
     { label: '‹/› code', run: () => edit(id) },
@@ -1607,6 +1615,24 @@ function chooseVariant(list){
   });
 }
 
+// The project's brand kit (brand.js) as rules for the AI; the logo travels as a short brand:logo token
+function brandRules(){
+  const b = page.brand; if (!b || b.on === false) return '';
+  const parts = [
+    b.name && `name "${b.name}"`,
+    b.primary && `main colour ${b.primary} (buttons, links, key accents)`,
+    b.accent && `second accent ${b.accent}`,
+    b.background && `page background ${b.background}`,
+    b.text && `text colour ${b.text}`,
+    b.font && `font family "${b.font}" (CSS: font-family: '${b.font}', system-ui, sans-serif)`,
+    Number.isFinite(b.radius) && `corner radius about ${b.radius}px`,
+    b.tone && `tone of voice: ${b.tone}`,
+    b.logo && 'logo available: use <img src="brand:logo" alt="logo"> wherever a logo belongs (header, footer, sign-in)',
+  ].filter(Boolean).join('; ');
+  return `- BRAND KIT — follow it exactly in every block: ${parts}. Build the palette only from these colours (plus neutrals and tints of them); no other accent colours, no generic purple-blue gradients unless they are the brand colours.\n`;
+}
+const withBrand = code => page.brand?.logo ? String(code).replace(/brand:logo/g, page.brand.logo) : code;
+
 async function runAI(request, custom = {}){
   const m = current(), p = byId(m.pid), key = keys[m.pid];
   if (!p) { $('chatStatus').textContent = 'Pick a model from the list below the input.'; return; }
@@ -1615,7 +1641,7 @@ async function runAI(request, custom = {}){
   // What a change request applies to: the selection, else the page being worked on (the last element the AI
   // built or the only full-width section), so 'make the photos bigger' edits it instead of adding a new page
   const fulls = items.filter(x => x.full);
-  const target = custom.user ? null : items.find(x => x.id === selected) || items.find(x => x.id === lastAiId) || (fulls.length === 1 ? fulls[0] : null);
+  const target = custom.targetId ? items.find(x => x.id === custom.targetId) : custom.user ? null : items.find(x => x.id === selected) || items.find(x => x.id === lastAiId) || (fulls.length === 1 ? fulls[0] : null);
   const implicit = target && target.id !== selected;
   const recent = custom.user ? '' : chatContext(); // turns before this one
   logChat('user', request);
@@ -1648,13 +1674,13 @@ shapes: box (size [w,h,d], rounded), sphere (radius), cylinder (radius or radius
 Each object: name, position [x,y,z] in meters (y up, ground at y=0, a chair is ~0.9 m tall), rotation [x,y,z] in degrees, scale, color "#hex", metalness 0-1, roughness 0-1, emissive "#hex" + emissiveIntensity for glow, opacity, flat:true for a low-poly look, animate {"spin":[0,45,0] deg/s, "bob":0.05, "pulse":0.05}, children (positions relative to the parent).
 Build recognizable things from MANY well-placed parts (a chair = seat + backrest + 4 legs; a character = body, head, eyes, arms, legs), with a coherent palette. Omit "camera" to auto-frame. Leave background null to sit on the page. For a change to a 3D Current element, return the WHOLE updated scene.
 - Do not style html or body; use unique class names with a shared prefix.
-- Clean, modern design: spacing, heading hierarchy, rounded corners, shadows, hover states. Respect prefers-reduced-motion for animations.
+${brandRules()}- Clean, modern design: spacing, heading hierarchy, rounded corners, shadows, hover states. Respect prefers-reduced-motion for animations.
 - Write all UI text in the components in the same language as the user's request.
 - Keep the code compact (no comments, no repeated boilerplate) so the answer fits in one response.`;
   // photos already in the selected element travel as short kept:N tokens, not megabytes of base64
   const kept = [];
   const slim = code => String(code).replace(/data:image\/[\w.+-]+;base64,[A-Za-z0-9+/=]+/g, d => 'kept:' + kept.push(d));
-  const user = custom.user || ((recent ? 'Conversation so far (for context):\n' + recent + '\n\n' : '') + 'Current element' + (implicit ? ' (not selected — the page built last)' : ' (selected)') + ': ' + JSON.stringify(target ? (target.scene ? { name: target.name, type: '3D scene', scene: target.scene } : { name: target.name, code: slim(target.code) }) : null) + '\nOther elements: ' + JSON.stringify(items.map(x => ({ name: x.name }))) + '\nRequest: ' + request + (custom.extra || ''));
+  const user = custom.user || ((recent ? 'Conversation so far (for context):\n' + recent + '\n\n' : '') + 'Current element' + (implicit ? ' (not selected — the page built last)' : ' (selected)') + ': ' + JSON.stringify(target ? (target.scene ? { name: target.name, type: '3D scene', scene: target.scene } : { name: target.name, code: slim(target.code) }) : null) + '\nOther elements: ' + JSON.stringify(items.map(x => ({ name: x.name }))) + '\nRequest: ' + (custom.ask || request) + (custom.extra || ''));
   try {
     // One automatic retry when the answer can't be parsed (free models sometimes break the format);
     // a model that rejects images gets the request again without them.
@@ -1689,7 +1715,7 @@ Build recognizable things from MANY well-placed parts (a chair = seat + backrest
       const builds = done.filter(r => !r.scene && r.action !== 'reply' && typeof r.code === 'string' && r.code.trim() && r.code.length <= 200000);
       if (builds.length >= 2) {
         stop.step('finding photos for the variants');
-        await Promise.all(builds.map(async r => { r.full = r.full === true || r.full === 'true'; r.code = await fixContrast(await resolveMedia(r.code, custom.attachments || [], () => {}, kept), r.full); }));
+        await Promise.all(builds.map(async r => { r.full = r.full === true || r.full === 'true'; r.code = await fixContrast(withBrand(await resolveMedia(r.code, custom.attachments || [], () => {}, kept)), r.full); }));
         stop.step('your turn: pick a variant');
         const pick = await chooseVariant(builds);
         if (pick === null) { await stop.finish('no variant picked'); setState('kept the page as it was'); message('No variant picked — the page stays as it was.', 'assistant'); return; }
@@ -1730,7 +1756,7 @@ Build recognizable things from MANY well-placed parts (a chair = seat + backrest
     const full = result.full === true || result.full === 'true';
     if (!prepared) {
       result.code = await resolveMedia(result.code, custom.attachments || [], qs => stop.step('finding photos: ' + qs.slice(0, 4).join(', ') + (qs.length > 4 ? '…' : '')), kept);
-      result.code = await fixContrast(result.code, full);
+      result.code = await fixContrast(withBrand(result.code), full);
     }
     if (result.action === 'update' && target) {
       const item = items.find(x => x.id === target.id); if (!item) throw Error('The element was deleted during the request');
@@ -1812,6 +1838,8 @@ export const studio = {
     ...presets.map(p => ({ name: p.name, category: p.category, add: () => add(p.name, p.code, { full: p.full }) })),
   ],
   addIcon: () => addIcon(),
+  improve: id => improve(id ?? selected),
+  selectedId: () => selected,
   // read
   items: () => items.map(x => ({ ...x })),
   page: () => ({ ...page }),

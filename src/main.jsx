@@ -13,6 +13,7 @@ import '../versions.js';
 import '../projects.js';
 import '../local-projects.js';
 import '../palette.js';
+import '../brand.js';
 import '../theme.js';
 import '../screens.js';
 import '../roblox-sync.js';

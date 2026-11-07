@@ -218,6 +218,91 @@ async function servePage(request, env, ctx, slug){
   return request.method === 'HEAD' ? new Response(null, res) : res;
 }
 
+// ---------- brand kit: colours, fonts and logo of a website (for the editor's "brand" window) ----------
+const BRAND_MAX = 1_500_000;
+async function fetchText(url, max = BRAND_MAX){
+  const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; openconstructor-brand/1.0)', Accept: 'text/html,text/css,*/*' }, redirect: 'follow', cf: { cacheTtl: 3600 } });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const t = await r.text();
+  return t.slice(0, max);
+}
+const hexOf = (r, g, b) => '#' + [r, g, b].map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+function normColor(c){
+  c = c.trim().toLowerCase();
+  let m = c.match(/^#([0-9a-f]{3})$/); if (m) return '#' + m[1].split('').map(x => x + x).join('');
+  m = c.match(/^#([0-9a-f]{6})(?:[0-9a-f]{2})?$/); if (m) return '#' + m[1];
+  m = c.match(/^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)(?:[\s,/]+([\d.]+%?))?/); if (m) { if (m[4] && parseFloat(m[4]) < (m[4].endsWith('%') ? 50 : 0.5)) return null; return hexOf(+m[1], +m[2], +m[3]); }
+  return null;
+}
+const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const lum = h => { const [r, g, b] = rgb(h).map(v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }); return .2126 * r + .7152 * g + .0722 * b; };
+const sat = h => { const [r, g, b] = rgb(h).map(v => v / 255), mx = Math.max(r, g, b), mn = Math.min(r, g, b); return mx === 0 ? 0 : (mx - mn) / mx; };
+const far = (a, b) => rgb(a).reduce((s, v, i) => s + Math.abs(v - rgb(b)[i]), 0) > 90;
+async function brand(request, url){
+  const target = url.searchParams.get('url') || '';
+  let u;
+  try { u = new URL(/^https?:\/\//i.test(target) ? target : 'https://' + target); } catch { return fail(400, 'That address doesn\'t look like a website'); }
+  if (!/^https?:$/.test(u.protocol) || /^(localhost|127\.|10\.|192\.168\.|169\.254\.|0\.|\[)/i.test(u.hostname) || /^172\.(1[6-9]|2\d|3[01])\./.test(u.hostname)) return fail(400, 'Only public websites can be read');
+  // one request per visitor every 5 seconds
+  const ip = request.headers.get('cf-connecting-ip') || 'unknown', cache = caches.default, gate = new Request(`${HOME}/__brand/${encodeURIComponent(ip)}`);
+  if (await cache.match(gate)) return fail(429, 'Please wait a few seconds');
+  await cache.put(gate, new Response('1', { headers: { 'Cache-Control': 'max-age=5' } }));
+  let html;
+  try { html = await fetchText(u.href); } catch (e) { return fail(502, `Couldn't open the site (${e.message})`); }
+  const abs = h => { try { return new URL(h, u).href; } catch { return null; } };
+  const attr = (tag, name) => (tag.match(new RegExp(`${name}\\s*=\\s*["']([^"']+)["']`, 'i')) || [])[1];
+  const metas = [...html.matchAll(/<meta\b[^>]*>/gi)].map(m => m[0]);
+  const meta = key => { const t = metas.find(x => new RegExp(`(?:name|property)\\s*=\\s*["']${key}["']`, 'i').test(x)); return t ? attr(t, 'content') : null; };
+  const links = [...html.matchAll(/<link\b[^>]*>/gi)].map(m => m[0]);
+  // CSS: inline styles plus up to 3 stylesheets
+  let css = [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)].map(m => m[1]).join('\n') + '\n' + [...html.matchAll(/style\s*=\s*"([^"]*)"/gi)].map(m => m[1]).join(';');
+  const sheets = links.filter(l => /rel\s*=\s*["'][^"']*stylesheet/i.test(l)).map(l => abs(attr(l, 'href'))).filter(Boolean).slice(0, 3);
+  for (const href of sheets) { try { css += '\n' + await fetchText(href, 400_000); } catch {} }
+  // colours by frequency; CSS custom properties named like brand/primary/accent count extra
+  const counts = new Map();
+  const bump = (c, w = 1) => { const h = normColor(c); if (h) counts.set(h, (counts.get(h) || 0) + w); };
+  for (const m of css.matchAll(/#[0-9a-f]{3,8}\b|rgba?\([^)]*\)/gi)) bump(m[0]);
+  for (const m of css.matchAll(/--[\w-]*(?:primary|brand|accent|main|highlight)[\w-]*\s*:\s*(#[0-9a-f]{3,8}|rgba?\([^)]*\))/gi)) bump(m[1], 25);
+  const theme = meta('theme-color'); if (theme) bump(theme, 30);
+  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(x => x[0]);
+  const vivid = sorted.filter(h => sat(h) > .35 && lum(h) > .03 && lum(h) < .85);
+  const primary = vivid[0] || sorted.find(h => lum(h) > .05 && lum(h) < .8) || '#e4572e';
+  const accent = vivid.find(h => far(h, primary)) || null;
+  // background / text from the body rule if present, else the most used very light / very dark colours
+  const bodyRule = (css.match(/(?:^|[}\s,])(?:html|body)\s*\{([^}]*)\}/i) || [])[1] || '';
+  const bodyBg = normColor((bodyRule.match(/background(?:-color)?\s*:\s*(#[0-9a-f]{3,8}|rgba?\([^)]*\))/i) || [])[1] || '');
+  const bodyFg = normColor((bodyRule.match(/(?:^|;)\s*color\s*:\s*(#[0-9a-f]{3,8}|rgba?\([^)]*\))/i) || [])[1] || '');
+  const background = bodyBg || sorted.find(h => lum(h) > .85) || '#ffffff';
+  const text = bodyFg || (lum(background) > .5 ? sorted.find(h => lum(h) < .08) || '#18181b' : sorted.find(h => lum(h) > .8) || '#fafafa');
+  // fonts: the most used family that isn't a generic or icon font
+  const fonts = new Map();
+  for (const m of css.matchAll(/font-family\s*:\s*([^;}{]+)/gi)) {
+    const first = m[1].split(',')[0].trim().replace(/^["']|["']$/g, '');
+    if (!first || /^(inherit|initial|unset|var\(|system-ui|sans-serif|serif|monospace|-apple-system|blinkmacsystemfont)|icon|awesome|material|katex|mathjax/i.test(first)) continue;
+    fonts.set(first, (fonts.get(first) || 0) + 1);
+  }
+  const font = [...fonts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+  const radii = [...css.matchAll(/border-radius\s*:\s*(\d+(?:\.\d+)?)px/gi)].map(m => +m[1]).filter(v => v > 0 && v < 60);
+  const radius = radii.length ? radii.sort((a, b) => a - b)[Math.floor(radii.length / 2)] : null;
+  // logo: og:image is often a big banner, so prefer icons; embed small images as data URLs (the canvas allows no remote images)
+  const iconHref = (links.find(l => /rel\s*=\s*["'][^"']*apple-touch-icon/i.test(l)) || links.find(l => /rel\s*=\s*["'][^"']*\bicon\b/i.test(l)));
+  let logo = null;
+  for (const src of [iconHref && abs(attr(iconHref, 'href')), abs('/favicon.ico')].filter(Boolean)) {
+    try {
+      const r = await fetch(src, { cf: { cacheTtl: 3600 } });
+      const type = r.headers.get('content-type') || '';
+      if (!r.ok || !/^image\//.test(type)) continue;
+      const buf = new Uint8Array(await r.arrayBuffer());
+      if (buf.length > 150_000) continue;
+      let bin = ''; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+      logo = `data:${type.split(';')[0]};base64,${btoa(bin)}`; break;
+    } catch {}
+  }
+  const name = (meta('og:site_name') || (html.match(/<title[^>]*>([^<]*)/i) || [])[1] || u.hostname).trim().split(/\s[|–—-]\s/)[0].slice(0, 60);
+  const description = (meta('description') || meta('og:description') || '').trim().slice(0, 300);
+  return json(200, { name, description, primary, accent, background, text, font, radius, logo, palette: sorted.slice(0, 12), source: u.origin });
+}
+
 // ---------- free AI (no key): signed-in users, AI_DAILY generations a day via our Groq key ----------
 const AI_DAILY = 20;
 const AI_GLOBAL = 900; // keep both <= the ceilings in supabase/ai.sql
@@ -515,6 +600,7 @@ export default {
     if (sm) return request.method === 'GET' ? syncGet(request, env, ctx, sm[1]) : fail(405, 'Method not allowed', { Allow: 'GET' });
     const fm = /^\/api\/form\/([^/]+)$/.exec(url.pathname);
     if (fm) return request.method === 'POST' ? formSubmit(request, env, ctx, decodeURIComponent(fm[1])) : fail(405, 'Method not allowed', { Allow: 'POST' });
+    if (url.pathname === '/api/brand') return request.method === 'GET' ? brand(request, url) : fail(405, 'Method not allowed', { Allow: 'GET' });
     if (url.pathname.startsWith('/api/')) return fail(404, 'Not found');
     const m = /^\/p\/([^/]+)\/?$/.exec(url.pathname);
     if (m) { let slug = ''; try { slug = decodeURIComponent(m[1]); } catch {} return servePage(request, env, ctx, slug); }
