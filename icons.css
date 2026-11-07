@@ -1,0 +1,13 @@
+/* Icon picker (icons.js) */
+.ic-card { display: flex; flex-direction: column; max-height: 82dvh; }
+.ic-bar { display: flex; align-items: center; gap: 12px; margin: 12px 0 10px; }
+.ic-search { flex: 1; margin: 0 !important; }
+.ic-opt { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.ic-opt input { width: 90px; accent-color: var(--accent); }
+.ic-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; min-height: 200px; overflow: auto; padding: 2px; }
+.ic-cell { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; height: 78px; padding: 6px 4px; border: 1px solid var(--border); border-radius: 5px; background: var(--panel-2); color: var(--text-2); }
+.ic-cell:hover { border-color: var(--accent); color: var(--text); background: var(--accent-dim); }
+.ic-cell span { width: 100%; overflow: hidden; color: var(--subtle); font-size: 9.5px; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.ic-cell:hover span { color: var(--muted); }
+.ic-empty { grid-column: 1 / -1; padding: 40px; color: var(--subtle); text-align: center; }
+.ic-foot { display: flex; justify-content: space-between; margin: 10px 0 0; color: var(--subtle); font-size: 11px; }

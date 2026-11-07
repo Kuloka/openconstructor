@@ -1,0 +1,13 @@
+/* Ctrl+K command palette (palette.js) */
+.pal { position: fixed; inset: 0; z-index: 95; display: flex; justify-content: center; align-items: flex-start; padding: 12vh 16px 16px; background: #000000a0; animation: fade-in .1s ease-out; }
+.pal-card { display: flex; flex-direction: column; width: min(620px, 100%); max-height: 64vh; overflow: hidden; border: 1px solid var(--border-2); border-radius: 8px; background: var(--panel); box-shadow: 0 30px 70px -20px #000; }
+.pal-input { display: flex; align-items: center; gap: 10px; padding: 0 14px; border-bottom: 1px solid var(--border); }
+.pal-input span { color: var(--accent); font-weight: 700; }
+.pal-input input { flex: 1; height: 46px; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 14px; }
+.pal-list { flex: 1; min-height: 0; margin: 0; padding: 6px; overflow: auto; list-style: none; }
+.pal-group { padding: 8px 10px 4px; color: var(--subtle); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; }
+.pal-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 10px; border-radius: 5px; color: var(--text-2); cursor: pointer; }
+.pal-item.on { background: var(--accent-dim); color: var(--text); }
+.pal-item em { flex-shrink: 0; max-width: 45%; overflow: hidden; color: var(--subtle); font-size: 11px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.pal-empty { padding: 24px; color: var(--subtle); text-align: center; }
+.pal-foot { display: flex; justify-content: space-between; padding: 7px 14px; border-top: 1px solid var(--border); color: var(--subtle); font-size: 11px; }

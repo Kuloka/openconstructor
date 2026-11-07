@@ -3,6 +3,7 @@ let presets = [];
 const presetsReady = import('./presets.js').then(m => { presets = m.presets; stats.presets = presets.length; renderLibrary(); return presets; });
 import { t, lang, AI_LANG } from './i18n.js';
 import * as vault from './keyvault.js';
+import { pickIcon } from './icons.js';
 import {CATEGORIES} from './categories.js';
 import { TARGETS } from './export-targets.js'; // the converters themselves (exporters.js) load on first export
 import { PRESETS as BG_PRESETS, DEFAULT_SPEC as BG_DEFAULT, toCSS as bgCSS, luminance as bgLum, mountBackgroundEditor } from './background.js';
@@ -599,6 +600,11 @@ ctx.addEventListener('click', e => { const b = e.target.closest('[data-i]'); if 
 addEventListener('pointerdown', e => { if (!ctx.contains(e.target)) closeCtx(); }, true);
 addEventListener('blur', closeCtx);
 canvas.addEventListener('scroll', closeCtx);
+// A standalone icon on the canvas (recolour it with ✎ edit text & style)
+async function addIcon(){
+  const svg = await pickIcon(); if (!svg) return;
+  add('Icon', `<style>.oc-icon{display:grid;place-items:center;width:64px;height:64px;color:${isLightPage() ? '#18181b' : '#f2ece9'}}.oc-icon svg{width:48px;height:48px}</style><div class="oc-icon">${svg}</div>`);
+}
 function nodeMenu(id){
   return [
     { label: '✦ edit with ai', run: () => editWithAI(id) },
@@ -606,6 +612,7 @@ function nodeMenu(id){
     { label: '✎ edit text & style', key: 'dbl-click', run: () => window.dispatchEvent(new CustomEvent('oc:edit-inline', { detail: id })) },
     { label: '‹/› code', run: () => edit(id) },
     ...(items.find(i => i.id === id)?.scene ? [{ label: '⬇ 3D model (.glb)', key: 'Blender, Unity…', run: () => downloadGLB(id) }] : []),
+    { label: '★ save to my components', run: () => saveMine(id) },
     { label: 'rename', run: () => startRename(id) },
     '-',
     { label: 'duplicate', key: 'Ctrl+D', run: () => duplicate(id) },
@@ -621,6 +628,7 @@ canvas.addEventListener('contextmenu', e => {
   if (el) { select(el.dataset.id); openCtx(e.clientX, e.clientY, nodeMenu(el.dataset.id)); return; }
   openCtx(e.clientX, e.clientY, [
     { label: 'fit to screen', key: 'Ctrl+0', run: fitZoom },
+    { label: '★ add icon…', run: addIcon },
     { label: 'add custom code', run: () => edit(null) },
     { label: 'open templates', run: openWelcome },
     '-',
@@ -706,6 +714,27 @@ document.addEventListener('keydown', e => {
 const openCats = new Set(store.get('oc-cats-open', [CATEGORIES[0].id]));
 const catChevron = '<svg class="cat-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>';
 const catIcon = c => `<svg class="cat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${c.icon || ''}</svg>`;
+
+/* ── My components: elements saved from any project to reuse anywhere (kept in this browser) ── */
+const MINE = 'My components', MINE_KEY = 'oc-mine', MINE_MAX = 400_000;
+const MINE_ICON = '<path d="m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z"/>';
+let mine = store.get(MINE_KEY, []); if (!Array.isArray(mine)) mine = [];
+function saveMine(id){
+  const it = items.find(x => x.id === id); if (!it) return;
+  const entry = { id: crypto.randomUUID(), name: it.name, code: it.code, full: !!it.full, ...(it.scene ? { scene: it.scene } : {}), at: Date.now() };
+  if (JSON.stringify(entry).length > MINE_MAX) { setState('this element is too large to save — big pictures inside', 'warn'); return; }
+  const next = [entry, ...mine];
+  try { localStorage.setItem(MINE_KEY, JSON.stringify(next)); } catch { setState('no room left in this browser for more saved components', 'error'); return; }
+  mine = next; openCats.add(MINE); store.set('oc-cats-open', [...openCats]);
+  window.dispatchEvent(new CustomEvent('oc:show-view', { detail: 'library' }));
+  renderLibrary(); $('library').scrollTo({ top: 0, behavior: 'smooth' });
+  setState(`saved to my components: ${it.name}`, 'ok');
+}
+function removeMine(mid){
+  const m = mine.find(x => x.id === mid); if (!m || !confirm(`Remove "${m.name}" from my components?`)) return;
+  mine = mine.filter(x => x.id !== mid); store.set(MINE_KEY, mine); renderLibrary();
+}
+const mineCard = (m, k) => `<button class="component${m.full ? ' wide' : ''}" style="--i:${k}" data-add-mine="${m.id}" title="Add: ${escapeHTML(m.name)}"><span class="component-preview"><iframe title="${escapeHTML(m.name)}" sandbox="allow-same-origin" tabindex="-1" data-mine="${m.id}"></iframe></span><span class="component-info"><span>${escapeHTML(m.name)}</span><span class="component-del" data-del-mine="${m.id}" title="Remove from my components">×</span></span></button>`;
 const card = (p, k) => `<button class="component${p.full ? ' wide' : ''}" style="--i:${k}" data-add="${p.index}" title="Add: ${escapeHTML(p.name)}"><span class="component-preview"><iframe title="${escapeHTML(p.name)}" sandbox="allow-same-origin" tabindex="-1" data-preset="${p.index}"></iframe></span><span class="component-info"><span>${escapeHTML(p.name)}</span><span class="component-plus">+</span></span></button>`;
 
 // Catalog previews hold still on a representative frame and come alive on hover.
@@ -741,8 +770,12 @@ function renderLibrary(){
     const open = query ? true : openCats.has(c.id);
     return `<section class="cat${open ? ' open' : ''}"><button class="cat-head" data-cat="${escapeHTML(c.id)}" aria-expanded="${open}">${catChevron}${catIcon(c)}<span class="cat-name">${escapeHTML(c.id)}</span><span class="cat-count">${list.length}</span></button>${open ? `<div class="cat-body">${list.map(card).join('')}</div>` : ''}</section>`;
   }).join('');
-  $('library').innerHTML = html || '<div class="catalog-empty">nothing found</div>';
+  const mineList = mine.filter(m => m.name.toLocaleLowerCase().includes(query));
+  const mineOpen = query ? true : openCats.has(MINE);
+  const mineHtml = mineList.length ? `<section class="cat cat-mine${mineOpen ? ' open' : ''}"><button class="cat-head" data-cat="${MINE}" aria-expanded="${mineOpen}">${catChevron}${catIcon({ icon: MINE_ICON })}<span class="cat-name">${MINE}</span><span class="cat-count">${mineList.length}</span></button>${mineOpen ? `<div class="cat-body">${mineList.map(mineCard).join('')}</div>` : ''}</section>` : '';
+  $('library').innerHTML = (mineHtml + html) || '<div class="catalog-empty">nothing found</div>';
   document.querySelectorAll('[data-preset]').forEach(f => { const p = presets[+f.dataset.preset]; f.onload = () => requestAnimationFrame(() => { holdPreview(f); fitPreview(f); }); f.srcdoc = previewDoc(p.code, p.full); });
+  document.querySelectorAll('[data-mine]').forEach(f => { const m = mine.find(x => x.id === f.dataset.mine); if (!m) return; f.onload = () => requestAnimationFrame(() => { holdPreview(f); fitPreview(f); }); f.srcdoc = previewDoc(m.code, m.full); });
   scaleWidePreviews();
 }
 // Sections render at 1280px wide and scale down to the card size
@@ -776,6 +809,8 @@ $('library').onclick = e => {
     if (openCats.has(id)) $('library').querySelector(`[data-cat="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     return;
   }
+  const d = e.target.closest('[data-del-mine]'); if (d) { e.stopPropagation(); removeMine(d.dataset.delMine); return; }
+  const mb = e.target.closest('[data-add-mine]'); if (mb) { const m = mine.find(x => x.id === mb.dataset.addMine); if (m) add(m.name, m.code, { full: m.full, ...(m.scene ? { scene: m.scene } : {}) }); return; }
   const b = e.target.closest('[data-add]'); if (b) { const p = presets[+b.dataset.add]; add(p.name, p.code, { full: p.full }); } };
 
 /* ── Modals and code ─────────────────────────────────────── */
@@ -979,7 +1014,23 @@ function exportHTML(){
 
 // Status bar
 let stateTimer;
+// Results (done, saved, errors) also pop up as a short toast, so they aren't missed in the status bar
+const toastBox = Object.assign(document.createElement('div'), { className: 'toasts' });
+toastBox.setAttribute('aria-live', 'polite'); document.body.append(toastBox);
+let lastToast = '', lastToastAt = 0;
+function toast(text, kind = 'ok'){
+  if (text === lastToast && Date.now() - lastToastAt < 2500) return;
+  lastToast = text; lastToastAt = Date.now();
+  const el = document.createElement('div'); el.className = 'toast ' + kind;
+  el.innerHTML = `<i aria-hidden="true"></i><span>${escapeHTML(text)}</span><button type="button" aria-label="Close">×</button>`;
+  const hide = () => { el.classList.add('out'); setTimeout(() => el.remove(), 220); };
+  el.querySelector('button').onclick = hide;
+  toastBox.append(el);
+  while (toastBox.children.length > 3) toastBox.firstElementChild.remove();
+  setTimeout(hide, kind === 'error' ? 7000 : 3600);
+}
 function setState(text, kind = ''){
+  if (kind === 'ok' || kind === 'error' || kind === 'warn') toast(text, kind);
   const el = $('sbState'); el.className = 'sb-item sb-state ' + kind; el.innerHTML = `<i></i>${escapeHTML(text)}`;
   clearTimeout(stateTimer);
   if (kind !== 'busy') stateTimer = setTimeout(() => { el.className = 'sb-item sb-state'; el.innerHTML = '<i></i>ready'; }, 4000);
@@ -1056,6 +1107,12 @@ picker.className = 'model-picker';
 picker.innerHTML = `<button type="button" class="model-trigger" aria-haspopup="listbox" aria-expanded="false"></button><div class="model-menu hidden" role="listbox"><div class="model-search"><span>/</span><input placeholder="find a model" aria-label="Find a model"></div><div class="model-list"></div><button type="button" class="model-add">+ connect providers</button></div>`;
 $('model').classList.add('hidden');
 $('model').after(picker);
+// ×3: the AI makes three different versions and you pick one (uses three generations)
+let variantsOn = store.get('oc-variants', false);
+const variantsBtn = Object.assign(document.createElement('button'), { type: 'button', className: 'variants-toggle', id: 'variantsToggle', textContent: '⧉ ×3', title: 'Three different versions to choose from (uses 3 generations)' });
+variantsBtn.setAttribute('aria-pressed', String(variantsOn));
+variantsBtn.onclick = () => { variantsOn = !variantsOn; store.set('oc-variants', variantsOn); variantsBtn.setAttribute('aria-pressed', String(variantsOn)); setState(variantsOn ? 'next request: 3 variants to choose from' : 'one answer per request', 'ok'); };
+picker.after(variantsBtn);
 const trigger = picker.querySelector('.model-trigger'), menu = picker.querySelector('.model-menu'), mSearch = picker.querySelector('input');
 const chevron = '<svg class="model-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>';
 function renderPicker(){
@@ -1516,6 +1573,40 @@ $('send').onclick = () => {
 
 // One AI round-trip. `custom.user` replaces the default context (used by Fusion); `custom.place` positions a new element.
 let lastAiId = null; // the element the AI built or changed last
+// Three variants side by side; resolves to the chosen index, 'all', or null (cancel)
+const variantModal = Object.assign(document.createElement('div'), { className: 'modal hidden', id: 'variantsModal' });
+variantModal.innerHTML = `<div class="modal-card var-card" role="dialog" aria-labelledby="varTitle"><div class="modal-head"><h2 id="varTitle">pick a variant</h2><button class="btn icon" type="button" data-var="cancel" aria-label="Close">×</button></div><div class="var-grid" id="varGrid"></div><div class="modal-actions"><button class="btn" type="button" data-var="cancel">cancel</button><button class="btn" type="button" data-var="all">keep all three</button></div></div>`;
+document.body.append(variantModal);
+function chooseVariant(list){
+  return new Promise(resolve => {
+    const grid = variantModal.querySelector('#varGrid');
+    grid.innerHTML = list.map((r, i) => `<div class="var-col"><button type="button" class="var-preview" data-var="${i}" title="Use this variant"><iframe sandbox="allow-same-origin" tabindex="-1" title="Variant ${i + 1}"></iframe></button><div class="var-info"><b>${i + 1}</b><span>${escapeHTML(String(r.name || 'Variant'))}</span><button type="button" class="btn primary" data-var="${i}">use this</button></div></div>`).join('');
+    grid.querySelectorAll('iframe').forEach((f, i) => {
+      const r = list[i];
+      f.onload = () => requestAnimationFrame(() => {
+        try {
+          const box = f.parentElement, doc = f.contentDocument, root = doc.getElementById('__root');
+          const w = r.full ? page.w : Math.max(1, root.scrollWidth), h = Math.max(1, r.full ? root.scrollHeight : root.scrollHeight);
+          const sc = Math.min(box.clientWidth / w, box.clientHeight / h, 1);
+          f.style.width = w + 'px'; f.style.height = Math.max(h, box.clientHeight / sc) + 'px';
+          f.style.transform = `translate(${Math.max(0, (box.clientWidth - w * sc) / 2)}px, 0) scale(${sc})`;
+        } catch {}
+      });
+      f.style.width = (r.full ? page.w : 760) + 'px'; f.style.height = '900px';
+      f.srcdoc = nodeDoc({ code: r.code, full: r.full });
+    });
+    const done = v => { variantModal.classList.add('hidden'); variantModal.onclick = null; document.removeEventListener('keydown', onKey, true); resolve(v); };
+    const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); done(null); } else if (/^[1-3]$/.test(e.key) && list[+e.key - 1]) done(+e.key - 1); };
+    document.addEventListener('keydown', onKey, true);
+    variantModal.onclick = e => {
+      if (e.target === variantModal) return done(null);
+      const v = e.target.closest('[data-var]')?.dataset.var; if (v == null) return;
+      done(v === 'cancel' ? null : v === 'all' ? 'all' : +v);
+    };
+    variantModal.classList.remove('hidden');
+  });
+}
+
 async function runAI(request, custom = {}){
   const m = current(), p = byId(m.pid), key = keys[m.pid];
   if (!p) { $('chatStatus').textContent = 'Pick a model from the list below the input.'; return; }
@@ -1567,22 +1658,52 @@ Build recognizable things from MANY well-placed parts (a chair = seat + backrest
   try {
     // One automatic retry when the answer can't be parsed (free models sometimes break the format);
     // a model that rejects images gets the request again without them.
-    let result, images = custom.images || [];
-    for (let attempt = 0; ; attempt++) {
-      let content;
-      const ask = attempt ? user + '\n\nIMPORTANT: your previous answer could not be read. Reply EXACTLY in the required format: the one-line JSON header, then ONE ```html block.' : user;
-      try { content = await chat(p, key, m.id, system, ask, images); }
-      catch (err) {
-        if (images.length && attempt < 2 && ![401, 429].includes(err.status)) { images = []; stop.step('this model can’t see images — continuing without them'); continue; }
-        throw err;
+    const getResult = async (extra = '', quiet = false) => {
+      let images = custom.images || [];
+      for (let attempt = 0; ; attempt++) {
+        let content;
+        const ask = (extra ? user + '\n\n' + extra : user) + (attempt ? '\n\nIMPORTANT: your previous answer could not be read. Reply EXACTLY in the required format: the one-line JSON header, then ONE ```html block.' : '');
+        try { content = await chat(p, key, m.id, system, ask, images); }
+        catch (err) {
+          if (images.length && attempt < 2 && ![401, 429].includes(err.status)) { images = []; if (!quiet) stop.step('this model can’t see images — continuing without them'); continue; }
+          throw err;
+        }
+        try {
+          if (typeof content !== 'string' || !content.trim()) throw Error('Empty model response');
+          const r = parseScene(content) || parseAnswer(content);
+          if (!r.scene && !(r.action === 'reply' || (!r.code && r.reply)) && (typeof r.code !== 'string' || !r.code.trim())) throw Error('Invalid code');
+          return r;
+        } catch (err) { if (attempt >= 1) throw err; if (!quiet) stop.step('the answer came out garbled — asking again'); }
       }
-      try {
-        if (typeof content !== 'string' || !content.trim()) throw Error('Empty model response');
-        result = parseScene(content) || parseAnswer(content);
-        if (!result.scene && !(result.action === 'reply' || (!result.code && result.reply)) && (typeof result.code !== 'string' || !result.code.trim())) throw Error('Invalid code');
-        break;
-      } catch (err) { if (attempt >= 1) throw err; stop.step('the answer came out garbled — asking again'); }
-    }
+    };
+    let result, prepared = false;
+    if (variantsOn && !custom.user && !custom.images?.length) {
+      stop.step('making 3 different variants');
+      const hints = [
+        'VARIANT 1 of 3 — a clean, minimal take: generous whitespace, restrained palette.',
+        'VARIANT 2 of 3 — bold: strong colour, large type, high contrast, confident shapes.',
+        'VARIANT 3 of 3 — a different layout idea: rearrange the structure in an unexpected but tasteful way.',
+      ].map(h => h + ' Make it clearly different from the other two variants; same content and language.');
+      const settled = await Promise.allSettled(hints.map(h => getResult(h, true)));
+      const done = settled.filter(x => x.status === 'fulfilled').map(x => x.value);
+      const builds = done.filter(r => !r.scene && r.action !== 'reply' && typeof r.code === 'string' && r.code.trim() && r.code.length <= 200000);
+      if (builds.length >= 2) {
+        stop.step('finding photos for the variants');
+        await Promise.all(builds.map(async r => { r.full = r.full === true || r.full === 'true'; r.code = await fixContrast(await resolveMedia(r.code, custom.attachments || [], () => {}, kept), r.full); }));
+        stop.step('your turn: pick a variant');
+        const pick = await chooseVariant(builds);
+        if (pick === null) { await stop.finish('no variant picked'); setState('kept the page as it was'); message('No variant picked — the page stays as it was.', 'assistant'); return; }
+        if (pick === 'all') {
+          for (const r of builds) add(String(r.name || 'New element').slice(0, 80), r.code, { full: r.full, ...(custom.place || {}) });
+          lastAiId = selected;
+          await stop.finish('placed 3 variants on the canvas'); setState('variants placed', 'ok');
+          message(`All ${builds.length} variants are on the page — delete the ones you don't need.`, 'assistant'); logChat('assistant', 'placed all variants'); $('prompt').value = '';
+          window.dispatchEvent(new CustomEvent('oc:generated')); return;
+        }
+        result = builds[pick]; prepared = true;
+      } else if (done.length) result = builds[0] || done[0];
+      else throw settled[0].reason;
+    } else result = await getResult();
     if (!result.scene && (result.action === 'reply' || (!result.code && result.reply))) {
       await stop.answer(); await stop.finish('answered');
       setState('ready'); message(String(result.reply || '…'), 'assistant'); logChat('assistant', result.reply || '…'); $('prompt').value = ''; return;
@@ -1606,9 +1727,11 @@ Build recognizable things from MANY well-placed parts (a chair = seat + backrest
     }
     if (typeof result.code !== 'string' || !result.code.trim() || result.code.length > 200000) throw Error('Invalid code');
     await stop.compose(result.name, result.code);
-    result.code = await resolveMedia(result.code, custom.attachments || [], qs => stop.step('finding photos: ' + qs.slice(0, 4).join(', ') + (qs.length > 4 ? '…' : '')), kept);
     const full = result.full === true || result.full === 'true';
-    result.code = await fixContrast(result.code, full);
+    if (!prepared) {
+      result.code = await resolveMedia(result.code, custom.attachments || [], qs => stop.step('finding photos: ' + qs.slice(0, 4).join(', ') + (qs.length > 4 ? '…' : '')), kept);
+      result.code = await fixContrast(result.code, full);
+    }
     if (result.action === 'update' && target) {
       const item = items.find(x => x.id === target.id); if (!item) throw Error('The element was deleted during the request');
       checkpoint(); item.name = String(result.name || item.name).slice(0, 80); item.code = result.code;
@@ -1683,6 +1806,12 @@ function cleanPage(pg){
   return { ...pg, w: clampSize(num(pg.w, 1440), PAGE_MIN.w), h: clampSize(num(pg.h, 900), PAGE_MIN.h) };
 }
 export const studio = {
+  // for the Ctrl+K palette: every catalog component (mine first) with a way to add it
+  catalog: () => [
+    ...mine.map(m => ({ name: m.name, category: MINE, add: () => add(m.name, m.code, { full: m.full, ...(m.scene ? { scene: m.scene } : {}) }) })),
+    ...presets.map(p => ({ name: p.name, category: p.category, add: () => add(p.name, p.code, { full: p.full }) })),
+  ],
+  addIcon: () => addIcon(),
   // read
   items: () => items.map(x => ({ ...x })),
   page: () => ({ ...page }),

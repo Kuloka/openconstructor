@@ -3,6 +3,7 @@
 //  • clicking any part of it picks that part and opens the style inspector (colors, size, weight, radius, spacing),
 //  • Esc / "done" / clicking outside writes the result back into the element's code (one undo step).
 import { studio } from './studio.js';
+import { pickIcon } from './icons.js';
 import './inline-edit.css';
 
 const $ = id => document.getElementById(id);
@@ -33,6 +34,7 @@ panel.innerHTML = `
   <div class="ins-media">
     <button class="btn" data-ins="image" title="Put your own picture here: replaces an icon/image, or fills a block">🖼 use my image…</button>
     <button class="btn" data-ins="noimage" title="Remove the picture you added">remove</button>
+    <button class="btn" data-ins="icon" title="Replace the icon here with another one, or put an icon before the text">★ icon…</button>
   </div>
   <div class="ins-sec">motion <span id="insMotionCount"></span></div>
   <div class="ins-motion" id="insMotion"></div>
@@ -114,6 +116,27 @@ imgInput.onchange = async () => {
   if (data.length > 250000) studio.status('image added — it is large, publishing may hit the 1 MB page limit', 'warn');
   else studio.status('image added', 'ok');
 };
+
+// An icon from the picker: replaces the icon (or picture) in the picked part, keeping its size and
+// classes so the design and animations stay; otherwise goes in front of the text, sized to it
+function placeIcon(markup){
+  const doc = session.doc, el = session.picked;
+  const tpl = doc.createElement('template'); tpl.innerHTML = markup.trim();
+  const icon = tpl.content.firstElementChild; if (!icon) return;
+  const old = el.closest('svg') || (el.tagName === 'IMG' ? el : null) || (el.querySelectorAll('svg').length === 1 && !el.querySelector('img') ? el.querySelector('svg') : null);
+  if (old) {
+    const r = old.getBoundingClientRect();
+    icon.setAttribute('width', Math.round(r.width) || 24); icon.setAttribute('height', Math.round(r.height) || 24);
+    for (const at of ['class', 'style']) if (old.getAttribute(at)) icon.setAttribute(at, old.getAttribute(at));
+    old.replaceWith(icon);
+  } else {
+    icon.setAttribute('width', '1.15em'); icon.setAttribute('height', '1.15em');
+    icon.setAttribute('style', 'vertical-align:-0.2em;flex-shrink:0' + (el.textContent.trim() ? ';margin-right:.4em' : ''));
+    el.prepend(icon);
+  }
+  session.dirty = true; pick(icon);
+  studio.status('icon added', 'ok');
+}
 
 /* ── motion: speed, direction, delay, repeats and pause for every animation in/around the picked part ── */
 const baseDur = new WeakMap(); // element → original durations (so "speed" stays relative to the design)
@@ -200,6 +223,7 @@ panel.addEventListener('click', e => {
   if (a === 'done') return finish();
   const el = session.picked; if (!el) return;
   if (a === 'image') return imgInput.click();
+  if (a === 'icon') { pickIcon().then(svg => { if (svg && session?.picked) placeIcon(svg); }); return; }
   if (a === 'noimage') {
     if (el.tagName === 'IMG' && el.src.startsWith('data:')) { el.remove(); session.dirty = true; return pick(null); }
     el.style.backgroundImage = ''; el.style.backgroundSize = ''; el.style.backgroundPosition = ''; session.dirty = true; return fill();
