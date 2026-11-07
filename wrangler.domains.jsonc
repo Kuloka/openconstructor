@@ -1,0 +1,15 @@
+{
+  // Custom domains: the same worker.js, deployed a second time without the static site, catching the
+  // traffic of visitors' own domains (Cloudflare for SaaS custom hostnames). Deploy: npm run deploy:domains
+  // See SETUP.md → "Custom domains" for the one-time Cloudflare setup.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "openconstructor-domains",
+  "main": "worker.js",
+  "compatibility_date": "2026-11-04",
+  "observability": { "enabled": true },
+  "vars": {
+    "SUPABASE_URL": "https://cxzdfjccdggeudsjxjbp.supabase.co",
+    "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4emRmamNjZGdnZXVkc2p4amJwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM5ODY5MDcsImV4cCI6MjEwOTU2MjkwN30.5hP7ZGisLhXKGrxc2598Jhn9BuKsaraRMYNcmx9ldRY"
+  },
+  "routes": [{ "pattern": "*/*", "zone_name": "openconstructor.pw" }]
+}

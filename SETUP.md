@@ -39,3 +39,21 @@
 - **ИИ-прокси с квотой.** Ключи провайдеров хранятся на сервере, у бесплатного аккаунта N генераций в день, у Pro больше. Ключи не попадают в браузер, и их нельзя украсть.
 - **Пожертвования.** Уже работают: криптокошельки (`VITE_CRYPTO_WALLETS`) и ссылка на страницу донатов (`VITE_DONATE_URL`): Ko-fi, Buy Me a Coffee, GitHub Sponsors и т.п.
 - **Оплата подписки (позже).** Stripe, Lemon Squeezy или Paddle. Lemon Squeezy и Paddle — «продавцы от своего имени»: сами считают и платят налоги с продаж. Доступность выплат и возрастные требования зависят от страны. Вебхук оплаты переключает пользователю тариф на Pro.
+
+## Свои домены (mysite.com → опубликованная страница)
+
+Один раз, всё бесплатно (Cloudflare for SaaS: до 100 доменов):
+
+1. Supabase → SQL editor → выполнить `supabase/domains.sql`.
+2. Cloudflare → openconstructor.pw → **DNS** → Add record: тип `AAAA`, имя `domains`, адрес `100::`, оранжевое облако включено.
+3. Cloudflare → openconstructor.pw → **SSL/TLS → Custom Hostnames** → включить Cloudflare for SaaS → **Fallback Origin** = `domains.openconstructor.pw` → Add.
+4. Cloudflare → иконка профиля → **My Profile → API Tokens → Create Token → Custom token**: права `Zone · SSL and Certificates · Edit`, зона `openconstructor.pw`. Скопировать токен.
+5. Zone ID — на странице Overview зоны, справа внизу.
+6. В папке проекта:
+   ```
+   npx.cmd wrangler secret put CF_API_TOKEN
+   npx.cmd wrangler secret put CF_ZONE_ID
+   npm.cmd run deploy
+   npm.cmd run deploy:domains
+   ```
+Дальше пользователь в «опубликовать → 🌐 домен» вводит свой домен и добавляет у регистратора CNAME на `domains.openconstructor.pw`.

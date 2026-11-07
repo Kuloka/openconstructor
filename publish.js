@@ -234,6 +234,7 @@ async function loadList(){
       <div class="pub-meta">
         ${canManage ? `<span title="Views">👁 ${p.views ?? 0}</span>` : ''}
         ${canManage ? `<button type="button" class="pub-chip" data-subs="${esc(p.slug)}" title="Messages sent through forms on this page">✉ ${counts[p.slug] || 0}</button>` : ''}
+        <button type="button" class="pub-chip" data-domain="${esc(p.slug)}" title="Open this page on your own domain">🌐 domain</button>
         <button type="button" class="pub-chip${p.listed ? ' on' : ''}" data-listed="${esc(p.slug)}" title="Who can find it">${p.listed ? 'in gallery' : 'link only'}</button>
         ${canManage ? `<button type="button" class="pub-chip${p.paused ? '' : ' on'}" data-paused="${esc(p.slug)}" title="Turn the page off without deleting it">${p.paused ? 'off' : 'on'}</button>` : ''}
         ${canManage ? `<button type="button" class="pub-chip${p.notify_email === false ? '' : ' on'}" data-notify="${esc(p.slug)}" title="E-mail me about each form message">${p.notify_email === false ? 'e-mail off' : 'e-mail on'}</button>` : ''}
@@ -261,6 +262,8 @@ $('#pubList').addEventListener('click', async e => {
   if (pz) { const p = pages.find(x => x.slug === pz); return setFlag(pz, 'paused', !p?.paused); }
   const sb = e.target.closest('[data-subs]')?.dataset.subs;
   if (sb) return showSubs(sb);
+  const dm = e.target.closest('[data-domain]')?.dataset.domain;
+  if (dm) return showDomains(dm);
   const slug = e.target.closest('[data-del]')?.dataset.del;
   if (!slug || !confirm(`Delete openconstructor.pw/p/${slug}? The link will stop working and its form messages will be deleted too.`)) return;
   const { error } = await supabase.from('pages').delete().eq('slug', slug).eq('owner', me.id);
@@ -306,6 +309,58 @@ $('#pubSubs').addEventListener('click', async e => {
     const { error } = await supabase.from('form_submissions').delete().eq('id', id);
     if (error) { studio.status(`couldn't delete: ${error.message}`, 'error'); return; }
     subs = subs.filter(r => String(r.id) !== id); renderSubs();
+  }
+});
+
+// ── custom domains of one page (worker /api/domain; uses the same panel as messages) ──
+let domSlug = '';
+async function domainApi(method, query = '', body){
+  const { data } = await supabase.auth.getSession();
+  const r = await fetch('/api/domain' + query, { method, headers: { Authorization: 'Bearer ' + (data?.session?.access_token || ''), 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw Error(d.error?.message || `HTTP ${r.status}`);
+  return d;
+}
+const dnsRow = (type, name, value) => `<tr><td>${type}</td><td><code>${esc(name)}</code></td><td><code>${esc(value)}</code> <button type="button" class="btn icon" data-copy="${esc(value)}" title="Copy">⧉</button></td></tr>`;
+function domainCard(d){
+  const live = d.status === 'active' && d.ssl === 'active';
+  const sub = d.host.split('.').length > 2 ? d.host.split('.').slice(0, -2).join('.') : '@';
+  return `<li class="pub-dom${live ? ' live' : ''}">
+    <div class="pub-sub-head"><a href="https://${esc(d.host)}" target="_blank" rel="noopener"><b>${esc(d.host)}</b></a><span class="pub-dom-state">${live ? '● works' : '◌ waiting for DNS'}</span><button type="button" class="btn icon" data-dom-del="${esc(d.host)}" title="Disconnect">×</button></div>
+    ${live ? '' : `<p class="muted">At the company where you bought the domain, open DNS settings and add:</p>
+    <table class="pub-dns"><tr><th>type</th><th>name</th><th>value</th></tr>${dnsRow('CNAME', sub, d.target)}${d.txt?.name ? dnsRow((d.txt.type || 'TXT').toUpperCase(), d.txt.name, d.txt.value) : ''}</table>
+    <p class="muted">${sub === '@' ? 'Some registrars don\'t allow CNAME on the bare domain — then use www.' + esc(d.host) + '. ' : ''}DNS can take from a few minutes to a few hours; the security certificate is issued automatically.</p>
+    ${d.errors?.length ? `<p class="pub-dom-err">${d.errors.map(esc).join('<br>')}</p>` : ''}`}
+  </li>`;
+}
+async function showDomains(slug){
+  domSlug = slug;
+  const box = $('#pubSubs');
+  box.classList.remove('hidden'); $('#pubList').classList.add('hidden');
+  box.innerHTML = '<div class="pub-empty">loading…</div>';
+  let list = [], err = '';
+  try { list = (await domainApi('GET', '?slug=' + encodeURIComponent(slug))).domains || []; } catch (e) { err = e.message; }
+  box.innerHTML = `<div class="pub-list-head"><button type="button" class="btn" data-subs-back>← back</button><span>your domain for /p/${esc(slug)}</span><button type="button" class="btn" data-dom-refresh>↻ check</button></div>
+    <form class="pub-dom-form" id="pubDomForm"><input id="pubDomHost" placeholder="www.mysite.com" spellcheck="false" autocomplete="off" aria-label="Your domain"><button class="btn primary" type="submit">connect</button></form>
+    ${err ? `<div class="pub-empty">${esc(err)}</div>` : ''}
+    ${list.length ? `<ul class="pub-sub-list">${list.map(domainCard).join('')}</ul>` : err ? '' : '<div class="pub-empty">Connect a domain you own: the page opens at its address, each screen at /screen-name, and search engines may index it.</div>'}`;
+}
+$('#pubSubs').addEventListener('submit', async e => {
+  if (e.target.id !== 'pubDomForm') return;
+  e.preventDefault();
+  const host = $('#pubDomHost').value.trim(); if (!host) return;
+  const b = e.target.querySelector('button'); b.disabled = true;
+  try { await domainApi('POST', '', { slug: domSlug, host }); studio.status(`${host}: connected — now add the DNS record`, 'ok'); showDomains(domSlug); }
+  catch (err) { studio.status(`couldn't connect the domain: ${err.message}`, 'error'); b.disabled = false; }
+});
+$('#pubSubs').addEventListener('click', async e => {
+  const c = e.target.closest('[data-copy]')?.dataset.copy;
+  if (c) { navigator.clipboard?.writeText(c); studio.status('copied', 'ok'); return; }
+  if (e.target.closest('[data-dom-refresh]')) return showDomains(domSlug);
+  const h = e.target.closest('[data-dom-del]')?.dataset.domDel;
+  if (h && confirm(`Disconnect ${h}?`)) {
+    try { await domainApi('DELETE', '?host=' + encodeURIComponent(h)); studio.status(`${h} disconnected`, 'ok'); showDomains(domSlug); }
+    catch (err) { studio.status(`couldn't disconnect: ${err.message}`, 'error'); }
   }
 });
 

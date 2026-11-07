@@ -23,7 +23,8 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "npm run build && wrangler dev",
-    "deploy": "npm run build && wrangler deploy"
+    "deploy": "npm run build && wrangler deploy",
+    "deploy:domains": "wrangler deploy -c wrangler.domains.jsonc"
   },
   "devDependencies": {
     "wrangler": "^4.158.0"

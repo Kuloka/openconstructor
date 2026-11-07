@@ -62,3 +62,16 @@
 .pub-sub-list dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 12px; margin: 4px 0 0; font-size: 12px; }
 .pub-sub-list dt { color: var(--muted); }
 .pub-sub-list dd { margin: 0; color: var(--text); overflow-wrap: anywhere; white-space: pre-wrap; }
+
+/* custom domains */
+.pub-dom-form { display: flex; gap: 8px; margin: 10px 0; }
+.pub-dom-form input { flex: 1; min-width: 0; height: 32px; padding: 0 10px; border: 1px solid var(--border-2); border-radius: 4px; background: var(--bg); color: var(--text); font: inherit; }
+.pub-dom .pub-sub-head a { color: var(--text); text-decoration: none; }
+.pub-dom-state { margin-left: auto; color: var(--warn, #e0a33a); font-size: 11.5px; }
+.pub-dom.live .pub-dom-state { color: var(--ok); }
+.pub-dns { width: 100%; margin: 6px 0; border-collapse: collapse; font-size: 12px; }
+.pub-dns th { color: var(--subtle); font-weight: 500; text-align: left; }
+.pub-dns td, .pub-dns th { padding: 4px 6px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.pub-dns code { overflow-wrap: anywhere; color: var(--text); }
+.pub-dns .btn.icon { width: 22px; height: 22px; min-width: 0; padding: 0; font-size: 11px; }
+.pub-dom-err { color: var(--err); font-size: 11.5px; }

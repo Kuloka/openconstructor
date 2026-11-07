@@ -182,7 +182,7 @@ async function notifyAuthor(env, slug, data){
   if (!res.ok) throw new Error(`resend ${res.status} ${(await res.text()).slice(0, 200)}`);
 }
 
-async function servePage(request, env, ctx, slug){
+async function servePage(request, env, ctx, slug, screen = '', base = null){
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     return new Response('Method not allowed', { status: 405, headers: { Allow: 'GET, HEAD' } });
   }
@@ -214,8 +214,114 @@ async function servePage(request, env, ctx, slug){
     res = formsWork(new Response(inject(row.html, slug, row.title), { status: 200, headers: { ...PAGE_HEADERS, 'Cache-Control': 'public, max-age=60' } }), slug);
     ctx.waitUntil(cache.put(key, res.clone()));
   }
+  res = await routeScreens(res, screen, base ?? `/p/${slug}`, base === '');
+  if (!res) return notice(404, 'page not found', 'This page has no screen with that name.');
   if (request.method === 'GET') ctx.waitUntil(countView(request, env, slug).catch(() => {}));
   return request.method === 'HEAD' ? new Response(null, res) : res;
+}
+
+// Screens of a multi-screen page get their own addresses: /p/slug/<screen> (or /<screen> on a custom
+// domain). Links to "#screen" become real links, and the asked screen is the one shown.
+const SCREEN_RE = /^[a-z0-9][a-z0-9-]{0,47}$/;
+async function routeScreens(res, screen, base, custom){
+  const html = await res.text();
+  const ids = [...html.matchAll(/<section class="oc-screen" id="([a-z0-9-]+)"/g)].map(m => m[1]);
+  if (screen && !ids.includes(screen)) return null;
+  const headers = new Headers(res.headers);
+  if (custom) headers.delete('X-Robots-Tag'); // the owner's own domain may be indexed
+  const out = new Response(html, { status: res.status, headers });
+  if (!ids.length) return out;
+  const set = new Set(ids), first = ids[0];
+  const link = id => id === first ? (base || '/') : `${base}/${id}`;
+  let rw = new HTMLRewriter().on('a[href^="#"]', { element(el){ const id = el.getAttribute('href').slice(1); if (set.has(id)) el.setAttribute('href', link(id)); } });
+  if (screen && screen !== first) rw = rw.on('head', { element(el){ el.append(`<style>.oc-screen{display:none!important}#${screen}{display:block!important}</style>`, { html: true }); } });
+  return rw.transform(out);
+}
+
+// ---------- custom domains (Cloudflare for SaaS): mysite.com → a published page ----------
+// Visitors' domains point a CNAME at DOMAIN_TARGET; a second deploy of this worker (wrangler.domains.jsonc,
+// route */*) receives that traffic. The host → slug map is the `domains` table (supabase/domains.sql).
+const MAIN_HOSTS = new Set(['openconstructor.pw', 'www.openconstructor.pw', 'localhost', '127.0.0.1']);
+const DOMAIN_TARGET = 'domains.openconstructor.pw';
+const HOST_RE = /^(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+const MAX_DOMAINS = 3;
+const isMainHost = h => MAIN_HOSTS.has(h) || h.endsWith('.workers.dev');
+async function domainSlug(env, ctx, host){
+  const cache = caches.default, key = new Request(`${HOME}/__domain/${encodeURIComponent(host)}`);
+  const hit = await cache.match(key);
+  if (hit) return (await hit.text()) || null;
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/domains?host=eq.${encodeURIComponent(host)}&select=slug`, { headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${env.SUPABASE_ANON_KEY}`, Accept: 'application/json' } });
+  const rows = r.ok ? await r.json() : [];
+  const slug = (Array.isArray(rows) && rows[0]?.slug) || '';
+  ctx.waitUntil(cache.put(key, new Response(slug, { headers: { 'Cache-Control': 'max-age=120' } })));
+  return slug || null;
+}
+async function customDomain(request, env, ctx, url){
+  if (url.pathname === '/robots.txt') return new Response('User-agent: *\nAllow: /\n', { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+  if (url.pathname === '/favicon.ico') return new Response(null, { status: 404 });
+  const slug = await domainSlug(env, ctx, url.hostname.toLowerCase());
+  if (!slug) return notice(404, 'domain not connected', 'This domain is not connected to a page on openconstructor yet.');
+  const m = /^\/(?:([a-z0-9][a-z0-9-]{0,47})\/?)?$/.exec(url.pathname);
+  if (!m) return notice(404, 'page not found', 'There is nothing at this address.');
+  return servePage(request, env, ctx, slug, m[1] || '', '');
+}
+// /api/domain — GET ?slug= (domains of my page + status), POST {slug, host} (connect), DELETE ?host= (disconnect)
+async function domainApi(request, env, ctx, url){
+  const token = bearer(request);
+  const user = token && await supabaseUser(env, token);
+  if (!user) return fail(401, 'Sign in first.');
+  if (!env.CF_API_TOKEN || !env.CF_ZONE_ID || !env.SUPABASE_SERVICE_ROLE_KEY) return fail(503, 'Custom domains are not set up on this server yet.');
+  const svc = { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, Accept: 'application/json', 'Content-Type': 'application/json' };
+  const db = (q, init = {}) => fetch(`${env.SUPABASE_URL}/rest/v1/${q}`, { ...init, headers: { ...svc, ...(init.headers || {}) } });
+  const cf = async (path, init = {}) => { const r = await fetch(`https://api.cloudflare.com/client/v4/zones/${env.CF_ZONE_ID}/custom_hostnames${path}`, { ...init, headers: { Authorization: `Bearer ${env.CF_API_TOKEN}`, 'Content-Type': 'application/json' } }); return r.json().catch(() => ({ success: false })); };
+  const view = (host, h) => ({ host, target: DOMAIN_TARGET, status: h?.status || 'pending', ssl: h?.ssl?.status || 'pending', txt: h?.ownership_verification || null, errors: [...(h?.verification_errors || []), ...(h?.ssl?.validation_errors || []).map(e => e.message)].filter(Boolean).slice(0, 3) });
+  const purge = host => ctx.waitUntil(caches.default.delete(new Request(`${HOME}/__domain/${encodeURIComponent(host)}`)));
+
+  if (request.method === 'GET') {
+    const slug = url.searchParams.get('slug') || '';
+    if (!SLUG_RE.test(slug)) return fail(400, 'Bad page.');
+    const rows = await (await db(`domains?owner=eq.${user.id}&slug=eq.${slug}&select=host,cf_id`)).json();
+    const list = await Promise.all((Array.isArray(rows) ? rows : []).map(async r => view(r.host, r.cf_id ? (await cf('/' + r.cf_id)).result : null)));
+    return json(200, { domains: list, target: DOMAIN_TARGET });
+  }
+  if (request.method === 'POST') {
+    let d; try { d = await request.json(); } catch { return fail(400, 'Bad request.'); }
+    const slug = String(d?.slug || '');
+    const host = String(d?.host || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/[/?#].*$/, '').replace(/\.$/, '');
+    if (!SLUG_RE.test(slug)) return fail(400, 'Bad page.');
+    if (!HOST_RE.test(host) || isMainHost(host) || host.endsWith('.openconstructor.pw')) return fail(400, 'That doesn\'t look like a domain you own (example: www.mysite.com).');
+    const page = await (await db(`pages?slug=eq.${slug}&owner=eq.${user.id}&select=slug`)).json();
+    if (!Array.isArray(page) || !page.length) return fail(403, 'This is not your page.');
+    const existing = await (await db(`domains?host=eq.${encodeURIComponent(host)}&select=owner,cf_id`)).json();
+    if (existing?.[0] && existing[0].owner !== user.id) return fail(409, 'This domain is already connected to another page.');
+    if (existing?.[0]) {
+      await db(`domains?host=eq.${encodeURIComponent(host)}`, { method: 'PATCH', body: JSON.stringify({ slug }) });
+      purge(host);
+      return json(200, view(host, existing[0].cf_id ? (await cf('/' + existing[0].cf_id)).result : null));
+    }
+    const mine = await (await db(`domains?owner=eq.${user.id}&select=host`)).json();
+    if (Array.isArray(mine) && mine.length >= MAX_DOMAINS) return fail(429, `Up to ${MAX_DOMAINS} domains per account for now.`);
+    let made = await cf('', { method: 'POST', body: JSON.stringify({ hostname: host, ssl: { method: 'http', type: 'dv', settings: { min_tls_version: '1.2' } } }) });
+    if (!made.success) {
+      const found = await cf('?hostname=' + encodeURIComponent(host));
+      if (found.result?.[0]) made = { success: true, result: found.result[0] };
+      else return fail(502, `Cloudflare: ${made.errors?.[0]?.message || 'could not add the domain'}`);
+    }
+    const ins = await db('domains', { method: 'POST', body: JSON.stringify({ host, slug, owner: user.id, cf_id: made.result.id }) });
+    if (!ins.ok) return fail(502, 'Could not save the domain.');
+    purge(host);
+    return json(200, view(host, made.result));
+  }
+  if (request.method === 'DELETE') {
+    const host = String(url.searchParams.get('host') || '').toLowerCase();
+    const rows = await (await db(`domains?host=eq.${encodeURIComponent(host)}&owner=eq.${user.id}&select=cf_id`)).json();
+    if (!Array.isArray(rows) || !rows.length) return fail(404, 'Not found.');
+    if (rows[0].cf_id) await cf('/' + rows[0].cf_id, { method: 'DELETE' });
+    await db(`domains?host=eq.${encodeURIComponent(host)}&owner=eq.${user.id}`, { method: 'DELETE' });
+    purge(host);
+    return json(200, { ok: true });
+  }
+  return fail(405, 'Method not allowed', { Allow: 'GET, POST, DELETE' });
 }
 
 // ---------- brand kit: colours, fonts and logo of a website (for the editor's "brand" window) ----------
@@ -592,6 +698,8 @@ export default {
   async fetch(request, env, ctx){
     const url = new URL(request.url);
     if (url.protocol === 'http:' && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') { url.protocol = 'https:'; return Response.redirect(url.toString(), 301); }
+    if (!isMainHost(url.hostname)) return customDomain(request, env, ctx, url);
+    if (url.pathname === '/api/domain') return domainApi(request, env, ctx, url);
     if (url.pathname === '/api/ai' || url.pathname === '/api/ai/') return aiChat(request, env);
     if (url.pathname === '/api/ai/quota') return aiQuota(request, env);
     if (url.pathname === '/api/photo') return request.method === 'GET' ? photo(request, env, ctx, url) : fail(405, 'Method not allowed', { Allow: 'GET' });
@@ -602,8 +710,12 @@ export default {
     if (fm) return request.method === 'POST' ? formSubmit(request, env, ctx, decodeURIComponent(fm[1])) : fail(405, 'Method not allowed', { Allow: 'POST' });
     if (url.pathname === '/api/brand') return request.method === 'GET' ? brand(request, url) : fail(405, 'Method not allowed', { Allow: 'GET' });
     if (url.pathname.startsWith('/api/')) return fail(404, 'Not found');
-    const m = /^\/p\/([^/]+)\/?$/.exec(url.pathname);
-    if (m) { let slug = ''; try { slug = decodeURIComponent(m[1]); } catch {} return servePage(request, env, ctx, slug); }
+    const m = /^\/p\/([^/]+)(?:\/([^/]+))?\/?$/.exec(url.pathname);
+    if (m) {
+      let slug = '', screen = ''; try { slug = decodeURIComponent(m[1]); screen = m[2] ? decodeURIComponent(m[2]) : ''; } catch {}
+      if (screen && !SCREEN_RE.test(screen)) return notice(404, 'page not found', 'There is no published page at this address.');
+      return servePage(request, env, ctx, slug, screen);
+    }
     if (url.pathname === '/p/' || url.pathname.startsWith('/p/')) return notice(404, 'page not found', 'There is no published page at this address.');
     return env.ASSETS.fetch(request);
   },
