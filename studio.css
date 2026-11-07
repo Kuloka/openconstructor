@@ -687,3 +687,5 @@ body.resizing iframe { pointer-events: none; }
 .tb-center { min-width: 0; margin: 0 10px; overflow: hidden; }
 #projectName { overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
 @media (max-width: 1380px) { .titlebar .donate-btn { display: none; } }
+
+.tb-menu .tb-code { color: var(--accent); }
