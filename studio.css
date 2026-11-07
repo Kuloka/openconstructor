@@ -789,3 +789,7 @@ body.resizing iframe { pointer-events: none; }
 .msg-next span { color: var(--subtle); font-size: 11px; }
 .msg-next button { padding: 4px 10px; border: 1px dashed var(--border-2); border-radius: 999px; background: none; color: var(--text-2); font-size: 11.5px; transition: border-color .15s, color .15s, background .15s; }
 .msg-next button:hover { border-style: solid; border-color: var(--accent); background: var(--accent-dim); color: var(--text); }
+
+/* locked blocks don't move; a small lock sits on the selection outline */
+.node.locked { cursor: default; }
+.node.locked.selected::after { content: '🔒'; position: absolute; top: 6px; right: 6px; z-index: 5; font-size: calc(12px * var(--inv, 1)); line-height: 1; pointer-events: none; }

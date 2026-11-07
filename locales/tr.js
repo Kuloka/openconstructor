@@ -901,4 +901,8 @@ export default {
   "Features": "Özellikler",
   "Contact form": "İletişim formu",
   "Footer": "Alt bilgi",
+  "🔒 lock position": "🔒 konumu kilitle",
+  "🔓 unlock position": "🔓 kilidi aç",
+  "locked: the block stays put (right-click → unlock)": "kilitlendi: blok yerinde kalır (sağ tık → kilidi aç)",
+  "unlocked: the block can be moved again": "kilit açıldı: blok yeniden taşınabilir",
 };

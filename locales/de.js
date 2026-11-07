@@ -903,4 +903,8 @@ export default {
   "Features": "Vorteile",
   "Contact form": "Kontaktformular",
   "Footer": "Fußzeile",
+  "🔒 lock position": "🔒 Position sperren",
+  "🔓 unlock position": "🔓 Position entsperren",
+  "locked: the block stays put (right-click → unlock)": "gesperrt: der Block bleibt stehen (Rechtsklick → entsperren)",
+  "unlocked: the block can be moved again": "entsperrt: der Block lässt sich wieder verschieben",
 };

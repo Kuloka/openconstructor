@@ -133,6 +133,7 @@ function render(){
     if (item.scene) mount3D(el, item); else if (el._live) { el._live.dispose(); el._live = el._sceneKey = null; el.classList.remove('has-live'); }
     el.style.left = item.x + 'px'; el.style.top = item.y + 'px'; el.style.zIndex = i + 1;
     el.classList.toggle('selected', picked.has(item.id) || selected === item.id);
+    el.classList.toggle('locked', !!item.locked);
     el.classList.toggle('full', !!item.full);
   });
   $('canvasEmpty').classList.toggle('hidden', items.length > 0);
@@ -158,7 +159,8 @@ async function downloadGLB(id){
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (x.name || 'model').replace(/[\\/:*?"<>|\s]+/g, '-') + '.glb'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   setState('saved: ' + a.download + ' — opens in Blender, Unity, Godot, Roblox Studio (3D Importer)…', 'ok');
 }
-function pageHeightNow(){ const b = contentBottom(); return b > page.h ? b + 48 : page.h; }
+const siteMode = () => items.length > 0 && items.every(i => i.full && !i.scene);
+function pageHeightNow(){ const b = contentBottom(); if (siteMode() && b > 0) return b; return b > page.h ? b + 48 : page.h; }
 function contentBottom(){ let h = 0; for (const el of nodes.values()) h = Math.max(h, el.offsetTop + el.offsetHeight); return h; }
 /* ── Stack layout: blocks flow top to bottom (order = vertical position), components are centered.
    The same order drives a responsive export, so the page adapts to phones and tablets. ── */
@@ -189,6 +191,12 @@ document.querySelectorAll('[data-layout]').forEach(b => b.setAttribute('aria-che
 // The page grows downward when elements extend past its height, like a real web page
 function layout(){
   restack();
+  // full-width sections start at the very top (a gap there would show a strip of page background)
+  let dragging = false; try { dragging = !!drag; } catch {} // layout() also runs at startup, before `drag` exists
+  if (siteMode() && !dragging) {
+    const top = Math.min(...items.map(i => i.y));
+    if (top > 0) { for (const it of items) { it.y -= top; const el = nodes.get(it.id); if (el) el.style.top = it.y + 'px'; } store.set('form-canvas-v3', items); }
+  }
   // the page only grows (with a 48px margin) when content really goes past its height — exact sizes stay exact
   const h = pageHeightNow();
   board.style.width = page.w + 'px'; board.style.height = h + 'px';
@@ -513,6 +521,7 @@ board.addEventListener('pointerdown', e => {
   if (e.button !== 0 || !el || spaceDown) return;
   const item = items.find(x => x.id === el.dataset.id); if (!item) return;
   e.stopPropagation(); closeCtx();
+  if (item.locked) { select(item.id); return; }
   // Shift/Ctrl+click adds or removes from the selection; clicking inside a group keeps the group for dragging
   if (e.shiftKey || e.ctrlKey || e.metaKey) { toggleSelect(item.id); if (!picked.has(item.id)) return; }
   else if (!picked.has(item.id) || picked.size < 2) select(item.id);
@@ -524,7 +533,7 @@ board.addEventListener('pointerdown', e => {
 board.addEventListener('pointermove', e => {
   if (!drag) return;
   const dx = (e.clientX - drag.sx) / zoom, dy = (e.clientY - drag.sy) / zoom;
-  if (!drag.moved && Math.hypot(dx, dy) < 3) return;
+  if (!drag.moved && Math.hypot(dx, dy) * zoom < (drag.item.full ? 14 : 3)) return;
   drag.moved = true; drag.el.classList.add('dragging');
   const maxX = Math.max(0, page.w - drag.el.offsetWidth);
   let x = drag.item.full ? 0 : Math.min(maxX, Math.max(0, drag.ox + dx)), y = Math.max(0, drag.oy + dy);
@@ -665,6 +674,9 @@ function nodeMenu(id){
     ...(items.find(i => i.id === id)?.scene ? [{ label: '⬇ 3D model (.glb)', key: 'Blender, Unity…', run: () => downloadGLB(id) }] : []),
     { label: '★ save to my components', run: () => saveMine(id) },
     { label: 'rename', run: () => startRename(id) },
+    items.find(i => i.id === id)?.locked
+      ? { label: '🔓 unlock position', run: () => { checkpoint(); items = items.map(i => i.id === id ? { ...i, locked: false } : i); render(); setState('unlocked: the block can be moved again'); } }
+      : { label: '🔒 lock position', run: () => { checkpoint(); items = items.map(i => i.id === id ? { ...i, locked: true } : i); render(); setState('locked: the block stays put (right-click → unlock)', 'ok'); } },
     '-',
     { label: 'duplicate', key: 'Ctrl+D', run: () => duplicate(id) },
     { label: 'bring to front', run: () => toFront(id) },
@@ -1037,16 +1049,28 @@ body:has(.oc-screen:target) .oc-screen:not(:target){display:none}
 ${css.join('\n')}
 </style>${revealCss()}</head><body>\n${html.join('\n')}\n</body></html>`;
 }
+// A free-layout page on smaller screens: tablets get the whole page scaled down to fit, phones get the
+// blocks in one column (top-to-bottom order), full-width sections spanning the screen.
+function freeResponsiveCss(){
+  const W = page.w, PHONE = 760;
+  if (W <= PHONE) return '';
+  const steps = [];
+  for (let hi = W - 1; hi > PHONE; hi = Math.floor(hi * .88)) steps.push(hi);
+  const zooms = steps.map((hi, i) => { const lo = Math.max(PHONE + 1, steps[i + 1] ? steps[i + 1] + 1 : PHONE + 1); return `@media (max-width:${hi}px) and (min-width:${lo}px){.oc-page{zoom:${(lo / W).toFixed(4)}}}`; }).join('');
+  return zooms + `@media (max-width:${PHONE}px){.oc-page{width:auto!important;height:auto!important;display:flex;flex-direction:column;gap:16px;padding:16px 0;box-sizing:border-box}.oc-b{position:static!important;order:var(--o);display:flex;justify-content:center;padding:0 12px!important;max-width:100%;box-sizing:border-box}.oc-b.oc-f{display:block;width:100%!important;padding:0!important}.oc-b>*{max-width:100%;box-sizing:border-box}.oc-b img{max-width:100%;height:auto}}`;
+}
 function buildHTML(){
   const screens = studio.screens?.count() > 1 ? studio.screens.forHTML() : null;
   if (screens) return buildScreensHTML(screens);
   if (isStack()) return buildStackHTML();
   const H = pageHeightNow();
+  // --o = order from top to bottom, used when the page turns into one column on phones
+  const rank = new Map([...items].sort((a, b) => a.y - b.y || a.x - b.x).map((it, i) => [it.id, i]));
   const body = items.map(it => it.full
-    ? `<div style="position:absolute;left:0;top:${it.y}px;width:${page.w}px">\n${it.code}\n</div>`
-    : `<div style="position:absolute;left:${it.x}px;top:${it.y}px;padding:${PAD}px">\n${it.code}\n</div>`).join('\n');
+    ? `<div class="oc-b oc-f" style="position:absolute;left:0;top:${it.y}px;width:${page.w}px;--o:${rank.get(it.id)}">\n${it.code}\n</div>`
+    : `<div class="oc-b" style="position:absolute;left:${it.x}px;top:${it.y}px;padding:${PAD}px;--o:${rank.get(it.id)}">\n${it.code}\n</div>`).join('\n');
   const title = escapeHTML(nameEl.textContent.trim() || 'My interface');
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=${page.w}"><title>${title}</title><style>html,body{margin:0}body{min-height:100vh;background:${page.bg};background-attachment:fixed;color:${isLightPage() ? '#18181b' : '#eee'};font-family:system-ui}.oc-page{position:relative;width:${page.w}px;height:${H}px;margin:0 auto}</style>${page.themeCss ? `<style>${page.themeCss.replace(/#__root/g, '.oc-page')}</style>` : ''}${revealCss()}</head><body><div class="oc-page">\n${body}\n</div></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>html,body{margin:0}body{min-height:100vh;background:${page.bg};background-attachment:fixed;color:${isLightPage() ? '#18181b' : '#eee'};font-family:system-ui}.oc-page{position:relative;width:${page.w}px;height:${H}px;margin:0 auto}${freeResponsiveCss()}</style>${page.themeCss ? `<style>${page.themeCss.replace(/#__root/g, '.oc-page')}</style>` : ''}${revealCss()}</head><body><div class="oc-page">\n${body}\n</div></body></html>`;
 }
 // Responsive page: normal document flow in stack order; sections span the width, components are centered
 // and may shrink on small screens.

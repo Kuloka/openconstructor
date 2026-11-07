@@ -94,3 +94,37 @@ scenario('export: the static site .zip downloads', async (ed) => {
   assert.ok(statSync(join(dir, zipFile)).size > 200);
   rmSync(dir, { recursive: true, force: true });
 });
+
+scenario('site layout: no page strips, locked blocks stay, phones get one column', async (ed) => {
+  const hero = '<section style="height:600px;background:#000;color:#fff">Hero</section>';
+  const card = '<div style="width:300px;height:120px;background:#fff;color:#000">Card</div>';
+  await ed.ev(`(localStorage.setItem('form-canvas-v3', JSON.stringify([{ id: 'h', name: 'Hero', x: 0, y: 16, full: true, code: ${JSON.stringify(hero)} }])), localStorage.setItem('oc-page', JSON.stringify({ w: 1440, h: 1100, bg: '#0f766e' })), 1)`);
+  await ed.send('Page.reload'); await sleep(3500);
+  // the full-width section moves to the top and the page is exactly as tall as it
+  assert.equal((await ed.items())[0].y, 0);
+  assert.equal(await ed.ev(`document.getElementById('board').style.height`), '600px');
+  // locked: a drag doesn't move it
+  await ed.ev(`(() => { const n = document.querySelector('.node'), r = n.getBoundingClientRect(); n.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: r.left + 40, clientY: r.top + 40 })); return 1; })()`); await sleep(200);
+  await ed.ev(`([...document.querySelectorAll('#ctxMenu [data-i]')].find(b => b.textContent.includes('lock')).click(), 1)`); await sleep(200);
+  const box = await ed.ev(`(() => { const r = document.querySelector('.node').getBoundingClientRect(); return { x: r.left + 200, y: r.top + 200 }; })()`);
+  for (const [type, dy] of [['mousePressed', 0], ['mouseMoved', 60], ['mouseMoved', 140], ['mouseReleased', 140]]) await ed.send('Input.dispatchMouseEvent', { type, x: box.x, y: box.y + dy, button: 'left', clickCount: 1 });
+  await sleep(300);
+  assert.equal((await ed.items())[0].y, 0);
+  assert.equal((await ed.items())[0].locked, true);
+  // free layout + phone: blocks become one column; tablet: the page is scaled
+  await ed.ev(`(localStorage.setItem('form-canvas-v3', JSON.stringify([{ id: 'h', name: 'Hero', x: 0, y: 0, full: true, code: ${JSON.stringify(hero)} }, { id: 'c', name: 'Card', x: 900, y: 700, code: ${JSON.stringify(card)} }])), 1)`);
+  await ed.send('Page.reload'); await sleep(3500);
+  const dir = mkdtempSync(join(tmpdir(), 'oc-dl-'));
+  await ed.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: dir });
+  await ed.ev(`(document.getElementById('export').click(), 1)`); await sleep(300);
+  await ed.ev(`([...document.querySelectorAll('#ctxMenu [data-i]')].find(b => b.textContent.includes('HTML page')).click(), 1)`);
+  let file; for (let i = 0; i < 40 && !file; i++) { await sleep(150); file = readdirSync(dir).find(f => f.endsWith('.html')); }
+  const html = (await import('node:fs')).readFileSync(join(dir, file), 'utf8');
+  rmSync(dir, { recursive: true, force: true });
+  const probe = w => ed.ev(`new Promise(done => { const f = document.createElement('iframe'); f.style.cssText = 'position:fixed;left:0;top:0;width:${w}px;height:800px;border:0'; f.srcdoc = ${JSON.stringify(html)}; f.onload = () => { const d = f.contentDocument, card = [...d.querySelectorAll('.oc-b')].find(b => b.textContent.includes('Card')).getBoundingClientRect(), page = d.querySelector('.oc-page'); const r = { cardLeft: Math.round(card.left), cardTop: Math.round(card.top), zoom: getComputedStyle(page).zoom, scrollW: d.documentElement.scrollWidth }; f.remove(); done(r); }; document.body.append(f); })`);
+  const phone = await probe(390);
+  assert.ok(phone.scrollW <= 390, 'no sideways scroll on a phone: ' + phone.scrollW);
+  assert.ok(phone.cardLeft < 100 && phone.cardTop >= 600, 'card stacked under the hero: ' + JSON.stringify(phone));
+  const tablet = await probe(1000);
+  assert.ok(+tablet.zoom < 1 && tablet.scrollW <= 1000, 'tablet scaled: ' + JSON.stringify(tablet));
+});

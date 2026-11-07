@@ -906,4 +906,8 @@ export default {
   "Features": "Преимущества",
   "Contact form": "Форма связи",
   "Footer": "Подвал",
+  "🔒 lock position": "🔒 закрепить на месте",
+  "🔓 unlock position": "🔓 открепить",
+  "locked: the block stays put (right-click → unlock)": "закреплено: блок не сдвинется (правый клик → открепить)",
+  "unlocked: the block can be moved again": "откреплено: блок снова можно двигать",
 };
