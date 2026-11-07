@@ -6,6 +6,7 @@ import GradientText from './components/reactbits/GradientText';
 import SpotlightCard from './components/reactbits/SpotlightCard';
 import logoSvg from './logo.svg?raw';
 import { templates } from './templates';
+import { t as tr, LANGS, lang, setLang } from '../i18n.js';
 import { loadTemplate, clearPage, prefillPrompt } from '../studio.js';
 import { openAuth, user as authUser } from '../auth.js';
 import { openDonate } from '../donate.js';
@@ -86,14 +87,15 @@ export default function Welcome(){
           <a className="wl-gh" href="/gallery">Gallery</a>
           <a className="wl-gh" href="https://github.com/Kuloka/openconstructor" target="_blank" rel="noreferrer" title="Source code on GitHub"><svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.6 22.4c.6.1.8-.2.8-.6v-2.1c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.2 1.2a11 11 0 0 1 5.8 0c2.2-1.5 3.2-1.2 3.2-1.2.6 1.6.2 2.8.1 3.1.8.8 1.2 1.9 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A11.5 11.5 0 0 0 12 .5z"/></svg>GitHub</a>
         </nav>
+        <select className="wl-lang" data-no-i18n="" aria-label="Language" value={lang} onChange={e => setLang(e.target.value)}>{LANGS.map(l => <option key={l.code} value={l.code}>{l.name}</option>)}</select>
         {!authUser && <button className="wl-btn ghost" onClick={() => openAuth('signup')}>Sign up</button>}
         <button className="wl-btn primary" onClick={() => close()}>Open editor</button>
       </header>
 
       <section className="wl-hero">
-        <div className="wl-badge"><span className="wl-dot" /><ShinyText text="AI interface builder · public beta" speed={3} color="#a89c97" shineColor="#ffc2a8" /></div>
+        <div className="wl-badge"><span className="wl-dot" /><ShinyText text={tr("AI interface builder · public beta")} speed={3} color="#a89c97" shineColor="#ffc2a8" /></div>
         <h1 className="wl-title">
-          <BlurText text="Build interfaces" animateBy="words" direction="top" delay={140} className="wl-title-line" />
+          <BlurText text={tr("Build interfaces")} animateBy="words" direction="top" delay={140} className="wl-title-line" />
           <GradientText colors={['#e4572e', '#ffb08f', '#e4572e', '#c2410c']} animationSpeed={6} className="wl-title-grad">with words and blocks</GradientText>
         </h1>
         <p className="wl-sub">A library of polished components, a free-form canvas and an AI assistant that lays out pages from a description. Export clean HTML and CSS.</p>
@@ -104,7 +106,7 @@ export default function Welcome(){
           <button type="submit" className="wl-btn primary" disabled={!idea.trim()}>Build ✦</button>
         </form>
         <div className="wl-chips">
-          {EXAMPLES.map(x => <button key={x} onClick={() => build(x)}>{x}</button>)}
+          {EXAMPLES.map(x => <button key={x} onClick={() => build(tr(x))}>{x}</button>)}
         </div>
 
         <div className="wl-actions">

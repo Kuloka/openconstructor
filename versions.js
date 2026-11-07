@@ -3,6 +3,7 @@
 // Snapshots: after edits (debounced, at most one per 2 minutes), on page close, before a restore,
 // and manually with an optional label. Up to 60 per project, thinned out with age.
 import { studio } from './studio.js';
+import { t, lang } from './i18n.js';
 import './versions.css';
 
 const DB_NAME = 'oc-history', STORE = 'snapshots';
@@ -223,14 +224,14 @@ export const storageBackend = () => fallback ? 'localStorage' : 'indexeddb';
 /* ── formatting ──────────────────────────────────────────── */
 function when(t){
   const d = new Date(t), now = new Date();
-  const hm = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  const hm = d.toLocaleTimeString(lang === 'en' ? 'en-GB' : lang, { hour: '2-digit', minute: '2-digit' });
   const day = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
   const diff = Math.round((day(now) - day(d)) / DAY);
   if (diff === 0) return `today ${hm}`;
   if (diff === 1) return `yesterday ${hm}`;
   const opts = { month: 'short', day: 'numeric' };
   if (d.getFullYear() !== now.getFullYear()) opts.year = 'numeric';
-  return `${d.toLocaleDateString('en-US', opts)}, ${hm}`;
+  return `${d.toLocaleDateString(lang === 'en' ? 'en-US' : lang, opts)}, ${hm}`;
 }
 function bytes(n){ return n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(n < 10240 ? 1 : 0)} KB` : `${(n / 1048576).toFixed(1)} MB`; }
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
@@ -304,7 +305,7 @@ function renderList(){
   if (!versions.length) { listEl.innerHTML = '<li class="vh-empty">No versions yet.<br>They appear automatically as you edit, or save one above.</li>'; return; }
   listEl.innerHTML = versions.map(v => `<li class="vh-row${v.id === selectedId ? ' sel' : ''}${v.manual ? ' manual' : ''}" role="option" aria-selected="${v.id === selectedId}" data-id="${esc(v.id)}">
     <span class="vh-when">${esc(when(v.t))}</span>${v.label ? `<span class="vh-label">${esc(v.label)}</span>` : ''}
-    <span class="vh-meta">${plural(v.count, 'element')} · ${bytes(v.size)}${v.omitted ? ' · <em>images omitted</em>' : ''}</span></li>`).join('');
+    <span class="vh-meta">${t(plural(v.count, 'element'))} · ${bytes(v.size)}${v.omitted ? ' · <em>images omitted</em>' : ''}</span></li>`).join('');
 }
 function showSelected(){
   const v = versions.find(x => x.id === selectedId);
@@ -314,7 +315,7 @@ function showSelected(){
   if (!v) { frame.srcdoc = ''; frame.style.visibility = 'hidden'; emptyEl.hidden = false; infoEl.textContent = ''; return; }
   emptyEl.hidden = true;
   const pg = v.data.page || {};
-  infoEl.innerHTML = `<b>${esc(when(v.t))}</b>${v.label ? ` · ${esc(v.label)}` : ''}<br><span>${plural(v.count, 'element')} · ${num(pg.w) || 1440}×${num(pg.h) || 900} · ${bytes(v.size)}${v.manual ? ' · saved manually' : ''}</span>`;
+  infoEl.innerHTML = `<b>${esc(when(v.t))}</b>${v.label ? ` · ${esc(v.label)}` : ''}<br><span>${t(plural(v.count, 'element'))} · ${num(pg.w) || 1440}×${num(pg.h) || 900} · ${bytes(v.size)}${v.manual ? ' · saved manually' : ''}</span>`;
   renderPreview(v);
 }
 function renderPreview(v){

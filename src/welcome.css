@@ -33,6 +33,8 @@
 .wl-btn.primary:hover { background: #f06a3f; }
 .wl-btn.primary:disabled { opacity: .4; cursor: default; }
 .wl-btn.ghost { border: 1px solid #3a302d; background: #121010; color: #f2ece9; }
+.wl-lang { height: 34px; padding: 0 8px; border: 1px solid #3a302d; border-radius: 4px; background: #121010; color: #cbc0bb; font-size: 13px; cursor: pointer; }
+.wl-lang:hover { border-color: #574945; color: #fff; }
 .wl-btn.ghost:hover { border-color: #574945; background: #181514; }
 
 .wl-hero { display: flex; flex-direction: column; align-items: center; max-width: 900px; margin: 0 auto; padding: 72px 24px 32px; text-align: center; }

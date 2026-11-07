@@ -1,6 +1,7 @@
 // The 200-component catalog is a separate chunk: the editor paints first, the catalog fills in right after
 let presets = [];
 const presetsReady = import('./presets.js').then(m => { presets = m.presets; stats.presets = presets.length; renderLibrary(); return presets; });
+import { t, lang, AI_LANG } from './i18n.js';
 import {CATEGORIES} from './categories.js';
 import { TARGETS } from './export-targets.js'; // the converters themselves (exporters.js) load on first export
 import { PRESETS as BG_PRESETS, DEFAULT_SPEC as BG_DEFAULT, toCSS as bgCSS, luminance as bgLum, mountBackgroundEditor } from './background.js';
@@ -59,7 +60,7 @@ const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matche
 function nodeDoc(item){
   const root = item.full ? `width:${page.w}px;padding:0` : `width:max-content;max-width:${page.w - 2 * PAD}px;padding:${PAD}px`;
   // <base target=_blank> + no allow-popups in the sandbox = links never navigate the canvas frame away
-  return `<!doctype html><html><head>${CSP}<base target="_blank"><meta name="color-scheme" content="dark"><style>:root{color-scheme:dark}html,body{margin:0;background:transparent;color:#eee;font-family:system-ui;overflow:hidden}button{white-space:nowrap}#__root{display:inline-block;box-sizing:border-box;${root}}</style>${page.themeCss ? `<style id="__theme">${page.themeCss}</style>` : ''}</head><body><div id="__root">${item.code}</div></body></html>`;
+  return `<!doctype html><html><head>${CSP}<base target="_blank"><meta name="color-scheme" content="dark"><style>:root{color-scheme:dark}html,body{margin:0;background:transparent;color:${isLightPage() ? '#18181b' : '#eee'};font-family:system-ui;overflow:hidden}button{white-space:nowrap}#__root{display:inline-block;box-sizing:border-box;${root}}</style>${page.themeCss ? `<style id="__theme">${page.themeCss}</style>` : ''}</head><body><div id="__root">${item.code}</div></body></html>`;
 }
 
 // Animated components (typewriter, expanding bars…) change size while they play, so the frame
@@ -116,7 +117,7 @@ function render(){
   items.forEach((item, i) => {
     const el = nodes.get(item.id) || createNode(item);
     const frame = el.querySelector('iframe');
-    const key = item.code + '|' + (item.full ? page.w : 0);
+    const key = item.code + '|' + (item.full ? page.w : 0) + '|' + isLightPage();
     if (el._key !== key) { el._key = key; frame.title = item.name; frame._loaded = false; frame.srcdoc = nodeDoc(item); }
     el.querySelector('.node-tag').textContent = item.name;
     if (item.scene) mount3D(el, item); else if (el._live) { el._live.dispose(); el._live = el._sceneKey = null; el.classList.remove('has-live'); }
@@ -866,7 +867,7 @@ function buildScreensHTML(list){
   }
   const anyStack = list.some(s => s.page.layout === 'stack');
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="${anyStack ? 'width=device-width,initial-scale=1' : `width=${list[0].page.w}`}"><title>${title}</title><style>
-html,body{margin:0}body{min-height:100vh;background:${list[0].page.bg};color:#eee;font-family:system-ui}
+html,body{margin:0}body{min-height:100vh;background:${list[0].page.bg};color:${isLightPage() ? '#18181b' : '#eee'};font-family:system-ui}
 .oc-screen{display:none;min-height:100vh}.oc-screen:first-of-type{display:block}
 .oc-screen:target{display:block;animation:oc-in .28s cubic-bezier(.2,.7,.2,1)}
 body:has(.oc-screen:target) .oc-screen:not(:target){display:none}
@@ -887,7 +888,7 @@ function buildHTML(){
     ? `<div style="position:absolute;left:0;top:${it.y}px;width:${page.w}px">\n${it.code}\n</div>`
     : `<div style="position:absolute;left:${it.x}px;top:${it.y}px;padding:${PAD}px">\n${it.code}\n</div>`).join('\n');
   const title = escapeHTML(nameEl.textContent.trim() || 'My interface');
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=${page.w}"><title>${title}</title><style>html,body{margin:0}body{min-height:100vh;background:${page.bg};background-attachment:fixed;color:#eee;font-family:system-ui}.oc-page{position:relative;width:${page.w}px;height:${H}px;margin:0 auto}</style>${page.themeCss ? `<style>${page.themeCss.replace(/#__root/g, '.oc-page')}</style>` : ''}</head><body><div class="oc-page">\n${body}\n</div></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=${page.w}"><title>${title}</title><style>html,body{margin:0}body{min-height:100vh;background:${page.bg};background-attachment:fixed;color:${isLightPage() ? '#18181b' : '#eee'};font-family:system-ui}.oc-page{position:relative;width:${page.w}px;height:${H}px;margin:0 auto}</style>${page.themeCss ? `<style>${page.themeCss.replace(/#__root/g, '.oc-page')}</style>` : ''}</head><body><div class="oc-page">\n${body}\n</div></body></html>`;
 }
 // Responsive page: normal document flow in stack order; sections span the width, components are centered
 // and may shrink on small screens.
@@ -899,7 +900,7 @@ function buildStackHTML(){
   const title = escapeHTML(nameEl.textContent.trim() || 'My interface');
   const theme = page.themeCss ? `<style>${page.themeCss.replace(/#__root/g, '.oc-page')}</style>` : '';
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>
-html,body{margin:0}body{min-height:100vh;background:${page.bg};background-attachment:fixed;color:#eee;font-family:system-ui}
+html,body{margin:0}body{min-height:100vh;background:${page.bg};background-attachment:fixed;color:${isLightPage() ? '#18181b' : '#eee'};font-family:system-ui}
 .oc-page{display:flex;flex-direction:column;gap:${STACK_GAP}px;min-height:100vh;overflow-x:hidden}
 .oc-full{width:100%}.oc-full>*{max-width:100%;box-sizing:border-box}
 .oc-block{display:flex;justify-content:center;padding:0 16px}.oc-block>*{max-width:100%;box-sizing:border-box}
@@ -1083,7 +1084,7 @@ const toBottom = () => { const m = $('messages'); m.scrollTop = m.scrollHeight; 
 // Typewriter: types `text` into `el` (about one second whatever the length). A newer call on the same
 // element cancels the older one. Reduced motion: the text appears at once.
 function typeText(el, text, { speed = 16 } = {}){
-  text = String(text ?? '');
+  text = t(String(text ?? ''));
   const id = (el._typing = (el._typing || 0) + 1);
   if (reduceMotion()) { el.textContent = text; toBottom(); return Promise.resolve(); }
   const step = Math.max(1, Math.round(text.length / 70));
@@ -1234,6 +1235,68 @@ function thinking(){
     }));
   };
   return end;
+}
+
+/* ── Readable text in AI answers ──
+   Models sometimes give a block a white background and forget the text color, so the text inherits
+   the light default: white on white. The code is rendered once in a hidden frame; every text whose
+   contrast with the background really under it is below 1.8:1 gets a dark or light color. */
+const rgbOf = s => { const m = String(s).match(/rgba?\(([\d.]+)[, ]+([\d.]+)[, ]+([\d.]+)(?:[, /]+([\d.]+%?))?/); if (!m) return null; const a = m[4] == null ? 1 : m[4].endsWith('%') ? parseFloat(m[4]) / 100 : +m[4]; return [+m[1], +m[2], +m[3], a]; };
+const lumOf = ([r, g, b]) => { const f = c => (c /= 255) <= .03928 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4; return .2126 * f(r) + .7152 * f(g) + .0722 * f(b); };
+const contrast = (a, b) => { const x = lumOf(a), y = lumOf(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
+// The color behind an element: the nearest solid background going up; a gradient counts as the average
+// of its colors; a photo (url) means "can't tell" and the text is left alone.
+function backdrop(el, win, pageRGB){
+  for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+    const cs = win.getComputedStyle(n);
+    if (cs.backgroundImage && cs.backgroundImage !== 'none') {
+      if (/url\(/.test(cs.backgroundImage)) return null;
+      const stops = [...cs.backgroundImage.matchAll(/rgba?\([^)]+\)/g)].map(m => rgbOf(m[0])).filter(c => c && c[3] > .4);
+      if (stops.length) return [0, 1, 2].map(i => stops.reduce((s, c) => s + c[i], 0) / stops.length);
+    }
+    const bg = rgbOf(cs.backgroundColor);
+    if (bg && bg[3] >= .5) return bg;
+  }
+  return pageRGB;
+}
+function fixContrast(code, full){
+  return new Promise(resolve => {
+    const light = isLightPage();
+    const frame = document.createElement('iframe');
+    frame.setAttribute('sandbox', 'allow-same-origin');
+    frame.style.cssText = `position:fixed;left:-20000px;top:0;width:${page.w}px;height:${page.h}px;visibility:hidden;pointer-events:none`;
+    let done = false;
+    const finish = out => { if (done) return; done = true; frame.remove(); resolve(out); };
+    setTimeout(() => finish(code), 3000);
+    frame.onload = () => {
+      try {
+        const doc = frame.contentDocument, win = frame.contentWindow, root = doc?.getElementById('__root');
+        if (!root) return; // the empty first load, before srcdoc
+        const pageRGB = light ? [250, 250, 250] : [12, 10, 9];
+        const all = [...root.querySelectorAll('*')], marks = new Map();
+        all.forEach((el, i) => {
+          if (/^(STYLE|SCRIPT|SVG|PATH|IMG|BR|INPUT|TEXTAREA|SELECT)$/i.test(el.tagName) || el.closest('svg')) return;
+          if (![...el.childNodes].some(n => n.nodeType === 3 && n.nodeValue.trim())) return;
+          const cs = win.getComputedStyle(el);
+          if (cs.display === 'none' || cs.visibility === 'hidden') return;
+          const fill = rgbOf(cs.webkitTextFillColor);
+          if (fill && fill[3] === 0) return; // gradient text (background-clip:text)
+          const ink = rgbOf(cs.color), bg = backdrop(el, win, pageRGB);
+          if (!ink || ink[3] < .3 || !bg) return;
+          if (contrast(ink, bg) < 1.8) marks.set(i, lumOf(bg) > .4 ? 'd' : 'l');
+        });
+        if (!marks.size) return finish(code);
+        // Same parse in a template, so the marks land on the same elements in the source code
+        const tpl = document.createElement('template'); tpl.innerHTML = code;
+        const copy = [...tpl.content.querySelectorAll('*')];
+        if (copy.length !== all.length || copy.some((el, i) => el.tagName !== all[i].tagName)) return finish(code);
+        marks.forEach((v, i) => copy[i].setAttribute('data-oc-ink', v));
+        finish(tpl.innerHTML + (code.includes('[data-oc-ink=d]') ? '' : '<style>[data-oc-ink=d]{color:#18181b!important}[data-oc-ink=l]{color:#fafafa!important}</style>'));
+      } catch { finish(code); }
+    };
+    frame.srcdoc = nodeDoc({ code, full });
+    document.body.append(frame);
+  });
 }
 
 /* ── Photos and attachments in AI answers ──
@@ -1431,6 +1494,8 @@ Rules:
 - If the message is just conversation or a question (a greeting, thanks, "what can you do", how-to) and does not ask to build or change something, use action "reply" with only the "reply" field — do NOT create an element.
 - "Current element" is what the user is working on (selected, or the page built last). If the request changes anything about it (colors, text, layout, photos, adding or removing a section inside it), use action "update" and return the COMPLETE updated element, keeping everything the user did not ask to change. Use "add" only when the user clearly wants a separate new block, component or page, or when there is no current element.
 - Page: ${page.w}×${page.h}px, ${isLightPage() ? 'light' : 'dark'} background. If the user asks for a website, landing page, page or section, set "full": true and build a complete full-width layout (header, hero, content blocks, footer) with a root element of width:100%. For a standalone component (button, card, form), set "full": false, width up to 360px.
+- Language: write "reply" in the language of the user's message; if unclear, in ${AI_LANG[lang]}. Texts on the page you build go in the language the user writes in (or the language they ask for).
+- Colors: text must always be clearly readable. Give the root element (and every section that changes the background) an explicit background AND an explicit text color — never rely on inherited color. Dark text on light backgrounds, light text on dark ones; never white or near-white text on a white or light background, or dark text on a dark one.
 - Self-contained HTML and CSS only: one <style> plus markup. No JavaScript, external links or fonts. Icons as inline SVG.
 - Real photos make pages feel finished: for websites, landing pages, heroes, product/menu cards, galleries, team and testimonials use photos — <img src="photo:2-4 English words" alt="…"> sized by CSS with object-fit:cover, or background-image:url('photo:2-4 English words'). Append ?portrait or ?square for tall or square slots (photo:barista portrait?portrait). Describe what should be in the picture (photo:latte art cup, photo:cozy cafe interior). Never write http image URLs. Small UI components (buttons, inputs, toggles) need no photos.${custom.attachNote || ''}
 - 3D: when the user asks for a 3D model, 3D asset, 3D object or 3D scene (or the Current element is a 3D scene), you CAN do it: use action "scene3d" and, instead of the html block, ONE \`\`\`json block with the scene. Shape:
@@ -1490,6 +1555,7 @@ Build recognizable things from MANY well-placed parts (a chair = seat + backrest
     await stop.compose(result.name, result.code);
     result.code = await resolveMedia(result.code, custom.attachments || [], qs => stop.step('finding photos: ' + qs.slice(0, 4).join(', ') + (qs.length > 4 ? '…' : '')), kept);
     const full = result.full === true || result.full === 'true';
+    result.code = await fixContrast(result.code, full);
     if (result.action === 'update' && target) {
       const item = items.find(x => x.id === target.id); if (!item) throw Error('The element was deleted during the request');
       checkpoint(); item.name = String(result.name || item.name).slice(0, 80); item.code = result.code;
@@ -1626,7 +1692,7 @@ document.querySelector('.tb-menu').addEventListener('click', e => {
 $('canvasEmpty').addEventListener('click', e => { const b = e.target.closest('[data-empty]'); if (!b) return; if (b.dataset.empty === 'welcome') openWelcome();
   else if (b.dataset.empty === 'screenshot') pickScreenshot();
   else if (b.dataset.empty === 'library') { window.dispatchEvent(new CustomEvent('oc:show-view', { detail: 'library' })); const s = $('catalogSearch'); s.focus(); $('sidePanel').animate([{ boxShadow: 'inset 0 0 0 1px var(--accent)' }, { boxShadow: 'inset 0 0 0 1px transparent' }], { duration: 1200 }); }
-  else { window.dispatchEvent(new CustomEvent('oc:open-chat')); prefillPrompt(b.dataset.empty); } });
+  else { window.dispatchEvent(new CustomEvent('oc:open-chat')); prefillPrompt(t(b.dataset.empty)); } });
 
 render();
 renderChat();

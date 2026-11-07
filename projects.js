@@ -5,6 +5,7 @@
 import { supabase, openAuth } from './auth.js';
 import * as auth from './auth.js';
 import { studio } from './studio.js';
+import { t, lang } from './i18n.js';
 import './projects.css';
 
 const LINK = 'oc-cloud-id', LINK_OWNER = 'oc-cloud-owner';
@@ -216,7 +217,7 @@ function ago(ts){
   let pick = units[0];
   for (const u of units) if (s >= u[1] * 0.95) pick = u;
   const n = Math.max(1, Math.round(s / pick[1]));
-  return `${n} ${pick[0]}${n === 1 ? '' : 's'} ago`;
+  return new Intl.RelativeTimeFormat(lang, { numeric: 'auto' }).format(-n, pick[0]);
 }
 
 async function refresh(){
@@ -253,7 +254,7 @@ function render(){
   const rows = list.map(p => `<li class="pj-row${p.id === linkedId ? ' current' : ''}" data-id="${esc(p.id)}">
       <button class="pj-open" data-pj="open" title="Open">
         <span class="pj-name">${esc(p.name)}</span>
-        <span class="pj-meta">${p.id === linkedId ? '<em>open</em> · ' : ''}${esc(ago(p.updated_at))} · ${p.item_count ?? 0} element${p.item_count === 1 ? '' : 's'}</span>
+        <span class="pj-meta">${p.id === linkedId ? '<em>open</em> · ' : ''}${esc(t(ago(p.updated_at)))} · ${esc(t(`${p.item_count ?? 0} element${p.item_count === 1 ? '' : 's'}`))}</span>
       </button>
       <span class="pj-tools">
         <button class="btn" data-pj="rename">rename</button>

@@ -1,4 +1,5 @@
-﻿import React, {useEffect,useState,useRef} from 'react';
+﻿import '../i18n.js';
+import React, {useEffect,useState,useRef} from 'react';
 import {createRoot} from 'react-dom/client';
 import {InputBar} from './components/agent-elements/input-bar';
 import './agent.css';
@@ -14,6 +15,9 @@ import '../theme.js';
 import '../screens.js';
 import '../roblox-sync.js';
 import Welcome from './Welcome';
+import {langSelect} from '../i18n.js';
+
+document.getElementById('sbLang')?.append(langSelect('lang-select'));
 
 const ACCEPT='image/*,.txt,.md,.csv,.json,.html,.css,.svg';
 function Composer(){

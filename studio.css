@@ -379,6 +379,9 @@ body.resizing iframe { pointer-events: none; }
 .sb-state.warn { color: var(--accent); }
 .sb-state.warn i { background: var(--accent); }
 #sbModel { color: var(--subtle); }
+.lang-select { height: 18px; padding: 0 2px; border: 0; background: transparent; color: var(--muted); font: inherit; cursor: pointer; }
+.lang-select:hover { color: var(--text); }
+.lang-select option { background: var(--panel); color: var(--text); }
 .sb-hint { color: var(--subtle); }
 
 /* ── Диалоги ────────────────────────────────────────────── */
