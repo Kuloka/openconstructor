@@ -38,3 +38,8 @@
 .ins-anim-grid select, .ins-anim-grid input { height: 22px; border: 1px solid var(--border-2); border-radius: 3px; background: var(--panel-2); color: var(--text); font: 11px inherit; }
 .ins-anim-grid label { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
 .ins-anim-grid label input { width: 56px; padding: 0 4px; }
+
+.ins-ai { display: flex; gap: 6px; margin: 0 0 10px; }
+.ins-ai input { flex: 1; min-width: 0; height: 30px; padding: 0 9px; border: 1px solid #e4572e60; border-radius: 4px; background: var(--bg); color: var(--text); font: inherit; font-size: 12px; }
+.ins-ai input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px #e4572e22; }
+.ins-ai .btn { height: 30px; padding: 0 10px; }

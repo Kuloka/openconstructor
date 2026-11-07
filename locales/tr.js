@@ -859,4 +859,9 @@ export default {
   "select a block first": "önce bir blok seç",
   "copied": "kopyalandı",
   "writing the answer": "yanıt yazılıyor",
+  "✦ tell the AI what to change in this part…": "✦ yapay zekâya bu kısımda neyi değiştireceğini söyle…",
+  "Change only this part with AI": "Yalnızca bu kısmı yapay zekâ ile değiştir",
+  "updated the part": "kısım güncellendi",
+  "part updated": "kısım güncellendi",
+  "Done — only that part changed. Ctrl+Z to undo.": "Tamam — yalnızca o kısım değişti. Geri almak için Ctrl+Z.",
 };

@@ -892,6 +892,43 @@ export async function robloxSpec(){
   const title = nameEl.textContent.trim() || 'My interface';
   return ex.toRobloxSpec(screens ? null : ex.snapshot(liveFrames()), page, title, { screens });
 }
+// ✦ AI on one part of an element (picked in the inline editor): only that fragment is rewritten.
+// `html` is the element's code with the part marked data-oc-target.
+async function editPart(id, html, ask){
+  const x = items.find(i => i.id === id); if (!x || !ask) return;
+  const m = current(), p = byId(m.pid), key = keys[m.pid];
+  if (!usable(m.pid)) { openSettings(); return; }
+  const tpl = document.createElement('template'); tpl.innerHTML = html;
+  const target = tpl.content.querySelector('[data-oc-target]'); if (!target) return;
+  target.removeAttribute('data-oc-target');
+  const css = [...tpl.content.querySelectorAll('style')].map(st => st.textContent).join('\n').slice(0, 12000);
+  const tag = target.tagName.toLowerCase() + (target.classList[0] ? '.' + target.classList[0] : '');
+  window.dispatchEvent(new CustomEvent('oc:open-chat'));
+  message(`✦ <${tag}>: ${ask}`, 'user'); logChat('user', `✦ <${tag}>: ${ask}`);
+  const stop = thinking({ ghost: false });
+  try {
+    const system = `You edit ONE fragment of an HTML component. Reply with ONLY one \`\`\`html block that contains the new version of the fragment and nothing else. Change only what the request asks; keep its text language, classes and everything else. If new CSS is needed, put ONE <style> block first inside the html block, with new class names starting with "ocx-". No JavaScript, no external URLs. Text must stay readable (explicit colors on changed backgrounds).`;
+    const user = `Component CSS (for reference):\n${css}\n\nFragment:\n${target.outerHTML.slice(0, 20000)}\n\nRequest: ${ask}`;
+    const content = await chat(p, key, m.id, system, user, [], (piece, why) => stop.live(piece, why));
+    const raw = String(content || '').replace(/<think>[\s\S]*?<\/think>/gi, '');
+    const fence = raw.match(/```(?:html|HTML)?[ \t]*\r?\n([\s\S]*?)(?:\r?\n```|$)/);
+    const out = document.createElement('template'); out.innerHTML = (fence ? fence[1] : raw).trim();
+    const styles = [...out.content.querySelectorAll('style')]; styles.forEach(st => st.remove());
+    if (!out.content.textContent.trim() && !out.content.querySelector('*')) throw Error('The model returned an empty fragment');
+    target.replaceWith(out.content);
+    if (styles.length) {
+      const extra = styles.map(st => st.textContent).join('\n');
+      const first = tpl.content.querySelector('style');
+      if (first) first.textContent += '\n' + extra; else { const st = document.createElement('style'); st.textContent = extra; tpl.content.prepend(st); }
+    }
+    const code = await fixContrast(tpl.innerHTML, x.full);
+    await stop.finish('updated the part'); setState('part updated', 'ok');
+    checkpoint(); items = items.map(i => i.id === id ? { ...i, code } : i); render();
+    message('Done — only that part changed. Ctrl+Z to undo.', 'assistant'); logChat('assistant', 'part updated');
+  } catch (err) {
+    stop(); setState(String(err.message || err), 'err'); message(`Couldn't change that part: ${err.message || err}`, 'assistant');
+  }
+}
 async function exportWithAI(t){
   if (!items.length) { setState('nothing to export: the page is empty', 'warn'); return; }
   const m = current(), p = byId(m.pid), key = keys[m.pid];
@@ -1923,6 +1960,7 @@ export const studio = {
     ...presets.map(p => ({ name: p.name, category: p.category, add: () => add(p.name, p.code, { full: p.full }) })),
   ],
   addIcon: () => addIcon(),
+  editPart: (id, html, ask) => editPart(id, html, ask),
   improve: id => improve(id ?? selected),
   selectedId: () => selected,
   // read

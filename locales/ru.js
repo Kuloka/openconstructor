@@ -864,4 +864,9 @@ export default {
   "select a block first": "сначала выберите блок",
   "copied": "скопировано",
   "writing the answer": "пишу ответ",
+  "✦ tell the AI what to change in this part…": "✦ скажите ИИ, что поменять в этой части…",
+  "Change only this part with AI": "Изменить только эту часть с ИИ",
+  "updated the part": "часть обновлена",
+  "part updated": "часть обновлена",
+  "Done — only that part changed. Ctrl+Z to undo.": "Готово — изменилась только эта часть. Ctrl+Z — отменить.",
 };

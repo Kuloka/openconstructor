@@ -861,4 +861,9 @@ export default {
   "select a block first": "primero selecciona un bloque",
   "copied": "copiado",
   "writing the answer": "escribiendo la respuesta",
+  "✦ tell the AI what to change in this part…": "✦ dile a la IA qué cambiar en esta parte…",
+  "Change only this part with AI": "Cambiar solo esta parte con IA",
+  "updated the part": "parte actualizada",
+  "part updated": "parte actualizada",
+  "Done — only that part changed. Ctrl+Z to undo.": "Listo: solo cambió esa parte. Ctrl+Z para deshacer.",
 };

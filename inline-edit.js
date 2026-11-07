@@ -19,6 +19,7 @@ panel.className = 'ins-panel hidden';
 panel.innerHTML = `
   <div class="ins-head"><span class="ins-title">edit</span><span class="ins-tag" id="insTag"></span><button class="btn icon" data-ins="done" title="Done (Esc)">✓</button></div>
   <p class="ins-hint">Type to change text · click any part to style it</p>
+  <form class="ins-ai" id="insAi"><input id="insAsk" placeholder="✦ tell the AI what to change in this part…" maxlength="400" spellcheck="false" aria-label="AI request for the picked part"><button class="btn primary" type="submit" title="Change only this part with AI">✦</button></form>
   <div class="ins-grid">
     <label>text<input type="color" data-p="color"></label>
     <label>fill<input type="color" data-p="backgroundColor"></label>
@@ -217,6 +218,20 @@ panel.addEventListener('input', e => {
   if (p === 'borderColor' && !parseFloat(session.doc.defaultView.getComputedStyle(el).borderTopWidth)) { el.style.borderWidth = '1px'; el.style.borderStyle = 'solid'; }
   const out = panel.querySelector(`[data-v="${p}"]`); if (out) out.textContent = v;
   session.dirty = true; outline();
+});
+// ✦ AI on the picked part: mark it, close the editor (keeping manual edits), let the studio rewrite just that part
+panel.querySelector('#insAi').addEventListener('submit', e => {
+  e.preventDefault();
+  const ask = $('insAsk').value.trim(); if (!ask || !session) return;
+  const { id, root } = session, el = session.picked || root.firstElementChild;
+  if (!el) return;
+  el.setAttribute('data-oc-target', '');
+  const outline = session.doc.getElementById('__oc_pick'); outline?.remove();
+  const html = root.innerHTML;
+  el.removeAttribute('data-oc-target');
+  session.dirty = true; finish();
+  $('insAsk').value = '';
+  studio.editPart(id, html, ask);
 });
 panel.addEventListener('click', e => {
   const a = e.target.closest('[data-ins]')?.dataset.ins; if (!a || !session) return;
