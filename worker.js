@@ -387,6 +387,7 @@ async function syncGet(request, env, ctx, code){
 export default {
   async fetch(request, env, ctx){
     const url = new URL(request.url);
+    if (url.protocol === 'http:' && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') { url.protocol = 'https:'; return Response.redirect(url.toString(), 301); }
     if (url.pathname === '/api/ai' || url.pathname === '/api/ai/') return aiChat(request, env);
     if (url.pathname === '/api/ai/quota') return aiQuota(request, env);
     if (url.pathname === '/api/photo') return request.method === 'GET' ? photo(request, env, ctx, url) : fail(405, 'Method not allowed', { Allow: 'GET' });
