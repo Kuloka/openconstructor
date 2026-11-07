@@ -418,6 +418,43 @@ function toFront(id){ const i = items.findIndex(x => x.id === id); if (i < 0 || 
 function toBack(id){ const i = items.findIndex(x => x.id === id); if (i <= 0) return; checkpoint(); items.unshift(items.splice(i, 1)[0]); render(); }
 // ✦ Make it better: a senior designer reviews the element and returns it improved; the reply lists the fixes
 const IMPROVE = `DESIGN REVIEW. Act as a senior product designer. Critically review the Current element: visual hierarchy, spacing rhythm and alignment, typography scale, contrast and readability, colour harmony, consistency, hover/focus states, awkward empty space, and how it would fit on a phone. Then return the COMPLETE improved element with action "update": the same purpose, content and language, noticeably better design. In "reply", list the 3-6 most important fixes you made as short lines starting with "• ".`;
+const RECOLOR = mode => `RECOLOR to a ${mode} theme. Return the COMPLETE Current element with action "update": identical layout, structure, text, images, icons and sizes — change ONLY colors (backgrounds, text, borders, shadows, gradients, hover states) so it looks native on a ${mode === 'dark' ? 'dark page (background #0b0b0f)' : 'light page (background #ffffff)'}. Keep the accent hue and brand colours; text must have strong contrast. In "reply" write one short line about what changed.`;
+// After a page is built: one-click chips for the usual sections it doesn't have yet
+const NEXT = [
+  [/testimonial|review|отзыв|yorum|testimonio|bewertung/i, 'Testimonials', 'a testimonials section with 3 customer quotes'],
+  [/pric|тариф|цен|fiyat|precio|preis/i, 'Pricing', 'a pricing section with 3 plans'],
+  [/faq|frequently|вопрос|soru|pregunta|fragen/i, 'FAQ', 'an FAQ section with 5 common questions'],
+  [/feature|benefit|преимущ|возможност|özellik|ventaja|vorteil/i, 'Features', 'a features section with 6 benefits and icons'],
+  [/<form/i, 'Contact form', 'a contact form section (name, email, message)'],
+  [/<footer|footer/i, 'Footer', 'a footer with links and contacts'],
+];
+function suggestNext(){
+  document.querySelectorAll('#messages .msg-next').forEach(n => n.remove());
+  if (!items.some(i => i.full)) return; // only for pages, not single components
+  const all = items.map(i => i.name + ' ' + i.code).join(' ');
+  const miss = NEXT.filter(([re]) => !re.test(all)).slice(0, 3);
+  if (!miss.length) return;
+  const row = document.createElement('div'); row.className = 'msg-next';
+  row.innerHTML = `<span>${escapeHTML(t('add next:'))}</span>` + miss.map(([, label], i) => `<button type="button" data-i="${i}">＋ ${escapeHTML(t(label))}</button>`).join('');
+  row.onclick = e => {
+    const b = e.target.closest('button'); if (!b) return;
+    row.remove();
+    const [, label, what] = miss[+b.dataset.i];
+    runAI(`＋ ${t(label)}`, { ask: `Add ${what} as a NEW block: use action "add" with full: true. Match the existing page exactly: the same colours, fonts, corner radius and spacing; write the texts in the language of the page.` });
+  };
+  $('messages').append(row); toBottom();
+}
+async function recolorAll(mode){
+  const list = items.filter(x => !x.scene);
+  if (!list.length) { setState('nothing to recolor: the page is empty', 'warn'); return; }
+  const spec = { ...BG_DEFAULT, ...(BG_PRESETS.find(b => (bgLum(b.spec) > .5) === (mode === 'light'))?.spec || {}) };
+  setBackground(spec, mode === 'dark' ? '#0b0b0f' : '#ffffff');
+  window.dispatchEvent(new CustomEvent('oc:open-chat'));
+  for (const x of list) {
+    if (!items.some(i => i.id === x.id)) continue;
+    await runAI(`${mode === 'dark' ? '🌙' : '☀'} ${t(mode === 'dark' ? 'Dark version' : 'Light version')}: ${x.name}`, { targetId: x.id, ask: RECOLOR(mode) });
+  }
+}
 function improve(id){
   const x = items.find(i => i.id === id); if (!x || x.scene) return;
   select(id); window.dispatchEvent(new CustomEvent('oc:open-chat'));
@@ -960,6 +997,9 @@ $('export').onclick = () => {
 };
 // Several screens → one page: each screen is a <section id="slug">, links to "#slug" switch screens with
 // CSS :target alone (published pages have no scripts). The first screen shows when nothing is targeted.
+// Blocks fade/slide in as they scroll into view (page.reveal). Pure CSS; browsers without
+// scroll-driven animations simply show the blocks.
+const revealCss = () => page.reveal ? `<style>@supports (animation-timeline: view()){@media (prefers-reduced-motion: no-preference){.oc-page>div,.oc-stack>section,.oc-stack>div{animation:oc-reveal linear both;animation-timeline:view();animation-range:entry 0% cover 20%}@keyframes oc-reveal{from{opacity:0;transform:translateY(36px) scale(.985)}}}}</style>` : '';
 function buildScreensHTML(list){
   const title = escapeHTML(nameEl.textContent.trim() || 'My interface');
   const css = [], html = [];
@@ -990,7 +1030,7 @@ body:has(.oc-screen:target) .oc-screen:not(:target){display:none}
 .oc-full{width:100%}.oc-full>*{max-width:100%;box-sizing:border-box}
 .oc-block{display:flex;justify-content:center;padding:0 16px}.oc-block>*{max-width:100%;box-sizing:border-box}
 ${css.join('\n')}
-</style></head><body>\n${html.join('\n')}\n</body></html>`;
+</style>${revealCss()}</head><body>\n${html.join('\n')}\n</body></html>`;
 }
 function buildHTML(){
   const screens = studio.screens?.count() > 1 ? studio.screens.forHTML() : null;
@@ -1001,7 +1041,7 @@ function buildHTML(){
     ? `<div style="position:absolute;left:0;top:${it.y}px;width:${page.w}px">\n${it.code}\n</div>`
     : `<div style="position:absolute;left:${it.x}px;top:${it.y}px;padding:${PAD}px">\n${it.code}\n</div>`).join('\n');
   const title = escapeHTML(nameEl.textContent.trim() || 'My interface');
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=${page.w}"><title>${title}</title><style>html,body{margin:0}body{min-height:100vh;background:${page.bg};background-attachment:fixed;color:${isLightPage() ? '#18181b' : '#eee'};font-family:system-ui}.oc-page{position:relative;width:${page.w}px;height:${H}px;margin:0 auto}</style>${page.themeCss ? `<style>${page.themeCss.replace(/#__root/g, '.oc-page')}</style>` : ''}</head><body><div class="oc-page">\n${body}\n</div></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=${page.w}"><title>${title}</title><style>html,body{margin:0}body{min-height:100vh;background:${page.bg};background-attachment:fixed;color:${isLightPage() ? '#18181b' : '#eee'};font-family:system-ui}.oc-page{position:relative;width:${page.w}px;height:${H}px;margin:0 auto}</style>${page.themeCss ? `<style>${page.themeCss.replace(/#__root/g, '.oc-page')}</style>` : ''}${revealCss()}</head><body><div class="oc-page">\n${body}\n</div></body></html>`;
 }
 // Responsive page: normal document flow in stack order; sections span the width, components are centered
 // and may shrink on small screens.
@@ -1019,7 +1059,7 @@ html,body{margin:0}body{min-height:100vh;background:${page.bg};background-attach
 .oc-block{display:flex;justify-content:center;padding:0 16px}.oc-block>*{max-width:100%;box-sizing:border-box}
 .oc-page img,.oc-page svg,.oc-page video{max-width:100%;height:auto}
 @media(max-width:640px){.oc-full [style*="grid-template-columns"],.oc-full [class*="grid"]{grid-template-columns:1fr!important}.oc-page h1{font-size:clamp(28px,8vw,48px)!important}}
-</style>${theme}</head><body><main class="oc-page">\n${body}\n</main></body></html>`;
+</style>${theme}${revealCss()}</head><body><main class="oc-page">\n${body}\n</main></body></html>`;
 }
 // Device preview: the exported page rendered at phone, tablet and desktop widths side by side (scripts off)
 function openDevicePreview(){
@@ -1842,7 +1882,7 @@ ${brandRules()}- Clean, modern design: spacing, heading hierarchy, rounded corne
       }
     };
     let result, prepared = false;
-    if (variantsOn && !custom.user && !custom.images?.length) {
+    if (variantsOn && !custom.user && !custom.ask && !custom.images?.length) {
       stop.step('making 3 different variants');
       const hints = [
         'VARIANT 1 of 3 — a clean, minimal take: generous whitespace, restrained palette.',
@@ -1905,6 +1945,7 @@ ${brandRules()}- Clean, modern design: spacing, heading hierarchy, rounded corne
     } else { add(String(result.name || 'New element').slice(0, 80), result.code, { full, ...(custom.place || {}) }); lastAiId = selected; }
     await stop.finish(result.action === 'update' && target ? 'updated on the canvas' : 'placed on the canvas'); setState('element ready', 'ok');
     message(String(result.reply || 'Done. The element is on the page.'), 'assistant'); logChat('assistant', result.reply || 'Done. The element is on the page.'); $('prompt').value = ''; window.dispatchEvent(new CustomEvent('oc:generated'));
+    if (!custom.targetId) suggestNext();
   } catch (e) { stop(); setState('ai error', 'error'); $('chatStatus').textContent = 'Error: ' + e.message; message('Could not apply the response. Try again or pick another model.', 'assistant'); }
   finally { $('send').disabled = false; }
 }
@@ -1979,6 +2020,7 @@ export const studio = {
   addIcon: () => addIcon(),
   editPart: (id, html, ask) => editPart(id, html, ask),
   improve: id => improve(id ?? selected),
+  recolorAll: mode => recolorAll(mode),
   selectedId: () => selected,
   // read
   items: () => items.map(x => ({ ...x })),

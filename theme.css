@@ -25,3 +25,7 @@
 .theme-panel .bg-tabs button[aria-checked="true"] { color: var(--accent); }
 .theme-panel [data-reset] { margin-top: 2px; }
 .th-hint { margin-top: 8px; color: var(--subtle); font-size: 10.5px; line-height: 1.45; }
+
+.th-check { display: flex; align-items: center; gap: 8px; margin: 4px 0 10px; color: var(--text-2); font-size: 12px; cursor: pointer; }
+.th-check span { color: var(--subtle); }
+.th-check input { accent-color: var(--accent); }

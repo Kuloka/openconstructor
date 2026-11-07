@@ -783,3 +783,9 @@ body.resizing iframe { pointer-events: none; }
 /* the empty-state title is drawn over the page, so it follows the page's lightness, not the editor's */
 .canvas-empty h2 { color: #f2ece9; } .canvas-empty p { color: #948884; }
 .canvas-empty.on-light h2 { color: #1b1614; } .canvas-empty.on-light p { color: #6c625e; }
+
+/* "add next" chips under an AI answer */
+.msg-next { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; align-self: flex-start; animation: msg-in .3s .2s both cubic-bezier(.2,.7,.2,1); }
+.msg-next span { color: var(--subtle); font-size: 11px; }
+.msg-next button { padding: 4px 10px; border: 1px dashed var(--border-2); border-radius: 999px; background: none; color: var(--text-2); font-size: 11.5px; transition: border-color .15s, color .15s, background .15s; }
+.msg-next button:hover { border-style: solid; border-color: var(--accent); background: var(--accent-dim); color: var(--text); }

@@ -252,6 +252,10 @@ async function mount(){
       </div>
       <div class="th-label">corners</div>
       <div class="bg-tabs" role="radiogroup">${Object.entries(CORNERS).map(([k, c]) => `<button role="radio" data-corners="${k}" aria-checked="${k === t.corners}" class="${k === t.corners ? 'active' : ''}">${c.label}</button>`).join('')}</div>
+      <div class="th-label">dark / light version <span>the AI recolors every block</span></div>
+      <div class="bg-tabs"><button data-recolor="dark">🌙 dark</button><button data-recolor="light">☀ light</button></div>
+      <div class="th-label">motion</div>
+      <label class="th-check"><input type="checkbox" data-reveal${studio.page().reveal ? ' checked' : ''}> blocks appear smoothly while scrolling <span>(published and exported page)</span></label>
       <button class="btn block" data-reset>Reset theme</button>
       <div class="th-hint">Color changes are regular edits: Ctrl+Z undoes them. Reset clears the font and corners.</div>`;
   }
@@ -274,6 +278,7 @@ async function mount(){
     if (b.dataset.close !== undefined) return close();
     if (b.dataset.preset) { const p = PRESETS[+b.dataset.preset]; return applyAccent(p.accent, p.name); }
     if (b.dataset.corners !== undefined) return setTheme({ corners: b.dataset.corners });
+    if (b.dataset.recolor) { close(); return studio.recolorAll(b.dataset.recolor); }
     if (b.dataset.reset !== undefined) { studio.setPage({ theme: null, themeCss: '' }, { refresh: true }); studio.status('theme reset · use Ctrl+Z to undo color changes'); draw(); }
   });
   // `change` (not `input`) fires once the picker closes: one undo step, one re-render
@@ -281,6 +286,7 @@ async function mount(){
     const el = e.target;
     if (el.dataset.accent !== undefined) return applyAccent(el.value);
     if (el.dataset.font !== undefined) return setTheme({ font: el.value });
+    if (el.dataset.reveal !== undefined) { studio.setPage({ reveal: el.checked }); studio.status(el.checked ? 'blocks will appear smoothly on the published page' : 'scroll animation off', 'ok'); return; }
     if (el.dataset.pal !== undefined) {
       const c = palette[+el.dataset.pal]; if (!c) return;
       const from = c.members.map(m => m.hex), to = el.value;
