@@ -648,3 +648,9 @@ body.resizing iframe { pointer-events: none; }
 .msg-attachments { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .msg-attachments img { width: 64px; height: 64px; object-fit: cover; border: 1px solid var(--border); border-radius: 6px; animation: msg-in .2s ease-out; }
 .msg-file { display: inline-flex; align-items: center; height: 26px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel-2); color: var(--text-2); font-size: 11px; }
+
+/* 3D elements: the live Three.js view covers the rendered picture inside the frame */
+.node .oc-3d-live { position: absolute; left: 16px; top: 16px; z-index: 1; pointer-events: none; animation: msg-in .3s ease-out; }
+.node.has-live iframe { opacity: 0; }
+.canvas.playing .node .oc-3d-live { cursor: grab; }
+.canvas.playing .node .oc-3d-live:active { cursor: grabbing; }

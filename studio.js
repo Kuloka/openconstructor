@@ -109,7 +109,7 @@ function render(){
   $('itemCount').textContent = items.length + (items.length === 1 ? ' element' : ' elements');
   // removed elements fade out instead of vanishing
   for (const [id, el] of nodes) if (!items.some(x => x.id === id)) {
-    nodes.delete(id); el.style.pointerEvents = 'none';
+    nodes.delete(id); el.style.pointerEvents = 'none'; el._live?.dispose(); el._live = null;
     const a = el.animate([{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(.96)' }], { duration: reduceMotion() ? 0 : 160, easing: 'ease-in' });
     a.onfinish = () => el.remove();
   }
@@ -119,6 +119,7 @@ function render(){
     const key = item.code + '|' + (item.full ? page.w : 0);
     if (el._key !== key) { el._key = key; frame.title = item.name; frame._loaded = false; frame.srcdoc = nodeDoc(item); }
     el.querySelector('.node-tag').textContent = item.name;
+    if (item.scene) mount3D(el, item); else if (el._live) { el._live.dispose(); el._live = el._sceneKey = null; el.classList.remove('has-live'); }
     el.style.left = item.x + 'px'; el.style.top = item.y + 'px'; el.style.zIndex = i + 1;
     el.classList.toggle('selected', picked.has(item.id) || selected === item.id);
     el.classList.toggle('full', !!item.full);
@@ -126,6 +127,25 @@ function render(){
   $('canvasEmpty').classList.toggle('hidden', items.length > 0);
   renderLayers();
   layout();
+}
+// 3D elements: the iframe shows the rendered picture (what exports and published pages get); on the
+// canvas a live, animated Three.js view sits on top of it. Three.js loads only when a 3D element exists.
+let scene3d = null;
+const load3d = () => (scene3d ||= import('./scene3d.js'));
+function mount3D(el, item){
+  const key = JSON.stringify(item.scene);
+  if (el._sceneKey === key) return;
+  el._sceneKey = key;
+  load3d().then(m => {
+    if (el._sceneKey !== key || !el.isConnected) return;
+    el._live?.dispose(); el._live = m.mountLive(el, item.scene); el._live.setInteractive(playing); el.classList.add('has-live');
+  }).catch(() => {});
+}
+async function downloadGLB(id){
+  const x = items.find(i => i.id === id); if (!x?.scene) return;
+  const m = await load3d(); const blob = await m.toGLB(x.scene);
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (x.name || 'model').replace(/[\\/:*?"<>|\s]+/g, '-') + '.glb'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  setState('saved: ' + a.download + ' — opens in Blender, Unity, Godot, Roblox Studio (3D Importer)…', 'ok');
 }
 function pageHeightNow(){ const b = contentBottom(); return b > page.h ? b + 48 : page.h; }
 function contentBottom(){ let h = 0; for (const el of nodes.values()) h = Math.max(h, el.offsetTop + el.offsetHeight); return h; }
@@ -381,12 +401,12 @@ function add(name, code, opts = {}){
   checkpoint();
   const full = !!opts.full;
   const pos = opts.pos || (full ? { x: 0, y: snap(contentBottom()) } : freeSpot());
-  const item = { id: crypto.randomUUID(), name, code, ...pos, ...(full ? { full: true } : {}) };
+  const item = { id: crypto.randomUUID(), name, code, ...pos, ...(full ? { full: true } : {}), ...(opts.scene ? { scene: opts.scene } : {}) };
   items.push(item); selected = item.id; render();
   requestAnimationFrame(() => { const ty = item.y * zoom + STAGE_PAD; if (ty < canvas.scrollTop || ty > canvas.scrollTop + canvas.clientHeight - 80) canvas.scrollTo({ top: ty - 80, behavior: 'smooth' }); });
 }
 function remove(id){ const i = items.findIndex(x => x.id === id); if (i < 0) return; checkpoint(); items.splice(i, 1); if (selected === id) selected = null; render(); }
-function duplicate(id){ const x = items.find(i => i.id === id); if (x) add(x.name, x.code, { full: x.full, pos: x.full ? undefined : { x: x.x + 24, y: x.y + 24 } }); }
+function duplicate(id){ const x = items.find(i => i.id === id); if (x) add(x.name, x.code, { full: x.full, scene: x.scene, pos: x.full ? undefined : { x: x.x + 24, y: x.y + 24 } }); }
 function toFront(id){ const i = items.findIndex(x => x.id === id); if (i < 0 || i === items.length - 1) return; checkpoint(); items.push(items.splice(i, 1)[0]); render(); }
 function toBack(id){ const i = items.findIndex(x => x.id === id); if (i <= 0) return; checkpoint(); items.unshift(items.splice(i, 1)[0]); render(); }
 function editWithAI(id){ const x = items.find(i => i.id === id); if (!x) return; select(id); window.dispatchEvent(new CustomEvent('oc:open-chat')); prefillPrompt(`Change "${x.name}": `); }
@@ -580,6 +600,7 @@ function nodeMenu(id){
     { label: '⚗ fuse with…', run: () => startFusion(id) },
     { label: '✎ edit text & style', key: 'dbl-click', run: () => window.dispatchEvent(new CustomEvent('oc:edit-inline', { detail: id })) },
     { label: '‹/› code', run: () => edit(id) },
+    ...(items.find(i => i.id === id)?.scene ? [{ label: '⬇ 3D model (.glb)', key: 'Blender, Unity…', run: () => downloadGLB(id) }] : []),
     { label: 'rename', run: () => startRename(id) },
     '-',
     { label: 'duplicate', key: 'Ctrl+D', run: () => duplicate(id) },
@@ -914,7 +935,7 @@ $('devicePreview').onclick = openDevicePreview;
 // ▶ play: let the mouse reach the elements so CSS interactions work; editing/dragging pauses meanwhile
 let playing = false;
 function setPlaying(on){
-  playing = on; canvas.classList.toggle('playing', on); $('playToggle').setAttribute('aria-pressed', on);
+  playing = on; canvas.classList.toggle('playing', on); for (const el of nodes.values()) el._live?.setInteractive(on); $('playToggle').setAttribute('aria-pressed', on);
   $('playToggle').textContent = on ? '■ stop' : '▶ play';
   if (on) { select(null); setState('play mode: try hover, toggles, tabs · press P or ■ stop to edit again', 'busy'); } else setState('ready');
 }
@@ -1293,6 +1314,19 @@ function looseJSON(text){
   return JSON.parse(out);
 }
 const HTML_START = /<(style|div|section|header|main|button|form|nav|article|aside|footer|ul|h1|a)\b/i;
+// A 3D answer: header {"action":"scene3d",…} then a ```json block with the scene (see scene3d.js)
+function parseScene(content){
+  const raw = String(content).replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  const head = firstJSON(raw); if (!head) return null;
+  let h; try { h = looseJSON(head.json); } catch { return null; }
+  if (!h || !/^(scene3d|3d|model3d)$/i.test(String(h.action || ''))) return null;
+  const rest = raw.slice(head.end);
+  const fence = rest.match(/```(?:json|JSON)?[ \t]*\r?\n([\s\S]*?)(?:\r?\n```|$)/);
+  const body = fence ? fence[1] : (firstJSON(rest)?.json || '');
+  let scene; try { scene = looseJSON(body.replace(/```\s*$/, '').trim()); } catch { throw Error('The 3D scene could not be read'); }
+  if (!scene || !Array.isArray(scene.objects) || !scene.objects.length) throw Error('The 3D scene is empty');
+  return { ...h, action: 'scene3d', scene };
+}
 function parseAnswer(content){
   const raw = String(content).replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
   const fence = raw.match(/```(?:html|HTML)?[ \t]*\r?\n([\s\S]*?)(?:\r?\n```|$)/);
@@ -1399,6 +1433,11 @@ Rules:
 - Page: ${page.w}×${page.h}px, ${isLightPage() ? 'light' : 'dark'} background. If the user asks for a website, landing page, page or section, set "full": true and build a complete full-width layout (header, hero, content blocks, footer) with a root element of width:100%. For a standalone component (button, card, form), set "full": false, width up to 360px.
 - Self-contained HTML and CSS only: one <style> plus markup. No JavaScript, external links or fonts. Icons as inline SVG.
 - Real photos make pages feel finished: for websites, landing pages, heroes, product/menu cards, galleries, team and testimonials use photos — <img src="photo:2-4 English words" alt="…"> sized by CSS with object-fit:cover, or background-image:url('photo:2-4 English words'). Append ?portrait or ?square for tall or square slots (photo:barista portrait?portrait). Describe what should be in the picture (photo:latte art cup, photo:cozy cafe interior). Never write http image URLs. Small UI components (buttons, inputs, toggles) need no photos.${custom.attachNote || ''}
+- 3D: when the user asks for a 3D model, 3D asset, 3D object or 3D scene (or the Current element is a 3D scene), you CAN do it: use action "scene3d" and, instead of the html block, ONE \`\`\`json block with the scene. Shape:
+{"size":[520,400],"background":null,"environment":"studio|sunset|night","autoRotate":20,"floor":{"shadow":true},"camera":{"position":[3,2,4],"target":[0,0.6,0],"fov":40},"objects":[{"name":"seat","shape":"box","size":[1,0.12,1],"rounded":0.04,"position":[0,0.5,0],"rotation":[0,0,0],"color":"#c2410c","metalness":0,"roughness":0.6,"children":[]}]}
+shapes: box (size [w,h,d], rounded), sphere (radius), cylinder (radius or radiusTop/radiusBottom, height, sides), cone (radius, height), torus (radius, tube, arc°), capsule (radius, length), plane (size [w,h]), icosahedron/dodecahedron/octahedron/tetrahedron (radius, detail), ring (inner, outer), lathe (points [[r,y],…] profile — vases, cups, bottles), extrude (points [[x,y],…] outline + depth, bevel — swords, stars, logos), group (children only).
+Each object: name, position [x,y,z] in meters (y up, ground at y=0, a chair is ~0.9 m tall), rotation [x,y,z] in degrees, scale, color "#hex", metalness 0-1, roughness 0-1, emissive "#hex" + emissiveIntensity for glow, opacity, flat:true for a low-poly look, animate {"spin":[0,45,0] deg/s, "bob":0.05, "pulse":0.05}, children (positions relative to the parent).
+Build recognizable things from MANY well-placed parts (a chair = seat + backrest + 4 legs; a character = body, head, eyes, arms, legs), with a coherent palette. Omit "camera" to auto-frame. Leave background null to sit on the page. For a change to a 3D Current element, return the WHOLE updated scene.
 - Do not style html or body; use unique class names with a shared prefix.
 - Clean, modern design: spacing, heading hierarchy, rounded corners, shadows, hover states. Respect prefers-reduced-motion for animations.
 - Write all UI text in the components in the same language as the user's request.
@@ -1406,7 +1445,7 @@ Rules:
   // photos already in the selected element travel as short kept:N tokens, not megabytes of base64
   const kept = [];
   const slim = code => String(code).replace(/data:image\/[\w.+-]+;base64,[A-Za-z0-9+/=]+/g, d => 'kept:' + kept.push(d));
-  const user = custom.user || ((recent ? 'Conversation so far (for context):\n' + recent + '\n\n' : '') + 'Current element' + (implicit ? ' (not selected — the page built last)' : ' (selected)') + ': ' + JSON.stringify(target ? { name: target.name, code: slim(target.code) } : null) + '\nOther elements: ' + JSON.stringify(items.map(x => ({ name: x.name }))) + '\nRequest: ' + request + (custom.extra || ''));
+  const user = custom.user || ((recent ? 'Conversation so far (for context):\n' + recent + '\n\n' : '') + 'Current element' + (implicit ? ' (not selected — the page built last)' : ' (selected)') + ': ' + JSON.stringify(target ? (target.scene ? { name: target.name, type: '3D scene', scene: target.scene } : { name: target.name, code: slim(target.code) }) : null) + '\nOther elements: ' + JSON.stringify(items.map(x => ({ name: x.name }))) + '\nRequest: ' + request + (custom.extra || ''));
   try {
     // One automatic retry when the answer can't be parsed (free models sometimes break the format);
     // a model that rejects images gets the request again without them.
@@ -1421,14 +1460,31 @@ Rules:
       }
       try {
         if (typeof content !== 'string' || !content.trim()) throw Error('Empty model response');
-        result = parseAnswer(content);
-        if (!(result.action === 'reply' || (!result.code && result.reply)) && (typeof result.code !== 'string' || !result.code.trim())) throw Error('Invalid code');
+        result = parseScene(content) || parseAnswer(content);
+        if (!result.scene && !(result.action === 'reply' || (!result.code && result.reply)) && (typeof result.code !== 'string' || !result.code.trim())) throw Error('Invalid code');
         break;
       } catch (err) { if (attempt >= 1) throw err; stop.step('the answer came out garbled — asking again'); }
     }
-    if (result.action === 'reply' || (!result.code && result.reply)) {
+    if (!result.scene && (result.action === 'reply' || (!result.code && result.reply))) {
       await stop.answer(); await stop.finish('answered');
       setState('ready'); message(String(result.reply || '…'), 'assistant'); logChat('assistant', result.reply || '…'); $('prompt').value = ''; return;
+    }
+    if (result.scene) {
+      // 3D: render the scene, keep its description on the element (live view + .glb come from it)
+      await stop.compose(result.name || '3D model', JSON.stringify(result.scene, null, 1));
+      stop.step('rendering in 3D');
+      const m = await load3d();
+      const spec = m.normalize(result.scene);
+      const code = m.imgCode(spec, await m.snapshot(spec), result.name);
+      const name = String(result.name || '3D model').slice(0, 80);
+      if (target?.scene) {
+        const item = items.find(x => x.id === target.id); if (!item) throw Error('The element was deleted during the request');
+        checkpoint(); Object.assign(item, { name, code, scene: spec }); selected = item.id; lastAiId = item.id; render();
+      } else { add(name, code, { scene: spec, ...(custom.place || {}) }); lastAiId = selected; }
+      await stop.finish('placed on the canvas · right-click → 3D model (.glb)'); setState('3D model ready', 'ok');
+      message(String(result.reply || 'Done — the 3D model is on the canvas. Press ▶ play to orbit it with the mouse; right-click → “3D model (.glb)” to download it.'), 'assistant'); logChat('assistant', result.reply || '3D model ready');
+      $('prompt').value = ''; window.dispatchEvent(new CustomEvent('oc:generated'));
+      return;
     }
     if (typeof result.code !== 'string' || !result.code.trim() || result.code.length > 200000) throw Error('Invalid code');
     await stop.compose(result.name, result.code);
