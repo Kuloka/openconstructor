@@ -880,4 +880,7 @@ export default {
   "connect": "verbinden",
   "Your domain": "Deine Domain",
   "Connect a domain you own: the page opens at its address, each screen at /screen-name, and search engines may index it.": "Verbinde deine Domain: Die Seite öffnet sich unter ihrer Adresse, jeder Screen unter /screen-name, und Suchmaschinen dürfen sie indexieren.",
+  "📦 Static site (.zip)": "📦 Statische Website (.zip)",
+  "📦 Project: Vite + React (.zip)": "📦 Projekt: Vite + React (.zip)",
+  "packing the project…": "packe das Projekt…",
 };

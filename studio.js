@@ -948,6 +948,8 @@ $('export').onclick = () => {
   const r = $('export').getBoundingClientRect();
   openCtx(r.right - 260, r.bottom + 6, [
     { label: '⬇ HTML page', key: '.html', run: exportHTML },
+    { label: '📦 Static site (.zip)', key: '.zip', run: () => exportZip('static') },
+    { label: '📦 Project: Vite + React (.zip)', key: '.zip', run: () => exportZip('react') },
     { label: '⟳ Sync to Roblox Studio', key: 'plugin', run: () => window.dispatchEvent(new CustomEvent('oc:roblox-sync')) },
     '-',
     ...TARGETS.map(t => ({ label: t.label, key: t.ext, run: () => exportTo(t) })),
@@ -1052,6 +1054,20 @@ function setPlaying(on){
 }
 $('playToggle').onclick = () => setPlaying(!playing);
 addEventListener('keydown', e => { if (e.key.toLowerCase() === 'p' && !e.ctrlKey && !e.metaKey && !e.target.closest('input, textarea, select, [contenteditable]') && !document.querySelector('.modal:not(.hidden)')) setPlaying(!playing); });
+// 📦 a whole project as .zip: static site or Vite + React app (export-zip.js)
+async function exportZip(kind){
+  if (!items.length && !(studio.screens?.count() > 1)) { setState('nothing to export: the page is empty', 'warn'); return; }
+  const title = nameEl.textContent.trim() || 'My interface';
+  try {
+    setState('packing the project…', 'busy');
+    const z = await import('./export-zip.js');
+    const out = kind === 'react'
+      ? z.reactApp({ items, page, title, reactSource: (await import('./exporters.js')).toReact })
+      : z.staticSite({ html: buildHTML(), title });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(out.blob); a.download = out.file; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    setState('saved: ' + out.file, 'ok');
+  } catch (e) { setState('export failed: ' + e.message, 'error'); }
+}
 function exportHTML(){
   if (!items.length) { setState('nothing to export: the page is empty', 'warn'); return; }
   download(buildHTML(), fileBase() + '.html', 'text/html');

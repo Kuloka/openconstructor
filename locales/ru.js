@@ -883,4 +883,7 @@ export default {
   "connect": "подключить",
   "Your domain": "Ваш домен",
   "Connect a domain you own: the page opens at its address, each screen at /screen-name, and search engines may index it.": "Подключите свой домен: страница откроется по его адресу, каждый экран — по /имя-экрана, и поисковики смогут её индексировать.",
+  "📦 Static site (.zip)": "📦 Статический сайт (.zip)",
+  "📦 Project: Vite + React (.zip)": "📦 Проект: Vite + React (.zip)",
+  "packing the project…": "упаковываю проект…",
 };

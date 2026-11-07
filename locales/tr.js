@@ -878,4 +878,7 @@ export default {
   "connect": "bağla",
   "Your domain": "Alan adın",
   "Connect a domain you own: the page opens at its address, each screen at /screen-name, and search engines may index it.": "Sahip olduğun bir alan adını bağla: sayfa onun adresinde, her ekran /ekran-adı adresinde açılır ve arama motorları dizine ekleyebilir.",
+  "📦 Static site (.zip)": "📦 Statik site (.zip)",
+  "📦 Project: Vite + React (.zip)": "📦 Proje: Vite + React (.zip)",
+  "packing the project…": "proje paketleniyor…",
 };

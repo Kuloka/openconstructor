@@ -880,4 +880,7 @@ export default {
   "connect": "conectar",
   "Your domain": "Tu dominio",
   "Connect a domain you own: the page opens at its address, each screen at /screen-name, and search engines may index it.": "Conecta un dominio tuyo: la página se abre en su dirección, cada pantalla en /nombre-pantalla y los buscadores pueden indexarla.",
+  "📦 Static site (.zip)": "📦 Sitio estático (.zip)",
+  "📦 Project: Vite + React (.zip)": "📦 Proyecto: Vite + React (.zip)",
+  "packing the project…": "empaquetando el proyecto…",
 };
