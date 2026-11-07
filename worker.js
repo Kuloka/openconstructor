@@ -224,25 +224,27 @@ const AI_GLOBAL = 900; // keep both <= the ceilings in supabase/ai.sql
 const AI_MODELS = ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile', 'openai/gpt-oss-20b'];
 const AI_MAX_BODY = 200_000;
 const AI_MAX_TOKENS = 8000;
-const WORKERS_AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+// Open models on Cloudflare's GPUs through the AI binding: no API keys. Tried first, in this order
+// (both work on the Workers Free plan; ~10k neurons a day, then the keyed backends below answer).
+const WORKERS_AI_MODELS = ['@cf/openai/gpt-oss-120b', '@cf/meta/llama-3.3-70b-instruct-fp8-fast'];
 
 // Free-AI upstreams, tried in this order. Each one is used only if its secret is set
 // (`npx wrangler secret put <SECRET>`); when one is out of quota (429) or down (5xx), the next one answers.
-// Cloudflare Workers AI needs no key and is the last resort.
+// Cloudflare Workers AI needs no key and goes first.
 const BACKENDS = [
   { id: 'openrouter', secret: 'OPENROUTER_API_KEY', url: 'https://openrouter.ai/api/v1/chat/completions', model: 'openrouter/free', extra: { } },
   { id: 'mistral', secret: 'MISTRAL_API_KEY', url: 'https://api.mistral.ai/v1/chat/completions', model: 'mistral-medium-latest', extra: { } },
   { id: 'groq', secret: 'GROQ_API_KEY', url: 'https://api.groq.com/openai/v1/chat/completions', model: 'openai/gpt-oss-120b', extra: { reasoning_effort: 'low' } },
   { id: 'gemini', secret: 'GEMINI_API_KEY', url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', model: 'gemini-2.5-flash', extra: { reasoning_effort: 'low' } },
 ];
-const freeBackends = env => [...BACKENDS.filter(b => env[b.secret]), ...(env.AI ? [{ id: 'workers-ai' }] : [])];
+const freeBackends = env => [...(env.AI ? WORKERS_AI_MODELS.map(model => ({ id: 'workers-ai', model })) : []), ...BACKENDS.filter(b => env[b.secret])];
 const freeBackend = env => freeBackends(env)[0]?.id || null;
 
 // Call the upstreams in order and always answer in OpenAI chat-completions shape: { status, text, be }.
 async function callUpstream(env, body){
   let last = null;
   for (const b of freeBackends(env)) {
-    const r = b.id === 'workers-ai' ? await callWorkersAI(env, body) : await callOpenAICompatible(env, b, body);
+    const r = b.id === 'workers-ai' ? await callWorkersAI(env, body, b.model) : await callOpenAICompatible(env, b, body);
     if (r.status >= 200 && r.status < 300) return r;
     last = r;
     console.error('ai: backend failed, trying next', b.id, r.status, String(r.text).slice(0, 200));
@@ -258,11 +260,11 @@ async function callOpenAICompatible(env, b, body){
     return { status: r.status, text: await r.text(), be: b.id };
   } catch (err) { return { status: 502, text: String(err?.message || err), be: b.id }; }
 }
-async function callWorkersAI(env, body){
+async function callWorkersAI(env, body, model){
   const be = 'workers-ai';
   // Workers AI binding: returns { response } — wrap it like an OpenAI completion
   try {
-    const out = await env.AI.run(WORKERS_AI_MODEL, { messages: body.messages, max_tokens: Math.min(body.max_tokens, 4096) });
+    const out = await env.AI.run(model, { messages: body.messages, max_tokens: Math.min(body.max_tokens, 4096) });
     const content = typeof out === 'string' ? out : out?.response ?? out?.choices?.[0]?.message?.content ?? '';
     return { status: 200, be, text: JSON.stringify({ choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: out?.finish_reason === 'length' ? 'length' : 'stop' }] }) };
   } catch (err) {
