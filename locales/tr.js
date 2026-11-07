@@ -632,4 +632,10 @@ export default {
   "Export to React, Vue & Svelte": "React, Vue ve Svelte’e aktar",
   "https://… or #pricing": "https://… veya #pricing",
   "fastest GPT-OSS; $5 trial credit (card required), then pay as you go": "en hızlı GPT-OSS; $5 deneme kredisi (kart gerekli), sonra kullandıkça öde",
+  "Your projects": "Projelerin",
+  "open now": "şu an açık",
+  "Saved on this device automatically": "Bu cihazda otomatik kaydedilir",
+  "☁ cloud projects": "☁ bulut projeleri",
+  "opened \"{0}\"": "“{0}” açıldı",
+  "Delete \"{0}\" from this device? This can't be undone.": "“{0}” bu cihazdan silinsin mi? Bu geri alınamaz.",
 };

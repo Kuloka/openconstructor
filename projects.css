@@ -35,3 +35,8 @@
   .pj-row { flex-wrap: wrap; }
   .pj-tools { width: 100%; opacity: 1; padding: 0 0 4px 8px; }
 }
+
+/* Projects on this device (local-projects.js) */
+#localProjectsModal .pj-open { flex-direction: row; align-items: center; gap: 10px; }
+.lp-tile { width: 44px; height: 30px; flex-shrink: 0; border: 1px solid var(--border-2); border-radius: 4px; background-size: cover; }
+.lp-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }

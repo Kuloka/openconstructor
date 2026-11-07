@@ -634,4 +634,10 @@ export default {
   "Export to React, Vue & Svelte": "Exportar a React, Vue y Svelte",
   "https://… or #pricing": "https://… o #pricing",
   "fastest GPT-OSS; $5 trial credit (card required), then pay as you go": "el GPT-OSS más rápido; $5 de crédito de prueba (requiere tarjeta), luego pago por uso",
+  "Your projects": "Tus proyectos",
+  "open now": "abierto ahora",
+  "Saved on this device automatically": "Se guardan automáticamente en este dispositivo",
+  "☁ cloud projects": "☁ proyectos en la nube",
+  "opened \"{0}\"": "se abrió «{0}»",
+  "Delete \"{0}\" from this device? This can't be undone.": "¿Eliminar «{0}» de este dispositivo? No se puede deshacer.",
 };

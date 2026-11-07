@@ -126,9 +126,11 @@ async function openProject(id){
     const { data: row, error } = await supabase.from('projects').select('id,name,data').eq('id', id).single();
     if (error) throw error;
     const d = row.data || {};
+    window.dispatchEvent(new CustomEvent('oc:before-replace'));
     link(row.id);
     studio.load({ items: Array.isArray(d.items) ? d.items : [], page: d.page && typeof d.page === 'object' ? d.page : undefined, name: row.name });
     lastSaved = fingerprint(cleanName(studio.name()), snapshot());
+    window.dispatchEvent(new CustomEvent('oc:replaced'));
     studio.status(`opened "${row.name}" from cloud`, 'ok');
     close();
   } catch (e) { flash(errText(e)); }
@@ -139,8 +141,10 @@ async function newProject(){
   setBusy(true);
   try {
     if (!(await secureCurrent())) return;
+    window.dispatchEvent(new CustomEvent('oc:before-replace'));
     link(null); lastSaved = '';
     studio.load({ items: [], name: 'untitled' });
+    window.dispatchEvent(new CustomEvent('oc:replaced'));
     try { await createFromCurrent(); studio.status('new cloud project created', 'ok'); }
     catch (e) { studio.status('new project (local only)', 'warn'); flash(errText(e)); return; }
     close();
@@ -253,7 +257,7 @@ function render(){
   <p class="pj-msg${error ? '' : ' hidden'}">${esc(error)}</p>`;
   const rows = list.map(p => `<li class="pj-row${p.id === linkedId ? ' current' : ''}" data-id="${esc(p.id)}">
       <button class="pj-open" data-pj="open" title="Open">
-        <span class="pj-name">${esc(p.name)}</span>
+        <span class="pj-name" data-no-i18n>${esc(p.name)}</span>
         <span class="pj-meta">${p.id === linkedId ? '<em>open</em> · ' : ''}${esc(t(ago(p.updated_at)))} · ${esc(t(`${p.item_count ?? 0} element${p.item_count === 1 ? '' : 's'}`))}</span>
       </button>
       <span class="pj-tools">
@@ -300,15 +304,4 @@ function startRename(row, item){
   input.addEventListener('blur', () => finish(true));
 }
 
-/* ── Title-bar entry ─────────────────────────────────────── */
-function mountButton(){
-  const menu = document.querySelector('.tb-menu');
-  if (!menu || menu.querySelector('[data-pj-menu]')) return;
-  const btn = document.createElement('button');
-  btn.type = 'button'; btn.textContent = 'projects'; btn.dataset.pjMenu = ''; btn.title = 'Cloud projects';
-  btn.addEventListener('click', open);
-  menu.append(btn);
-}
-if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mountButton); else mountButton();
-
-export const projects = { open, save: () => save({ force: true }), linkedId: () => linkedId };
+export const projects = { open, save: () => save({ force: true }), linkedId: () => linkedId, unlink: () => { link(null); lastSaved = ''; } };

@@ -112,17 +112,17 @@ if (lang !== 'en') {
     const v = el.getAttribute(a);
     if (v == null || el._i18n?.[a] === v) return;
     if (a === 'label' && !/^(OPTGROUP|OPTION)$/.test(el.tagName)) return;
-    if (skipped(el)) return;
+    if (el.tagName === 'TEXTAREA' ? skipped(el.parentElement) : skipped(el)) return;
     const out = t(v);
     (el._i18n ||= {})[a] = out;
     if (out !== v) el.setAttribute(a, out);
   };
   const walk = root => {
     if (root.nodeType === 3) return textNode(root);
-    if (root.nodeType !== 1 || skipped(root)) return;
+    if (root.nodeType !== 1 || (root.tagName !== 'TEXTAREA' && skipped(root))) return;
     ATTRS.forEach(a => root.hasAttribute(a) && attr(root, a));
     const it = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
-      acceptNode: n => n.nodeType === 1 && n.matches(SKIP) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+      acceptNode: n => n.nodeType === 1 && n.tagName !== 'TEXTAREA' && n.matches(SKIP) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
     });
     for (let n = it.nextNode(); n; n = it.nextNode()) {
       if (n.nodeType === 3) textNode(n);

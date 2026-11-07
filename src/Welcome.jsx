@@ -7,7 +7,8 @@ import SpotlightCard from './components/reactbits/SpotlightCard';
 import logoSvg from './logo.svg?raw';
 import { templates } from './templates';
 import { t as tr, LANGS, lang, setLang } from '../i18n.js';
-import { loadTemplate, clearPage, prefillPrompt } from '../studio.js';
+import { loadTemplate, prefillPrompt } from '../studio.js';
+import { startNew } from '../local-projects.js';
 import { openAuth, user as authUser } from '../auth.js';
 import { openDonate } from '../donate.js';
 import './welcome.css';
@@ -135,7 +136,7 @@ export default function Welcome(){
         <p className="wl-section-sub">Open a template, select any block and ask the AI to make it yours.</p>
         <div className="wl-templates">
           {templates.map(t => (
-            <button key={t.id} className="wl-tpl" onClick={() => close(() => loadTemplate(t))}>
+            <button key={t.id} className="wl-tpl" onClick={() => close(() => startNew(t.name).then(() => loadTemplate(t)))}>
               <SpotlightCard className="wl-card wl-tpl-card" spotlightColor="rgba(228,87,46,0.18)">
                 <Thumb t={t} />
                 <div className="wl-tpl-info"><h3>{t.name}</h3><p>{t.desc}</p></div>
@@ -143,7 +144,7 @@ export default function Welcome(){
               </SpotlightCard>
             </button>
           ))}
-          <button className="wl-tpl" onClick={() => close(clearPage)}>
+          <button className="wl-tpl" onClick={() => close(() => startNew())}>
             <SpotlightCard className="wl-card wl-tpl-card wl-tpl-blank" spotlightColor="rgba(255,255,255,0.12)">
               <div className="wl-thumb wl-thumb-blank"><span>+</span></div>
               <div className="wl-tpl-info"><h3>Blank page</h3><p>Build it yourself from components or with the AI</p></div>
