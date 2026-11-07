@@ -858,4 +858,5 @@ export default {
   "Make the selected block better": "Seçili bloğu iyileştir",
   "select a block first": "önce bir blok seç",
   "copied": "kopyalandı",
+  "writing the answer": "yanıt yazılıyor",
 };

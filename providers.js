@@ -79,9 +79,31 @@ export async function listModels(p, key){
   }).sort((a, b) => (a.paid - b.paid) || a.name.localeCompare(b.name));
 }
 
+// Server-sent events: calls onEvent(json) for every `data:` line until [DONE]
+async function readSSE(r, onEvent){
+  const reader = r.body.getReader(), dec = new TextDecoder();
+  let buf = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+      if (!line.startsWith('data:')) continue;
+      const d = line.slice(5).trim();
+      if (d === '[DONE]') return;
+      let j; try { j = JSON.parse(d); } catch { continue; }
+      onEvent(j);
+    }
+  }
+}
+const isSSE = r => /event-stream/i.test(r.headers.get('content-type') || '');
+
 // One request. Returns { text, cut } — `cut` is true when the model stopped because it hit the length limit.
 // `images` are data: URLs (screenshots). Each API wants them in its own message format.
-async function once(p, key, model, system, messages){
+// With onDelta(text, reasoning) the answer is streamed piece by piece (not for the proxy).
+async function once(p, key, model, system, messages, onDelta){
   if (p.kind === 'proxy') {
     const token = await sessionToken();
     if (!token) throw Error('Sign in to use the free openconstructor AI');
@@ -97,8 +119,18 @@ async function once(p, key, model, system, messages){
     return { text: ch?.message?.content || '', cut: ch?.finish_reason === 'length' };
   }
   if (p.kind === 'anthropic') {
-    const r = await fetch(`${p.base}/messages`, { method: 'POST', headers: anthropicHeaders(key), body: JSON.stringify({ model, max_tokens: 8000, system, messages }) });
+    const r = await fetch(`${p.base}/messages`, { method: 'POST', headers: anthropicHeaders(key), body: JSON.stringify({ model, max_tokens: 8000, system, messages, ...(onDelta ? { stream: true } : {}) }) });
     if (!r.ok) throw Error(await errorText(r));
+    if (onDelta && isSSE(r)) {
+      let text = '', cut = false;
+      await readSSE(r, e => {
+        if (e.type === 'error') throw Error(e.error?.message || 'stream error');
+        if (e.type === 'content_block_delta' && e.delta?.type === 'text_delta') { text += e.delta.text; onDelta(e.delta.text, ''); }
+        else if (e.type === 'content_block_delta' && e.delta?.type === 'thinking_delta') onDelta('', e.delta.thinking || '');
+        else if (e.type === 'message_delta' && e.delta?.stop_reason === 'max_tokens') cut = true;
+      });
+      return { text, cut };
+    }
     const d = await r.json();
     return { text: (d.content || []).map(c => c.text || '').join(''), cut: d.stop_reason === 'max_tokens' };
   }
@@ -107,17 +139,30 @@ async function once(p, key, model, system, messages){
   // OpenRouter reserves credit for max_tokens, so cap it; reasoning models get a modest effort so thinking doesn't eat the answer
   const extra = p.id === 'openrouter' ? { max_tokens: 12000 } : {};
   if (/gpt-oss|^o\d|reason/i.test(model)) extra.reasoning_effort = 'low';
+  if (onDelta) extra.stream = true;
   let r = await fetch(`${p.base}/chat/completions`, { method: 'POST', headers, body: JSON.stringify({ model, ...extra, messages: [{ role: 'system', content: system }, ...messages] }) });
   // some providers reject reasoning_effort for some models — retry once without it
   if (!r.ok && r.status === 400 && extra.reasoning_effort) { delete extra.reasoning_effort; r = await fetch(`${p.base}/chat/completions`, { method: 'POST', headers, body: JSON.stringify({ model, ...extra, messages: [{ role: 'system', content: system }, ...messages] }) }); }
   if (!r.ok) throw Error(await errorText(r));
+  if (isSSE(r)) {
+    let text = '', cut = false;
+    await readSSE(r, e => {
+      if (e.error) throw Error(e.error.message || 'stream error');
+      const ch = e.choices?.[0]; if (!ch) return;
+      const piece = ch.delta?.content || '', why = ch.delta?.reasoning || ch.delta?.reasoning_content || '';
+      if (piece) text += piece;
+      if (piece || why) onDelta?.(piece, why);
+      if (ch.finish_reason === 'length') cut = true;
+    });
+    return { text, cut };
+  }
   const d = await r.json();
   const ch = d.choices?.[0], c = ch?.message?.content;
   return { text: Array.isArray(c) ? c.map(x => x.text || '').join('') : (c || ''), cut: ch?.finish_reason === 'length' };
 }
 
 // Full answer: if the model is cut off by its output limit, ask it to continue (up to 3 times) and glue the parts.
-export async function chat(p, key, model, system, user, images = []){
+export async function chat(p, key, model, system, user, images = [], onDelta = null){
   if (p.kind === 'proxy' && images.length) throw Error('Screenshots need a vision model — connect Gemini or OpenAI with your own key');
   const content = !images.length ? user
     : p.kind === 'anthropic' ? [...images.map(url => { const [, type, data] = url.match(/^data:([^;]+);base64,(.*)$/) || []; return { type: 'image', source: { type: 'base64', media_type: type, data } }; }), { type: 'text', text: user }]
@@ -125,7 +170,7 @@ export async function chat(p, key, model, system, user, images = []){
   const messages = [{ role: 'user', content }];
   let out = '';
   for (let i = 0; i < 4; i++) {
-    const { text, cut } = await once(p, key, model, system, messages);
+    const { text, cut } = await once(p, key, model, system, messages, onDelta && p.kind !== 'proxy' ? onDelta : null);
     out += text;
     if (!cut || !text) break;
     messages.push({ role: 'assistant', content: text }, { role: 'user', content: 'You were cut off. Continue EXACTLY where you stopped — no repetition, no preamble, no code fence reopening.' });

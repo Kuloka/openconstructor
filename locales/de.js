@@ -860,4 +860,5 @@ export default {
   "Make the selected block better": "Ausgewählten Block verbessern",
   "select a block first": "wähle zuerst einen Block",
   "copied": "kopiert",
+  "writing the answer": "schreibe die Antwort",
 };

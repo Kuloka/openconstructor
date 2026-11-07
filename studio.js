@@ -1328,7 +1328,7 @@ $('messages').addEventListener('click', e => {
 function thinking({ ghost = false } = {}){
   const node = document.createElement('div');
   node.className = 'message assistant thinking';
-  node.innerHTML = `<button class="th-head" type="button" aria-expanded="true"><span class="oc-logo thinking-logo" aria-hidden="true">${logoSvg}</span><span class="th-title"></span><span class="th-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="th-time">0s</span></button><ol class="th-steps"></ol><pre class="th-code" hidden><code></code></pre>`;
+  node.innerHTML = `<button class="th-head" type="button" aria-expanded="true"><span class="oc-logo thinking-logo" aria-hidden="true">${logoSvg}</span><span class="th-title"></span><span class="th-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="th-time">0s</span></button><ol class="th-steps"></ol><div class="th-reason" hidden></div><div class="th-live" hidden></div><pre class="th-code" hidden><code></code></pre>`;
   $('messages').append(node); toBottom();
   const title = node.querySelector('.th-title'), list = node.querySelector('.th-steps'), time = node.querySelector('.th-time');
   const t0 = Date.now();
@@ -1364,6 +1364,31 @@ function thinking({ ghost = false } = {}){
   const stopWaiting = () => { timers.forEach(clearTimeout); };
 
   const end = () => { over = true; stopWaiting(); clearInterval(clock); dropGhost(); node.remove(); };
+  // Streaming: the model's reasoning and its answer show up live as they arrive
+  const codeLines = code => String(code).replace(/>\s*</g, '>\n<').replace(/([;{}])(?=[^\n])/g, '$1\n').split('\n').map(l => l.trim()).filter(Boolean);
+  let liveText = '', liveWhy = '', streamed = false, liveMode = '', liveRaf = 0;
+  const paintLive = () => {
+    liveRaf = 0; if (over) return;
+    if (liveWhy.trim()) { const r = node.querySelector('.th-reason'); r.hidden = false; r.textContent = liveWhy.slice(-500); }
+    const txt = liveText.replace(/<think>[\s\S]*?(<\/think>|$)/gi, '');
+    if (/^\s*\{[^}]*"action"\s*:\s*"(reply|answer|chat)"/i.test(txt)) {
+      if (liveMode !== 'reply') { liveMode = 'reply'; retype(title, 'answering'); dropGhost(); step('writing the answer'); }
+      const l = node.querySelector('.th-live'); l.hidden = false; l.textContent = txt.replace(/^\s*\{[^}]*\}\s*/, '').slice(-700);
+    } else if (/```|<[a-z]/i.test(txt)) {
+      if (liveMode !== 'code') { liveMode = 'code'; retype(title, 'composing'); ghostEl?.classList.add('build'); step('writing the code'); }
+      const pre = node.querySelector('.th-code'); pre.hidden = false;
+      const at = txt.indexOf('```');
+      pre.firstChild.textContent = codeLines(at >= 0 ? txt.slice(txt.indexOf('\n', at) + 1) : txt).slice(-8).join('\n');
+    }
+    toBottom();
+  };
+  end.live = (piece, why) => {
+    if (over) return;
+    if (!streamed) { streamed = true; stopWaiting(); }
+    liveText += piece || ''; liveWhy += why || '';
+    if (!liveRaf) liveRaf = requestAnimationFrame(paintLive);
+  };
+  end.liveReset = () => { liveText = ''; liveWhy = ''; liveMode = ''; };
   // The answer arrived with code: show it being written, then the caller places it
   end.compose = (name, code) => {
     stopWaiting();
@@ -1371,11 +1396,11 @@ function thinking({ ghost = false } = {}){
     setState('composing…', 'busy');
     step(`composing “${String(name || 'element').slice(0, 40)}”`);
     return (queue = queue.then(async () => {
-      if (over) return;
+      if (over || streamed) return; // already shown live
       const pre = node.querySelector('.th-code'), out = pre.firstChild;
       pre.hidden = false;
       // for display only: one tag / CSS declaration per line, so compact code still "writes" line by line
-      const lines = String(code).replace(/>\s*</g, '>\n<').replace(/([;{}])(?=[^\n])/g, '$1\n').split('\n').map(l => l.trim()).filter(Boolean).slice(0, 600);
+      const lines = codeLines(code).slice(0, 600);
       if (reduceMotion()) { out.textContent = lines.slice(-8).join('\n'); return; }
       // ~1.3s: show a moving window over the last lines as the code "writes itself"
       const per = Math.max(1, Math.ceil(lines.length / 45));
@@ -1398,7 +1423,7 @@ function thinking({ ghost = false } = {}){
       list.querySelectorAll('li').forEach(li => li.className = 'done');
       const s = Math.max(1, Math.round((Date.now() - t0) / 1000));
       node.classList.add('folded');
-      node.querySelector('.th-code').hidden = true;
+      node.querySelectorAll('.th-code, .th-live').forEach(x => { x.hidden = true; });
       retype(title, `thought for ${s}s`); time.textContent = `${list.children.length} steps`;
       const head = node.querySelector('.th-head');
       head.setAttribute('aria-expanded', 'false');
@@ -1748,7 +1773,8 @@ ${brandRules()}- Clean, modern design: spacing, heading hierarchy, rounded corne
       for (let attempt = 0; ; attempt++) {
         let content;
         const ask = (extra ? user + '\n\n' + extra : user) + (attempt ? '\n\nIMPORTANT: your previous answer could not be read. Reply EXACTLY in the required format: the one-line JSON header, then ONE ```html block.' : '');
-        try { content = await chat(p, key, m.id, system, ask, images); }
+        if (!quiet) stop.liveReset();
+        try { content = await chat(p, key, m.id, system, ask, images, quiet ? null : (piece, why) => stop.live(piece, why)); }
         catch (err) {
           if (images.length && attempt < 2 && ![401, 429].includes(err.status)) { images = []; if (!quiet) stop.step('this model can’t see images — continuing without them'); continue; }
           throw err;
