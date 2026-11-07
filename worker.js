@@ -412,7 +412,7 @@ async function brand(request, url){
 // ---------- free AI (no key): signed-in users, AI_DAILY generations a day via our Groq key ----------
 const AI_DAILY = 20;
 const AI_GLOBAL = 900; // keep both <= the ceilings in supabase/ai.sql
-const AI_MODELS = ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile', 'openai/gpt-oss-20b'];
+const AI_MODELS = ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b', 'openai/gpt-oss-20b'];
 const AI_MAX_BODY = 200_000;
 const AI_MAX_TOKENS = 8000;
 // Open models on Cloudflare's GPUs through the AI binding: no API keys. Tried first, in this order
