@@ -883,4 +883,6 @@ export default {
   "📦 Static site (.zip)": "📦 Sitio estático (.zip)",
   "📦 Project: Vite + React (.zip)": "📦 Proyecto: Vite + React (.zip)",
   "packing the project…": "empaquetando el proyecto…",
+  "Dark editor": "Editor oscuro",
+  "Light editor": "Editor claro",
 };

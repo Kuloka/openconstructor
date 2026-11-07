@@ -191,6 +191,7 @@ function layout(){
   board.style.transform = `scale(${zoom})`;
   board.style.setProperty('--inv', String(1 / zoom));
   board.classList.toggle('light', isLightPage());
+  $('canvasEmpty')?.classList.toggle('on-light', isLightPage()); // its title sits on the page itself
   stage.style.width = page.w * zoom + STAGE_PAD * 2 + 'px';
   stage.style.height = h * zoom + STAGE_PAD * 2 + 'px';
   if (!$('boardLabel').classList.contains('editing')) $('boardLabel').textContent = `page · ${page.w} × ${Math.round(h)}`;

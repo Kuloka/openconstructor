@@ -21,6 +21,7 @@ import Welcome from './Welcome';
 import {langSelect} from '../i18n.js';
 
 document.getElementById('sbLang')?.append(langSelect('lang-select'));
+import('../ui-theme.js');
 
 const ACCEPT='image/*,.txt,.md,.csv,.json,.html,.css,.svg';
 function Composer(){

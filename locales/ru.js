@@ -886,4 +886,6 @@ export default {
   "📦 Static site (.zip)": "📦 Статический сайт (.zip)",
   "📦 Project: Vite + React (.zip)": "📦 Проект: Vite + React (.zip)",
   "packing the project…": "упаковываю проект…",
+  "Dark editor": "Тёмный редактор",
+  "Light editor": "Светлый редактор",
 };

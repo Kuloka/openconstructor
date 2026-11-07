@@ -686,7 +686,7 @@ body.resizing iframe { pointer-events: none; }
 /* Title bar: keep the project name apart from the right-hand buttons; long names get an ellipsis */
 .tb-center { min-width: 0; margin: 0 10px; overflow: hidden; }
 #projectName { overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
-@media (max-width: 1380px) { .titlebar .donate-btn { display: none; } }
+@media (max-width: 1600px) { .titlebar .donate-btn { display: none; } }
 
 
 /* Toasts (studio.js toast()): results pop up bottom-right, above the status bar */
@@ -760,3 +760,26 @@ body.resizing iframe { pointer-events: none; }
 .th-reason[hidden], .th-live[hidden] { display: none; }
 .message.thinking.folded .th-reason, .message.thinking.folded .th-live { display: none; }
 .th-live { max-height: 180px; overflow: hidden; color: var(--text-2); font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; display: flex; flex-direction: column; justify-content: flex-end; -webkit-mask-image: linear-gradient(to bottom, transparent, #000 25%); mask-image: linear-gradient(to bottom, transparent, #000 25%); }
+
+/* Light editor (ui-theme.js): the same tokens, light values */
+:root[data-ui="light"] {
+  color-scheme: light;
+  --bg: #f4f1ee; --panel: #ffffff; --panel-2: #faf8f6; --hover: #f0ebe7;
+  --border: #e5ddd8; --border-2: #d3c8c2;
+  --text: #1b1614; --text-2: #3b3330; --muted: #6c625e; --subtle: #9a8f8a;
+  --accent: #d64a20; --accent-dim: #e4572e1a; --ok: #047857; --err: #dc2626;
+}
+:root[data-ui="light"] * { scrollbar-color: #cfc4be transparent; }
+:root[data-ui="light"] .canvas { background-image: radial-gradient(#d9cfc9 1px, transparent 1px), radial-gradient(900px 520px at 12% -8%, #e4572e14, transparent 62%), radial-gradient(800px 600px at 105% 110%, #f0a07a1a, transparent 60%); background-size: 22px 22px, 100% 100%, 100% 100%; }
+:root[data-ui="light"] .canvas-wrap::after { opacity: .03; }
+:root[data-ui="light"] .message { box-shadow: 0 1px 2px #0000000d; }
+:root[data-ui="light"] .board { box-shadow: 0 0 0 1px #d3c8c2, 0 24px 60px -24px #0003; }
+:root[data-ui="light"] .md-pre pre, :root[data-ui="light"] .message.md code { background: #f4f1ee; }
+.sb-ui { padding: 0 6px; border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 12px; }
+.sb-ui:hover { color: var(--text); }
+:root[data-ui="light"] .agent-composer { --an-input-background: #ffffff; --an-input-border-color: #d3c8c2; --an-input-color: #1b1614; --an-input-placeholder-color: #9a8f8a; --an-send-button-color: #fff; }
+:root[data-ui="light"] .agent-composer .cursor-text { box-shadow: 0 0 0 1px #d3c8c2 !important; background: #fff !important; color: #1b1614; }
+
+/* the empty-state title is drawn over the page, so it follows the page's lightness, not the editor's */
+.canvas-empty h2 { color: #f2ece9; } .canvas-empty p { color: #948884; }
+.canvas-empty.on-light h2 { color: #1b1614; } .canvas-empty.on-light p { color: #6c625e; }
