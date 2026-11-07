@@ -35,7 +35,7 @@ let selected = null, editing = null, history = [], future = [];
 function pushHistory(snap){ history.push(snap); if (history.length > 50) history.shift(); future = []; syncUndo(); }
 function checkpoint(){ pushHistory(JSON.stringify(items)); }
 function syncUndo(){ const u = document.getElementById('undo'), r = document.getElementById('redo'); if (u) u.disabled = !history.length; if (r) r.disabled = !future.length; }
-function persist(){ store.set('form-canvas-v3', items); window.dispatchEvent(new CustomEvent('oc:changed')); }
+function persist(){ store.set('form-canvas-v3', items); try { store.set('oc-last-ai', lastAiId); } catch {} window.dispatchEvent(new CustomEvent('oc:changed')); }
 
 // Project name in the header
 const nameEl = $('projectName');
@@ -1453,7 +1453,15 @@ $('send').onclick = () => {
 };
 
 // One AI round-trip. `custom.user` replaces the default context (used by Fusion); `custom.place` positions a new element.
-let lastAiId = null; // the element the AI built or changed last
+// Is `next` a rewritten version of `prev` (most of its words are still there) rather than a new block?
+function isRewriteOf(prev, next){
+  const words = s => new Set(String(s).replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) || []);
+  const a = words(prev), b = words(next);
+  if (a.size < 8) return false;
+  let same = 0; for (const w of a) if (b.has(w)) same++;
+  return same / a.size >= .6;
+}
+let lastAiId = store.get('oc-last-ai', null); // the element the AI built or changed last (kept across reloads)
 // Three variants side by side; resolves to the chosen index, 'all', or null (cancel)
 const variantModal = Object.assign(document.createElement('div'), { className: 'modal hidden', id: 'variantsModal' });
 variantModal.innerHTML = `<div class="modal-card var-card" role="dialog" aria-labelledby="varTitle"><div class="modal-head"><h2 id="varTitle">pick a variant</h2><button class="btn icon" type="button" data-var="cancel" aria-label="Close">×</button></div><div class="var-grid" id="varGrid"></div><div class="modal-actions"><button class="btn" type="button" data-var="cancel">cancel</button><button class="btn" type="button" data-var="all">keep all three</button></div></div>`;
@@ -1514,7 +1522,7 @@ async function runAI(request, custom = {}){
   // What a change request applies to: the selection, else the page being worked on (the last element the AI
   // built or the only full-width section), so 'make the photos bigger' edits it instead of adding a new page
   const fulls = items.filter(x => x.full);
-  const target = custom.targetId ? items.find(x => x.id === custom.targetId) : custom.user ? null : items.find(x => x.id === selected) || items.find(x => x.id === lastAiId) || (fulls.length === 1 ? fulls[0] : null);
+  const target = custom.targetId ? items.find(x => x.id === custom.targetId) : custom.user ? null : items.find(x => x.id === selected) || items.find(x => x.id === lastAiId) || (fulls.length ? fulls[fulls.length - 1] : null);
   const implicit = target && target.id !== selected;
   const recent = custom.user ? '' : chatContext(); // turns before this one
   logChat('user', request);
@@ -1553,7 +1561,7 @@ ${brandRules()}- Clean, modern design: spacing, heading hierarchy, rounded corne
   // photos already in the selected element travel as short kept:N tokens, not megabytes of base64
   const kept = [];
   const slim = code => String(code).replace(/data:image\/[\w.+-]+;base64,[A-Za-z0-9+/=]+/g, d => 'kept:' + kept.push(d));
-  const user = custom.user || ((recent ? 'Conversation so far (for context):\n' + recent + '\n\n' : '') + 'Current element' + (implicit ? ' (not selected — the page built last)' : ' (selected)') + ': ' + JSON.stringify(target ? (target.scene ? { name: target.name, type: '3D scene', scene: target.scene } : { name: target.name, code: slim(target.code) }) : null) + '\nOther elements: ' + JSON.stringify(items.map(x => ({ name: x.name }))) + '\nRequest: ' + (custom.ask || request) + (custom.extra || ''));
+  const user = custom.user || ((recent ? 'Conversation so far (for context):\n' + recent + '\n\n' : '') + 'Current element' + (implicit ? ' (not selected — the page built last)' : ' (selected)') + ': ' + JSON.stringify(target ? (target.scene ? { name: target.name, type: '3D scene', scene: target.scene } : { name: target.name, code: slim(target.code) }) : null) + '\nOther elements: ' + JSON.stringify(items.map(x => ({ name: x.name }))) + (target && !custom.ask ? '\nIf the request changes, fixes or restyles anything in the Current element, answer with action "update" and the COMPLETE updated element. Use "add" only for a clearly separate new block.' : '') + '\nRequest: ' + (custom.ask || request) + (custom.extra || ''));
   try {
     // One automatic retry when the answer can't be parsed (free models sometimes break the format);
     // a model that rejects images gets the request again without them.
@@ -1632,6 +1640,7 @@ ${brandRules()}- Clean, modern design: spacing, heading hierarchy, rounded corne
       result.code = await resolveMedia(result.code, custom.attachments || [], qs => stop.step('finding photos: ' + qs.slice(0, 4).join(', ') + (qs.length > 4 ? '…' : '')), kept);
       result.code = await fixContrast(withBrand(result.code), full);
     }
+    if (result.action !== 'update' && target && !target.scene && !custom.place && isRewriteOf(target.code, result.code)) result.action = 'update';
     if (result.action === 'update' && target) {
       const item = items.find(x => x.id === target.id); if (!item) throw Error('The element was deleted during the request');
       checkpoint(); item.name = String(result.name || item.name).slice(0, 80); item.code = result.code;

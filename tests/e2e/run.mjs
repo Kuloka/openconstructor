@@ -128,3 +128,20 @@ scenario('site layout: no page strips, locked blocks stay, phones get one column
   const tablet = await probe(1000);
   assert.ok(+tablet.zoom < 1 && tablet.scrollW <= 1000, 'tablet scaled: ' + JSON.stringify(tablet));
 });
+
+scenario('change requests update the page even when the model says "add"', async (ed, o) => {
+  const pageHtml = c => `<section style="padding:40px;background:${c};color:#111"><h1>Bean There coffee</h1><p>Fresh roasted beans every morning in the heart of the city, open daily from seven</p><a href="#">Order now</a></section>`;
+  o.reply = () => block('Coffee page', pageHtml('#fff'), { full: true });
+  await ed.ask('coffee landing page'); await ed.idle();
+  await ed.send('Page.reload'); await sleep(3500); // forget the selection, keep the project
+  o.reply = () => block('Coffee page', pageHtml('#fde68a'), { full: true }); // a rewrite, wrongly labelled "add"
+  await ed.ask('make the background yellow'); await ed.idle();
+  let list = await ed.items();
+  assert.equal(list.length, 1, 'the page was updated, not duplicated');
+  assert.match(list[0].code, /fde68a/);
+  assert.ok(ed.posts.at(-1).includes('answer with action \\"update\\"'));
+  o.reply = () => block('Pricing', '<section style="padding:40px;background:#fff;color:#111"><h2>Pricing plans</h2><p>Starter, team and enterprise tiers with monthly billing</p></section>', { full: true });
+  await ed.ask('add a pricing section'); await ed.idle();
+  list = await ed.items();
+  assert.equal(list.length, 2, 'a really new section is added');
+});
