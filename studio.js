@@ -742,12 +742,29 @@ function renderLibrary(){
     return `<section class="cat${open ? ' open' : ''}"><button class="cat-head" data-cat="${escapeHTML(c.id)}" aria-expanded="${open}">${catChevron}${catIcon(c)}<span class="cat-name">${escapeHTML(c.id)}</span><span class="cat-count">${list.length}</span></button>${open ? `<div class="cat-body">${list.map(card).join('')}</div>` : ''}</section>`;
   }).join('');
   $('library').innerHTML = html || '<div class="catalog-empty">nothing found</div>';
-  document.querySelectorAll('[data-preset]').forEach(f => { const p = presets[+f.dataset.preset]; f.onload = () => requestAnimationFrame(() => holdPreview(f)); f.srcdoc = previewDoc(p.code, p.full); });
+  document.querySelectorAll('[data-preset]').forEach(f => { const p = presets[+f.dataset.preset]; f.onload = () => requestAnimationFrame(() => { holdPreview(f); fitPreview(f); }); f.srcdoc = previewDoc(p.code, p.full); });
   scaleWidePreviews();
 }
 // Sections render at 1280px wide and scale down to the card size
 function scaleWidePreviews(){ document.querySelectorAll('.component.wide .component-preview').forEach(pv => { const f = pv.querySelector('iframe'); f.style.transform = `scale(${pv.clientWidth / 1280})`; }); }
-addEventListener('resize', scaleWidePreviews);
+// Components render at their real size in a large frame, then shrink to fit the card whole and centered
+function fitPreview(f){
+  const pv = f.closest('.component-preview'); if (!pv || f.closest('.component.wide')) return;
+  try {
+    const doc = f.contentDocument; if (!doc?.body) return;
+    let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+    for (const el of doc.body.children) {
+      if (el.tagName === 'STYLE') continue;
+      const box = el.getBoundingClientRect(); if (!box.width && !box.height) continue;
+      l = Math.min(l, box.left); t = Math.min(t, box.top); r = Math.max(r, box.right); b = Math.max(b, box.bottom);
+    }
+    if (!Number.isFinite(l)) return;
+    const W = pv.clientWidth, H = pv.clientHeight, pad = 10;
+    const s = Math.min((W - pad * 2) / (r - l), (H - pad * 2) / (b - t), 0.85);
+    f.style.transform = `translate(${W / 2 - (l + (r - l) / 2) * s}px, ${H / 2 - (t + (b - t) / 2) * s}px) scale(${s})`;
+  } catch {}
+}
+addEventListener('resize', () => { scaleWidePreviews(); document.querySelectorAll('.component:not(.wide) .component-preview iframe').forEach(fitPreview); });
 $('catalogSearch').oninput = renderLibrary;
 renderLibrary();
 $('library').onclick = e => {
@@ -950,7 +967,7 @@ $('devicePreview').onclick = openDevicePreview;
 let playing = false;
 function setPlaying(on){
   playing = on; canvas.classList.toggle('playing', on); for (const el of nodes.values()) el._live?.setInteractive(on); $('playToggle').setAttribute('aria-pressed', on);
-  $('playToggle').textContent = on ? '■ stop' : '▶ play';
+  $('playToggle').innerHTML = on ? '■<span class="lbl"> stop</span>' : '▶<span class="lbl"> play</span>';
   if (on) { select(null); setState('play mode: try hover, toggles, tabs · press P or ■ stop to edit again', 'busy'); } else setState('ready');
 }
 $('playToggle').onclick = () => setPlaying(!playing);

@@ -135,7 +135,7 @@ body.resizing iframe { pointer-events: none; }
 .component:active { transform: scale(.98); border-color: var(--accent); }
 .component.wide { grid-column: 1 / -1; }
 .component-preview { position: relative; display: block; height: 82px; overflow: hidden; pointer-events: none; background: #131110; border-bottom: 1px solid var(--border); }
-.component-preview iframe { position: absolute; left: 0; top: 0; width: 142.857%; height: 117px; border: 0; transform: scale(.7); transform-origin: 0 0; }
+.component-preview iframe { position: absolute; left: 0; top: 0; width: 760px; height: 760px; border: 0; transform: scale(.2); transform-origin: 0 0; }
 .component.wide .component-preview { height: 120px; }
 .component.wide .component-preview iframe { width: 1280px; height: 1200px; transform-origin: 0 0; }
 .component-info { display: flex; align-items: center; justify-content: space-between; gap: 4px; height: 26px; padding: 0 8px; color: var(--text-2); font-size: 11px; }
@@ -673,3 +673,17 @@ body.resizing iframe { pointer-events: none; }
 .guide-links a:hover { color: var(--accent); text-decoration: underline; }
 .noscript { max-width: 720px; margin: 40px auto; padding: 0 20px; color: #eee; font-family: system-ui, sans-serif; line-height: 1.6; }
 .noscript a { color: #ff7a4d; }
+
+/* Title bar: menu items never slide under the project name; duplicates hide on narrower screens */
+.tb-left { overflow: hidden; }
+@media (max-width: 1480px) { .tb-menu [data-cmd="addCode"], .tb-menu [data-cmd="clear"] { display: none; } }
+/* Canvas toolbar: when the canvas area is narrow, mode buttons shrink to their icons */
+.workspace { container-type: inline-size; }
+@container (max-width: 980px) { .canvas-toolbar .lbl { display: none; } .canvas-toolbar .btn.mini { min-width: 28px; justify-content: center; } }
+
+/* Narrow canvas area: the toolbar wraps to a second row instead of cutting off the zoom buttons */
+@container (max-width: 760px) { .canvas-toolbar { height: auto; min-height: 34px; flex-wrap: wrap; row-gap: 4px; padding-top: 4px; padding-bottom: 4px; overflow: visible; } }
+/* Title bar: keep the project name apart from the right-hand buttons; long names get an ellipsis */
+.tb-center { min-width: 0; margin: 0 10px; overflow: hidden; }
+#projectName { overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+@media (max-width: 1380px) { .titlebar .donate-btn { display: none; } }

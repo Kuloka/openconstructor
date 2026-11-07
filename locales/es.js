@@ -646,4 +646,10 @@ export default {
   "Redo (Ctrl+Shift+Z or Ctrl+Y)": "Rehacer (Ctrl+Shift+Z o Ctrl+Y)",
   "Roblox UI builder": "Constructor de UI para Roblox",
   "HTML to React, Vue & Svelte": "HTML a React, Vue y Svelte",
+  "roblox zones": "zonas de roblox",
+  "play": "probar",
+  "stop": "parar",
+  "preview": "vista previa",
+  "Build a startup landing page: hero, features and a call to action": "Crea una landing de startup: portada, ventajas y llamada a la acción",
+  "Done. 3 sections are on the page — select any block to change it.": "Listo. Hay 3 secciones en la página — selecciona cualquier bloque para cambiarlo.",
 };

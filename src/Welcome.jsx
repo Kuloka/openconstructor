@@ -45,6 +45,38 @@ function Thumb({ t }){
   return <div className="wl-thumb" ref={box}><iframe title={t.name} sandbox="" tabIndex={-1} srcDoc={tplDoc(t)} style={{ width: t.page.w, height: t.page.h, transform: `scale(${scale})` }} /></div>;
 }
 
+// Hero demo: a small editor window that plays the core loop on repeat — a request in the chat,
+// the AI's steps, a real template assembling on the canvas block by block, the reply.
+const DEMO_BLOCKS = ['Navbar', 'Hero', 'Pricing', 'Features', 'Footer', 'Card', 'Chat app', 'Metric'];
+function HeroDemo(){
+  const t = templates[0];
+  return (
+    <div className="wl-demo" aria-hidden="true">
+      <div className="wl-demo-bar"><i /><i /><i /><span>~/startup-landing.html</span><em>export ↓</em></div>
+      <div className="wl-demo-body">
+        <aside className="wl-demo-lib">
+          <small>components</small>
+          {DEMO_BLOCKS.map((n, i) => <span key={n} style={{ '--i': i }}><b />{n}</span>)}
+        </aside>
+        <div className="wl-demo-canvas">
+          <div className="wl-demo-page"><Thumb t={t} /><div className="wl-demo-curtain" /><div className="wl-demo-sel" /></div>
+        </div>
+        <aside className="wl-demo-chat">
+          <small>ai assistant</small>
+          <p className="u">Build a startup landing page: hero, features and a call to action</p>
+          <ol>
+            <li>reading your request</li>
+            <li>planning the layout</li>
+            <li>writing the code</li>
+          </ol>
+          <p className="a">Done. 3 sections are on the page — select any block to change it.</p>
+          <div className="wl-demo-input">describe what to build or change…</div>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
 export default function Welcome(){
   const shouldShow = () => location.hash === '#welcome' || !localStorage.getItem('oc-welcomed');
   const [open, setOpen] = useState(() => { try { return shouldShow(); } catch { return true; } });
@@ -115,6 +147,8 @@ export default function Welcome(){
           <button className="wl-btn ghost lg" onClick={() => close()}>Start from scratch →</button>
         </div>
       </section>
+
+      <HeroDemo />
 
       <section className="wl-section" id="wl-how">
         <small className="wl-eyebrow">how it works</small>

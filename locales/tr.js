@@ -644,4 +644,10 @@ export default {
   "Redo (Ctrl+Shift+Z or Ctrl+Y)": "Yinele (Ctrl+Shift+Z veya Ctrl+Y)",
   "Roblox UI builder": "Roblox arayüz oluşturucu",
   "HTML to React, Vue & Svelte": "HTML’den React, Vue ve Svelte’e",
+  "roblox zones": "roblox alanları",
+  "play": "oynat",
+  "stop": "durdur",
+  "preview": "önizleme",
+  "Build a startup landing page: hero, features and a call to action": "Bir girişim açılış sayfası yap: ana bölüm, özellikler ve eylem çağrısı",
+  "Done. 3 sections are on the page — select any block to change it.": "Tamam. Sayfada 3 bölüm var — değiştirmek için herhangi bir bloğu seç.",
 };

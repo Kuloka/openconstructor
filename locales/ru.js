@@ -649,4 +649,10 @@ export default {
   "Redo (Ctrl+Shift+Z or Ctrl+Y)": "Повторить (Ctrl+Shift+Z или Ctrl+Y)",
   "Roblox UI builder": "Конструктор UI для Roblox",
   "HTML to React, Vue & Svelte": "HTML в React, Vue и Svelte",
+  "roblox zones": "зоны roblox",
+  "play": "играть",
+  "stop": "стоп",
+  "preview": "превью",
+  "Build a startup landing page: hero, features and a call to action": "Сделай лендинг стартапа: главный экран, преимущества и призыв к действию",
+  "Done. 3 sections are on the page — select any block to change it.": "Готово. 3 секции на странице — выделите любой блок, чтобы его изменить.",
 };
