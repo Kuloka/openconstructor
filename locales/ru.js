@@ -862,4 +862,5 @@ export default {
   "Make it better": "Сделай лучше",
   "Make the selected block better": "Улучшить выбранный блок",
   "select a block first": "сначала выберите блок",
+  "copied": "скопировано",
 };

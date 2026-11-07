@@ -1234,7 +1234,7 @@ const chatKey = (name = nameEl.textContent.trim() || 'my-interface') => 'oc-chat
 let chatLog = store.get(chatKey(), []);
 if (!Array.isArray(chatLog)) chatLog = [];
 function logChat(role, text){
-  chatLog.push({ role, text: String(text ?? '').slice(0, 2000), t: Date.now() });
+  chatLog.push({ role, text: String(text ?? '').slice(0, 8000), t: Date.now() });
   if (chatLog.length > 80) chatLog = chatLog.slice(-80);
   store.set(chatKey(), chatLog);
 }
@@ -1252,7 +1252,8 @@ function renderChat(){
       d.textContent = day === new Date().toDateString() ? 'today' : new Date(m.t).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
       box.append(d);
     }
-    const n = document.createElement('div'); n.className = 'message ' + m.role; n.textContent = m.text; n.style.animation = 'none';
+    const n = document.createElement('div'); n.className = 'message ' + m.role; n.style.animation = 'none';
+    if (m.role === 'assistant') { n.setAttribute('data-no-i18n', ''); if (MD_RE.test(m.text)) { n.classList.add('md'); n.innerHTML = md(m.text); } else n.textContent = t(m.text); } else n.textContent = m.text;
     box.append(n);
   }
   toBottom();
@@ -1273,29 +1274,82 @@ nameEl.addEventListener('blur', () => {
   if (now && now !== nameBefore) { const old = store.get(chatKey(nameBefore), []); if (old.length && !store.get(chatKey(now), []).length) store.set(chatKey(now), old); switchChat(); }
 });
 
+const MD_RE = /```|^\s*([-*•]|\d+[.)]|#{1,4})\s|\*\*|`[^`]+`|\[[^\]]+\]\(https?:/m;
+function mdInline(s){
+  return escapeHTML(s)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/(^|[\s(])\*([^*\s][^*]*)\*(?=[\s.,!?)]|$)/g, '$1<i>$2</i>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+}
+function md(src){
+  const parts = String(src).replace(/\r/g, '').split(/```([\w+-]*)[ \t]*\n?([\s\S]*?)(?:```|$)/);
+  let out = '';
+  for (let i = 0; i < parts.length; i += 3) {
+    let list = '', para = [];
+    const flush = () => { if (para.length) out += `<p>${para.join('<br>')}</p>`; para = []; };
+    const closeList = () => { if (list) out += `</${list}>`; list = ''; };
+    for (const line of parts[i].split('\n')) {
+      let m;
+      if (!line.trim()) { flush(); closeList(); }
+      else if ((m = line.match(/^\s*#{1,4}\s+(.*)/))) { flush(); closeList(); out += `<h4>${mdInline(m[1])}</h4>`; }
+      else if ((m = line.match(/^\s*(?:([-*•])|(\d+)[.)])\s+(.*)/))) {
+        flush(); const kind = m[1] ? 'ul' : 'ol';
+        if (list !== kind) { closeList(); out += `<${kind}>`; list = kind; }
+        out += `<li>${mdInline(m[3])}</li>`;
+      } else { closeList(); para.push(mdInline(line)); }
+    }
+    flush(); closeList();
+    if (parts[i + 2] != null && parts[i + 2].trim()) out += `<div class="md-pre"><button type="button" class="md-copy">${t('copy')}</button><pre><code>${escapeHTML(parts[i + 2].replace(/\n$/, ''))}</code></pre></div>`;
+  }
+  return out;
+}
 function message(text, role){
   const node = document.createElement('div'); node.className = 'message ' + role;
   $('messages').append(node);
-  if (role === 'assistant') typeText(node, text); else { node.textContent = text; toBottom(); }
+  if (role !== 'assistant') { node.textContent = text; toBottom(); return node; }
+  node.setAttribute('data-no-i18n', ''); text = t(String(text ?? ''));
+  if (!MD_RE.test(text) && text.length < 280) { typeText(node, text); return node; }
+  // longer answers: rendered Markdown, blocks fading in one after another
+  node.classList.add('md'); node.innerHTML = md(text);
+  if (!reduceMotion()) [...node.children].forEach((b, i) => { b.style.animation = `msg-in .3s ${Math.min(i, 14) * 70}ms both cubic-bezier(.2,.7,.2,1)`; });
+  toBottom(); setTimeout(toBottom, Math.min(node.children.length, 15) * 70 + 320);
   return node;
 }
+$('messages').addEventListener('click', e => {
+  const b = e.target.closest('.md-copy'); if (!b) return;
+  navigator.clipboard?.writeText(b.nextElementSibling.textContent).then(() => { b.textContent = t('copied'); setTimeout(() => { b.textContent = t('copy'); }, 1200); });
+});
 
 // "Thinking" panel: a checklist that grows step by step, each label typed out; the title retypes
 // "thinking" → "composing" when the answer arrives, and the real code is typed into a small window
 // while it's placed. At the end it folds into "thought for 7s" (click to see the steps again).
 // Returns end(): end() removes it (error), end.compose(name, code), end.answer(), end.finish().
-function thinking(){
+function thinking({ ghost = false } = {}){
   const node = document.createElement('div');
   node.className = 'message assistant thinking';
-  node.innerHTML = `<button class="th-head" type="button" aria-expanded="true"><span class="oc-logo thinking-logo" aria-hidden="true">${logoSvg}</span><span class="th-title"></span><span class="th-time">0s</span></button><ol class="th-steps"></ol><pre class="th-code" hidden><code></code></pre>`;
+  node.innerHTML = `<button class="th-head" type="button" aria-expanded="true"><span class="oc-logo thinking-logo" aria-hidden="true">${logoSvg}</span><span class="th-title"></span><span class="th-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="th-time">0s</span></button><ol class="th-steps"></ol><pre class="th-code" hidden><code></code></pre>`;
   $('messages').append(node); toBottom();
   const title = node.querySelector('.th-title'), list = node.querySelector('.th-steps'), time = node.querySelector('.th-time');
   const t0 = Date.now();
-  let queue = Promise.resolve(), over = false;
+  let queue = Promise.resolve(), over = false, stepAt = t0;
+  // a shimmering placeholder over the canvas: something is being built there
+  let ghostEl = null;
+  const cv = $('canvas')?.getBoundingClientRect();
+  if (ghost && cv && cv.width > 200 && !reduceMotion()) {
+    ghostEl = document.createElement('div'); ghostEl.className = 'th-ghost'; ghostEl.setAttribute('aria-hidden', 'true');
+    ghostEl.innerHTML = '<i class="g1"></i><i class="g2"></i><i class="g3"></i><span class="g-row"><i></i><i></i><i></i></span>';
+    ghostEl.style.left = cv.left + cv.width / 2 + 'px'; ghostEl.style.top = cv.top + cv.height / 2 + 'px';
+    document.body.append(ghostEl);
+    $('canvasEmpty')?.style.setProperty('visibility', 'hidden');
+  }
+  const dropGhost = () => { const g = ghostEl; ghostEl = null; if (!g) return; $('canvasEmpty')?.style.removeProperty('visibility'); g.classList.add('out'); setTimeout(() => g.remove(), 260); };
   // steps run one after another so each label finishes typing before the next starts
   const step = label => (queue = queue.then(() => {
     if (over) return;
-    list.querySelector('li.run')?.classList.replace('run', 'done');
+    const prev = list.querySelector('li.run');
+    if (prev) { prev.classList.replace('run', 'done'); const d = document.createElement('em'); d.className = 'th-took'; d.textContent = ((Date.now() - stepAt) / 1000).toFixed(1) + 's'; prev.append(d); }
+    stepAt = Date.now();
     const li = document.createElement('li'); li.className = 'run';
     li.innerHTML = '<i class="th-mark" aria-hidden="true"></i><span></span>';
     list.append(li);
@@ -1309,11 +1363,11 @@ function thinking(){
   const clock = setInterval(() => { time.textContent = Math.floor((Date.now() - t0) / 1000) + 's'; }, 250);
   const stopWaiting = () => { timers.forEach(clearTimeout); };
 
-  const end = () => { over = true; stopWaiting(); clearInterval(clock); node.remove(); };
+  const end = () => { over = true; stopWaiting(); clearInterval(clock); dropGhost(); node.remove(); };
   // The answer arrived with code: show it being written, then the caller places it
   end.compose = (name, code) => {
     stopWaiting();
-    retype(title, 'composing');
+    retype(title, 'composing'); ghostEl?.classList.add('build');
     setState('composing…', 'busy');
     step(`composing “${String(name || 'element').slice(0, 40)}”`);
     return (queue = queue.then(async () => {
@@ -1333,14 +1387,14 @@ function thinking(){
     }));
   };
   end.step = label => { stopWaiting(); return step(label); };
-  end.answer = () => { stopWaiting(); retype(title, 'answering'); return queue; };
+  end.answer = () => { stopWaiting(); dropGhost(); retype(title, 'answering'); return queue; };
   // Fold into a one-line summary that stays in the chat
   end.finish = (lastStep = 'done') => {
     stopWaiting();
     step(lastStep);
     return (queue = queue.then(() => {
       if (over) return;
-      over = true; clearInterval(clock);
+      over = true; clearInterval(clock); dropGhost();
       list.querySelectorAll('li').forEach(li => li.className = 'done');
       const s = Math.max(1, Math.round((Date.now() - t0) / 1000));
       node.classList.add('folded');
@@ -1509,6 +1563,11 @@ function parseScene(content){
 }
 function parseAnswer(content){
   const raw = String(content).replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  // a chat answer: {"action":"reply"} header, then free Markdown (which may contain code — it is not a component)
+  if (raw.startsWith('{')) {
+    const j = firstJSON(raw);
+    if (j) { try { const h = looseJSON(j.json); if (/^(reply|answer|chat)$/i.test(String(h.action || ''))) return { action: 'reply', reply: raw.slice(j.end).trim() || String(h.reply || '') }; } catch {} }
+  }
   const fence = raw.match(/```(?:html|HTML)?[ \t]*\r?\n([\s\S]*?)(?:\r?\n```|$)/);
   if (fence && /<[a-z!]/i.test(fence[1])) {
     const before = raw.slice(0, fence.index);
@@ -1651,7 +1710,7 @@ async function runAI(request, custom = {}){
     strip.innerHTML = custom.shown.map(a => a.url ? `<img src="${a.url}" alt="${escapeHTML(a.name)}" title="${escapeHTML(a.name)}">` : `<span class="msg-file">📄 ${escapeHTML(a.name)}</span>`).join('');
     asked.append(strip); toBottom();
   }
-  const stop = thinking();
+  const stop = thinking({ ghost: true });
   const system = `You are openconstructor AI, you build interfaces. Answer in EXACTLY this format and nothing else:
 line 1 — a one-line JSON header WITHOUT the code: {"action":"add|update|reply","full":true|false,"name":"short element name","reply":"short reply to the user"}
 then, unless action is "reply", the HTML and CSS in ONE fenced block:
@@ -1660,7 +1719,7 @@ then, unless action is "reply", the HTML and CSS in ONE fenced block:
 <markup>…</markup>
 \`\`\`
 Rules:
-- If the message is just conversation or a question (a greeting, thanks, "what can you do", how-to) and does not ask to build or change something, use action "reply" with only the "reply" field — do NOT create an element.
+- Questions and conversation: you are also a knowledgeable general assistant, not only a website builder. If the message is a question or conversation on ANY topic (code, writing, business, marketing, studies, advice, how-to, a greeting) and does not ask to build or change something on the canvas, use action "reply": line 1 is just {"action":"reply"} and then, on the following lines, your full answer as plain Markdown (short paragraphs, lists, **bold**, code in fenced blocks). Answer the actual question thoroughly and to the point, do not steer the talk back to the website, and NEVER create an element for a question — code examples in an answer are fine.
 - "Current element" is what the user is working on (selected, or the page built last). If the request changes anything about it (colors, text, layout, photos, adding or removing a section inside it), use action "update" and return the COMPLETE updated element, keeping everything the user did not ask to change. Use "add" only when the user clearly wants a separate new block, component or page, or when there is no current element.
 - Page: ${page.w}×${page.h}px, ${isLightPage() ? 'light' : 'dark'} background. If the user asks for a website, landing page, page or section, set "full": true and build a complete full-width layout (header, hero, content blocks, footer) with a root element of width:100%. For a standalone component (button, card, form), set "full": false, width up to 360px.
 - Language: write "reply" in the language of the user's message; if unclear, in ${AI_LANG[lang]}. Texts on the page you build go in the language the user writes in (or the language they ask for).

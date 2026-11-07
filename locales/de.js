@@ -859,4 +859,5 @@ export default {
   "Make it better": "Besser machen",
   "Make the selected block better": "Ausgewählten Block verbessern",
   "select a block first": "wähle zuerst einen Block",
+  "copied": "kopiert",
 };
