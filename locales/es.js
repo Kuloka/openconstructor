@@ -734,4 +734,5 @@ export default {
   '{0} files': '{0} archivos',
   '{0} lines': n => `${n} ${String(n) === '1' ? 'línea' : 'líneas'}`,
   '{0} unchanged lines': '{0} líneas sin cambios',
+  "ai agent": "agente de ia",
 };

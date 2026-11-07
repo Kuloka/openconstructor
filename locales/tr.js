@@ -732,4 +732,5 @@ export default {
   '{0} files': '{0} dosya',
   '{0} lines': '{0} satır',
   '{0} unchanged lines': '{0} değişmeyen satır',
+  "ai agent": "yapay zekâ ajanı",
 };

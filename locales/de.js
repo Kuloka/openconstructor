@@ -734,4 +734,5 @@ export default {
   '{0} files': '{0} Dateien',
   '{0} lines': n => `${n} ${String(n) === '1' ? 'Zeile' : 'Zeilen'}`,
   '{0} unchanged lines': '{0} unveränderte Zeilen',
+  "ai agent": "KI-Agent",
 };

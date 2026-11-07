@@ -207,7 +207,7 @@ function useProject(p){
   // open the top-level folders that matter most
   for (const d of ['src', 'app', 'lib']) if ([...p.files.keys()].some(k => k.startsWith(d + '/'))) openDirs.add(d);
   renderTree(); renderTabs(); renderTotals(); renderChangesPanel();
-  $('cxMessages').innerHTML = `<div class="cx-msg"><b>${esc(p.name)}</b> · ${t(`${p.files.size} files`)}${p.writable ? '' : ' · ' + t('read-only copy')}<p>${t('Describe what to change. The agent reads the files it needs; you review every edit before it is saved.')}</p></div>`;
+  $('cxMessages').innerHTML = `<div class="message assistant welcome"><strong>${esc(p.name)} · ${t(`${p.files.size} files`)}${p.writable ? '' : ' · ' + t('read-only copy')}</strong><p>${t('Describe what to change. The agent reads the files it needs; you review every edit before it is saved.')}</p></div>`;
   const readme = [...p.files.keys()].find(k => /^readme\.md$/i.test(k));
   if (readme) openFile(readme);
   setState(`${t('opened')} ${p.name}`, 'ok');
@@ -280,9 +280,8 @@ vault.loadKeys().then(k => { keys = k || {}; }).catch(() => {}).finally(loadMode
 window.addEventListener('oc:auth', renderCost);
 
 /* ── Agent chat ── */
-const KIND = { list: '▸', read: '◧', search: '⌕', edit: '✎', done: '✓', ask: '?', error: '!' };
 const toBottom = () => { const m = $('cxMessages'); m.scrollTop = m.scrollHeight; };
-function addMsg(html, cls = ''){ const d = document.createElement('div'); d.className = 'cx-msg ' + cls; d.innerHTML = html; $('cxMessages').append(d); toBottom(); return d; }
+function addMsg(html, cls = ''){ const d = document.createElement('div'); d.className = 'message ' + cls; d.innerHTML = html; $('cxMessages').append(d); toBottom(); return d; }
 
 // Unified diff with a little context around each change
 function diffHtml(before, after){
@@ -297,7 +296,7 @@ function diffHtml(before, after){
   return out.join('');
 }
 function cardHtml(c){
-  const st = c.status === 'accepted' ? `<span class="st ok">✓ ${t(project.writable ? 'saved' : 'kept')}</span>` : c.status === 'rejected' ? `<span class="st no">✗ ${t('rejected')}</span>` : `<span class="st">${t('waiting for review')}</span>`;
+  const st = c.status === 'accepted' ? `<span class="st ok">✓ ${t(project.writable ? 'saved' : 'kept')}</span>` : c.status === 'rejected' ? `<span class="st no">✗ ${t('rejected')}</span>` : `<span class="st"></span>`;
   const later = changes.some(x => x.path === c.path && x.id > c.id && x.status === 'pending');
   return `<div class="cx-card-head"><span class="path" data-open="${esc(c.path)}" title="${esc(c.path)}">${esc(c.path)}</span><span class="lang">${esc(c.lang)}</span>${c.isNew ? `<span class="new">${t('new')}</span>` : ''}<span class="nums"><span class="plus">+${c.added}</span> <span class="minus">−${c.removed}</span></span></div>
     <div class="cx-diff">${diffHtml(c.before, c.after)}</div>
@@ -318,25 +317,42 @@ async function send(request){
   if (running) return;
   if (!project.name) { setState(t('Open a project folder first.'), 'warn'); openFolder(); return; }
   if (!model) { $('cxKeysBtn').click(); return; }
+  $('cxStatus').textContent = '';
   addMsg(esc(request), 'user');
-  const run = addMsg(`<div class="cx-run"><div class="cx-head"><span class="oc-logo tiny">${logoSvg}</span><b>${t('working')}</b><span class="tm">0s</span></div><ol class="cx-steps"></ol><div class="cx-cards"></div></div>`, 'agent');
-  const steps = run.querySelector('.cx-steps'), cardBox = run.querySelector('.cx-cards'), clock = run.querySelector('.tm'), t0 = Date.now();
-  const tick = setInterval(() => { clock.textContent = Math.round((Date.now() - t0) / 1000) + 's'; }, 500);
+  // "Thinking" panel, the same as in the builder: steps tick off one by one, then it folds into "thought for Ns"
+  const node = addMsg(`<button class="th-head" type="button" aria-expanded="true"><span class="oc-logo thinking-logo" aria-hidden="true">${logoSvg}</span><span class="th-title">${esc(t('thinking'))}</span><span class="th-time">0s</span></button><ol class="th-steps"></ol>`, 'assistant thinking');
+  const steps = node.querySelector('.th-steps'), title = node.querySelector('.th-title'), clock = node.querySelector('.th-time'), t0 = Date.now();
+  const cardBox = document.createElement('div'); cardBox.className = 'cx-cards'; $('cxMessages').append(cardBox);
+  const tick = setInterval(() => { clock.textContent = Math.floor((Date.now() - t0) / 1000) + 's'; }, 250);
   const startCount = changes.length;
-  let current = null;
-  const thinking = () => { current = document.createElement('li'); current.className = 'run'; current.innerHTML = `<span class="k">●</span><span class="t">${t('thinking…')}</span>`; steps.append(current); toBottom(); };
+  let current = null, count = 0;
+  const step = (label, detail = '', cls = 'run') => {
+    current?.classList.replace('run', 'done');
+    current = document.createElement('li'); current.className = cls;
+    current.innerHTML = `<i class="th-mark" aria-hidden="true"></i><span>${esc(label)}</span>${detail ? `<span class="th-d">${esc(detail)}</span>` : ''}`;
+    steps.append(current); toBottom();
+  };
+  const fold = () => {
+    current?.classList.replace('run', 'done');
+    const sec = Math.max(1, Math.round((Date.now() - t0) / 1000));
+    node.classList.add('folded'); title.textContent = t(`thought for ${sec}s`); clock.textContent = t(`${count} steps`);
+    const head = node.querySelector('.th-head'); head.setAttribute('aria-expanded', 'false');
+    head.onclick = () => { const folded = node.classList.toggle('folded'); head.setAttribute('aria-expanded', String(!folded)); };
+  };
   running = new AbortController();
-  $('cxSend').textContent = t('stop ■'); setState(t('the agent is working…'), 'busy');
-  thinking();
+  window.dispatchEvent(new CustomEvent('cx:busy', { detail: true }));
+  setState(t('the agent is working…'), 'busy');
+  step(t('reading your request'));
   const [pid, ...rest] = model.split('::');
   try {
     const res = await runAgent({
       project, request, history, openPath, lang: AI_LANG[lang] || 'English', signal: running.signal,
       callModel: (system, user) => chat(byId(pid), keys[pid], rest.join('::'), system, user),
       onStep: s => {
-        current.className = s.kind === 'error' ? 'err' : '';
-        current.innerHTML = `<span class="k">${KIND[s.kind] || '·'}</span><span class="t">${esc(s.label)}</span>${s.detail ? `<span class="d">${esc(s.detail)}</span>` : ''}`;
-        if (s.kind !== 'done' && s.kind !== 'ask') thinking();
+        if (s.kind === 'done' || s.kind === 'ask') return;
+        count++;
+        step(s.label, s.detail, s.kind === 'error' ? 'run err' : 'run');
+        if (s.kind === 'edit') title.textContent = t('composing');
       },
       onChange: c => {
         changes.push(c);
@@ -344,35 +360,30 @@ async function send(request){
         syncEditor(c.path); refreshAll(); toBottom();
       },
     });
-    current?.remove?.();
-    if (current && !current.isConnected) current = null;
+    fold();
     const mine = changes.slice(startCount), files = new Set(mine.map(c => c.path));
-    const sum = mine.reduce((s, c) => ({ added: s.added + c.added, removed: s.removed + c.removed }), { added: 0, removed: 0 });
-    run.querySelector('.cx-run').insertAdjacentHTML('beforeend', `<div class="cx-summary">${esc(res.summary)}</div>${mine.length ? `<div class="cx-runfoot"><span><span class="plus">+${sum.added}</span> <span class="minus">−${sum.removed}</span> · ${t(`${files.size} ${files.size === 1 ? 'file' : 'files'}`)}</span><span class="sp"></span><button class="btn" data-run-act="reject">${t('reject all')}</button><button class="btn primary" data-run-act="accept">${t(project.writable ? 'accept all & save' : 'accept all')}</button></div>` : ''}`);
+    const sum = mine.reduce((a, c) => ({ added: a.added + c.added, removed: a.removed + c.removed }), { added: 0, removed: 0 });
+    addMsg(`${esc(res.summary)}${mine.length ? `<div class="cx-runfoot"><span><span class="plus">+${sum.added}</span> <span class="minus">−${sum.removed}</span> · ${t(`${files.size} ${files.size === 1 ? 'file' : 'files'}`)}</span><span class="sp"></span><button class="btn" data-run-act="reject">${t('reject all')}</button><button class="btn primary" data-run-act="accept">${t(project.writable ? 'accept all & save' : 'accept all')}</button></div>` : ''}`, 'assistant');
     history.push({ request, summary: res.summary + (mine.length ? ` (edited: ${[...files].join(', ')})` : '') });
     if (history.length > 8) history = history.slice(-8);
     setState(mine.length ? t('done — review the changes') : t('done'), 'ok');
   } catch (err) {
-    current?.remove?.();
-    const msg = String(err.message || err);
+    const msg = String(err.message || err), stopped = msg === 'stopped';
+    if (changes.length > startCount || count) fold(); else { node.remove(); }
     const needsSignIn = /sign in/i.test(msg);
-    addMsg(`${esc(msg === 'stopped' ? t('Stopped. The changes made so far are still waiting for review.') : msg)}${needsSignIn ? ` <button class="btn" data-run-act="signin">${t('sign in')}</button> <button class="btn" data-run-act="keys">⚙ ${t('keys')}</button>` : ''}`, msg === 'stopped' ? '' : 'err');
-    setState(msg === 'stopped' ? t('stopped') : t('agent error'), msg === 'stopped' ? 'warn' : 'error');
+    addMsg(`${esc(stopped ? t('Stopped. The changes made so far are still waiting for review.') : msg)}${needsSignIn ? `<div class="cx-runfoot"><button class="btn" data-run-act="signin">${t('sign in')}</button><button class="btn" data-run-act="keys">⚙ ${t('keys')}</button></div>` : ''}`, stopped ? 'assistant' : 'assistant cx-err');
+    setState(stopped ? t('stopped') : t('agent error'), stopped ? 'warn' : 'error');
   } finally {
-    clearInterval(tick); running = null; $('cxSend').textContent = t('send ↑'); refreshAll();
-    run.querySelector('.cx-head b').textContent = t('finished');
+    clearInterval(tick); running = null; refreshAll();
+    window.dispatchEvent(new CustomEvent('cx:busy', { detail: false }));
   }
 }
-$('cxForm').onsubmit = e => {
-  e.preventDefault();
-  if (running) { running.abort(); setState(t('stopping after this step…'), 'busy'); return; }
-  const v = $('cxPrompt').value.trim(); if (!v) return;
-  $('cxPrompt').value = ''; send(v);
-};
-$('cxPrompt').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('cxForm').requestSubmit(); } };
+window.addEventListener('cx:send', e => { const v = String(e.detail || '').trim(); if (v) send(v); });
+window.addEventListener('cx:stop', () => { if (running) { running.abort(); setState(t('stopping after this step…'), 'busy'); } });
+const welcome = (title, text) => `<div class="message assistant welcome"><strong>${esc(title)}</strong><p>${esc(text)}</p></div>`;
 $('cxNewChat').onclick = () => {
   if (running) return;
   history = []; cards.clear();
-  $('cxMessages').innerHTML = `<div class="cx-msg cx-welcome"><b>${t('New conversation')}</b><p>${t('The agent forgets earlier requests; files and pending changes stay as they are.')}</p></div>`;
+  $('cxMessages').innerHTML = welcome(t('New conversation'), t('The agent forgets earlier requests; files and pending changes stay as they are.'));
 };
 renderTotals();
