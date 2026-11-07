@@ -1,5 +1,6 @@
 // Cloudflare Worker for openconstructor.pw
 // /p/<slug> -> a page published from the editor (Supabase table `pages`, see supabase/publish.sql)
+//   forms on it post to /api/form/<slug> (stored in `form_submissions`), each visit counts a view (supabase/manage.sql)
 // /api/ai, /api/ai/quota -> free AI without a key for signed-in users (Groq, quota in supabase/ai.sql)
 // everything else -> the static site (assets binding, SPA fallback)
 
@@ -11,7 +12,7 @@ const ISSUES = 'https://github.com/Kuloka/openconstructor/issues';
 // origin, no access to openconstructor.pw cookies/storage) and forbid scripts.
 const PAGE_HEADERS = {
   'Content-Type': 'text/html; charset=utf-8',
-  'Content-Security-Policy': "sandbox allow-popups allow-popups-to-escape-sandbox; script-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'",
+  'Content-Security-Policy': `sandbox allow-popups allow-popups-to-escape-sandbox allow-forms; script-src 'none'; object-src 'none'; base-uri 'none'; form-action ${HOME}/api/form/`,
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
   'X-Robots-Tag': 'noindex',
@@ -59,13 +60,90 @@ function inject(html, slug, title){
   return i === -1 ? html + badge(slug) : html.slice(0, i) + badge(slug) + html.slice(i);
 }
 
-function notice(status, title, text){
+function notice(status, title, text, link = { href: HOME, label: 'open openconstructor' }){
   const body = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} · openconstructor</title>
 <style>:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:#0c0a09;color:#f2ece9;font:14px/1.6 "JetBrains Mono",Consolas,ui-monospace,monospace}
 main{max-width:440px;text-align:center}.code{font-size:56px;font-weight:700;color:#e4572e;letter-spacing:-.02em;margin:0}h1{font-size:15px;font-weight:600;margin:6px 0 4px;text-transform:uppercase;letter-spacing:.08em;color:#cbc0bb}p{color:#948884;margin:0 0 22px}
 a{display:inline-block;padding:8px 16px;border-radius:4px;background:#e4572e;color:#1a0703;font-weight:600;text-decoration:none}a:hover{background:#f06a3f}</style></head>
-<body><main><p class="code">${status}</p><h1>${esc(title)}</h1><p>${esc(text)}</p><a href="${HOME}">open openconstructor</a></main></body></html>`;
+<body><main><p class="code">${status}</p><h1>${esc(title)}</h1><p>${esc(text)}</p><a href="${esc(link.href)}">${esc(link.label)}</a></main></body></html>`;
   return new Response(body, { status, headers: { ...PAGE_HEADERS, 'Cache-Control': 'no-store' } });
+}
+
+// Forms on published pages: a <form> without its own action posts to /api/form/<slug>; inputs without
+// a name get one (from the placeholder or label) so their values arrive; a hidden field catches bots.
+function formsWork(res, slug){
+  return new HTMLRewriter()
+    .on('form', { element(el){
+      const action = (el.getAttribute('action') || '').trim();
+      if (action && !action.startsWith('#') && !/^javascript:/i.test(action)) return;
+      el.setAttribute('action', `${HOME}/api/form/${slug}`);
+      el.setAttribute('method', 'post');
+      el.removeAttribute('enctype');
+      el.append('<input type="text" name="_oc_hp" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">', { html: true });
+    } })
+    .on('form input, form textarea, form select', { element(el){
+      if (el.getAttribute('name')) return;
+      const type = (el.getAttribute('type') || '').toLowerCase();
+      if (['submit', 'button', 'reset', 'image', 'file', 'hidden'].includes(type)) return;
+      const label = el.getAttribute('placeholder') || el.getAttribute('aria-label') || el.getAttribute('id') || type || el.tagName.toLowerCase();
+      el.setAttribute('name', label.replace(/[\r\n]+/g, ' ').trim().slice(0, 60) || 'field');
+    } })
+    .transform(res);
+}
+
+// Views: one per visitor per page every 30 minutes; bots and link previews don't count
+const BOT_UA = /bot|crawl|spider|slurp|preview|facebookexternalhit|embedly|monitor|curl|wget|python|headless|lighthouse/i;
+async function countView(request, env, slug){
+  if (BOT_UA.test(request.headers.get('user-agent') || '')) return;
+  const ip = request.headers.get('cf-connecting-ip') || 'unknown';
+  const seen = new Request(`${HOME}/__views/${slug}/${encodeURIComponent(ip)}`);
+  const cache = caches.default;
+  if (await cache.match(seen)) return;
+  await cache.put(seen, new Response('1', { headers: { 'Cache-Control': 'max-age=1800' } }));
+  await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/page_view`, {
+    method: 'POST', headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${env.SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_slug: slug }),
+  });
+}
+
+// A form sent from a published page: stored for the page's author (see supabase/manage.sql)
+async function formSubmit(request, env, slug){
+  const back = { href: `${HOME}/p/${slug}`, label: 'back to the page' };
+  if (!SLUG_RE.test(slug)) return notice(404, 'page not found', 'There is no published page at this address.');
+  if ((+request.headers.get('content-length') || 0) > 60000) return notice(413, 'too much text', 'The form is too large to send.', back);
+  // one submission per visitor every 15 seconds
+  const ip = request.headers.get('cf-connecting-ip') || 'unknown';
+  const cache = caches.default, gate = new Request(`${HOME}/__forms/${encodeURIComponent(ip)}`);
+  if (await cache.match(gate)) return notice(429, 'just a moment', 'Please wait a few seconds before sending again.', back);
+  let fd;
+  try { fd = await request.formData(); } catch { return notice(400, 'nothing sent', 'The form could not be read.', back); }
+  const thanks = () => notice(200, 'sent ✓', 'Thank you! Your message has been delivered to the author of this page.', back);
+  if (String(fd.get('_oc_hp') || '').trim()) return thanks(); // a bot filled the hidden field
+  const data = {}; let n = 0;
+  for (const [k, v] of fd) {
+    if (k === '_oc_hp' || typeof v !== 'string') continue;
+    if (++n > 40) break;
+    const key = String(k).slice(0, 80) || 'field', val = v.slice(0, 3000);
+    data[key] = key in data ? [].concat(data[key], val) : val;
+  }
+  if (!Object.values(data).some(v => String(v).trim())) return notice(400, 'empty form', 'Fill in the form before sending.', back);
+  await cache.put(gate, new Response('1', { headers: { 'Cache-Control': 'max-age=15' } }));
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/submit_form`, {
+      method: 'POST', headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${env.SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_slug: slug, p_data: data }),
+    });
+    if (!r.ok) {
+      const t = await r.text();
+      if (/too many/i.test(t)) return notice(429, 'try again tomorrow', 'This page has received too many messages today.', back);
+      if (/page not found/i.test(t)) return notice(404, 'page not found', 'This page is not accepting messages right now.', back);
+      throw new Error(`supabase ${r.status}`);
+    }
+  } catch (err) {
+    console.error('form: store failed', slug, err?.message);
+    return notice(502, 'not sent', 'Your message could not be sent right now. Please try again in a minute.', back);
+  }
+  return thanks();
 }
 
 async function servePage(request, env, ctx, slug){
@@ -81,10 +159,11 @@ async function servePage(request, env, ctx, slug){
     let rows;
     try {
       const headers = { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${env.SUPABASE_ANON_KEY}`, Accept: 'application/json' };
-      const base = `${env.SUPABASE_URL}/rest/v1/pages?slug=eq.${encodeURIComponent(slug)}&select=html,title`;
-      // moderated pages (hidden = true) disappear; fall back if the gallery migration hasn't been run yet
-      let api = await fetch(base + '&hidden=eq.false', { headers });
-      if (api.status === 400) api = await fetch(base, { headers });
+      const base = `${env.SUPABASE_URL}/rest/v1/pages?slug=eq.${encodeURIComponent(slug)}`;
+      // moderated pages (hidden = true) disappear; fall back step by step if migrations haven't been run yet
+      let api = await fetch(base + '&select=html,title,paused&hidden=eq.false', { headers });
+      if (api.status === 400) api = await fetch(base + '&select=html,title&hidden=eq.false', { headers });
+      if (api.status === 400) api = await fetch(base + '&select=html,title', { headers });
       if (!api.ok) throw new Error(`supabase ${api.status}`);
       rows = await api.json();
     } catch (err) {
@@ -95,9 +174,11 @@ async function servePage(request, env, ctx, slug){
     if (!row || typeof row.html !== 'string') {
       return notice(404, 'page not found', 'This page does not exist or was unpublished by its author.');
     }
-    res = new Response(inject(row.html, slug, row.title), { status: 200, headers: { ...PAGE_HEADERS, 'Cache-Control': 'public, max-age=60' } });
+    if (row.paused) return notice(404, 'page is turned off', 'The author has turned this page off for now. Try again later.');
+    res = formsWork(new Response(inject(row.html, slug, row.title), { status: 200, headers: { ...PAGE_HEADERS, 'Cache-Control': 'public, max-age=60' } }), slug);
     ctx.waitUntil(cache.put(key, res.clone()));
   }
+  if (request.method === 'GET') ctx.waitUntil(countView(request, env, slug).catch(() => {}));
   return request.method === 'HEAD' ? new Response(null, res) : res;
 }
 
@@ -394,6 +475,8 @@ export default {
     if (url.pathname === '/api/sync') return request.method === 'POST' ? syncPut(request, env) : fail(405, 'Method not allowed', { Allow: 'POST' });
     const sm = /^\/api\/sync\/([^/]+)$/.exec(url.pathname);
     if (sm) return request.method === 'GET' ? syncGet(request, env, ctx, sm[1]) : fail(405, 'Method not allowed', { Allow: 'GET' });
+    const fm = /^\/api\/form\/([^/]+)$/.exec(url.pathname);
+    if (fm) return request.method === 'POST' ? formSubmit(request, env, decodeURIComponent(fm[1])) : fail(405, 'Method not allowed', { Allow: 'POST' });
     if (url.pathname.startsWith('/api/')) return fail(404, 'Not found');
     const m = /^\/p\/([^/]+)\/?$/.exec(url.pathname);
     if (m) { let slug = ''; try { slug = decodeURIComponent(m[1]); } catch {} return servePage(request, env, ctx, slug); }

@@ -56,7 +56,7 @@ const modal = document.createElement('div');
 modal.className = 'modal hidden'; modal.id = 'publishModal';
 modal.innerHTML = `<div class="modal-card pub-card" role="dialog" aria-labelledby="pubTitle">
   <div class="modal-head"><h2 id="pubTitle">publish</h2><button class="btn icon" type="button" data-pub-close aria-label="Close">×</button></div>
-  <p class="pub-lead">Anyone with the link can view this page. Scripts are disabled on published pages.</p>
+  <p class="pub-lead">Only people with the link can open the page, unless you also show it in the gallery. You can switch it off or delete it any time. Scripts are disabled on published pages; forms work and their messages come to you.</p>
   <form class="pub-form" id="pubForm" autocomplete="off">
     <label class="field">Link
       <span class="pub-slug"><span class="pub-prefix">openconstructor.pw/p/</span><input id="pubSlug" maxlength="48" spellcheck="false" required></span>
@@ -75,6 +75,7 @@ modal.innerHTML = `<div class="modal-card pub-card" role="dialog" aria-labelledb
   </div>
   <div class="pub-list-head"><span>your published pages</span><span class="pub-count" id="pubCount"></span></div>
   <ul class="pub-list" id="pubList"><li class="pub-empty">loading…</li></ul>
+  <div class="pub-subs hidden" id="pubSubs"></div>
 </div>`;
 document.body.append(modal);
 
@@ -209,24 +210,56 @@ $('#pubEmbedCopy').onclick = async () => {
 };
 $('#pubOpen').onclick = () => window.open(lastUrl, '_blank', 'noopener');
 
+// ── your published pages: visibility, on/off, views, form messages, delete ──
+let pages = [];
+let canManage = true; // false until supabase/manage.sql has been run (no paused/views columns yet)
 async function loadList(){
   const list = $('#pubList');
   if (!me) { list.innerHTML = ''; return; }
-  const { data, error } = await supabase.from('pages').select('slug, title, updated_at').eq('owner', me.id).order('updated_at', { ascending: false });
-  if (error) { list.innerHTML = `<li class="pub-empty">couldn't load your pages: ${esc(error.message)}</li>`; return; }
-  $('#pubCount').textContent = data.length ? `${data.length} / 50` : '';
-  if (!data.length) { list.innerHTML = '<li class="pub-empty">nothing published yet.</li>'; return; }
-  list.innerHTML = data.map(p => `<li>
-    <div class="pub-item"><a href="${esc(pageUrl(p.slug))}" target="_blank" rel="noopener">/p/${esc(p.slug)}</a><span>${esc(p.title || '')} · ${esc(new Date(p.updated_at).toLocaleDateString())}</span></div>
+  let res = await supabase.from('pages').select('slug, title, updated_at, listed, paused, views').eq('owner', me.id).order('updated_at', { ascending: false });
+  canManage = !res.error;
+  if (res.error) res = await supabase.from('pages').select('slug, title, updated_at, listed').eq('owner', me.id).order('updated_at', { ascending: false });
+  if (res.error) { list.innerHTML = `<li class="pub-empty">couldn't load your pages: ${esc(res.error.message)}</li>`; return; }
+  pages = res.data || [];
+  $('#pubCount').textContent = pages.length ? `${pages.length} / 50` : '';
+  if (!pages.length) { list.innerHTML = '<li class="pub-empty">nothing published yet.</li>'; return; }
+  // messages per page (only rows the owner may read come back)
+  const counts = {};
+  if (canManage) {
+    const { data } = await supabase.from('form_submissions').select('slug').in('slug', pages.map(p => p.slug)).limit(5000);
+    for (const r of data || []) counts[r.slug] = (counts[r.slug] || 0) + 1;
+  }
+  list.innerHTML = pages.map(p => `<li class="${p.paused ? 'off' : ''}">
+    <div class="pub-item"><a href="${esc(pageUrl(p.slug))}" target="_blank" rel="noopener">/p/${esc(p.slug)}</a><span>${esc(p.title || '')} · ${esc(new Date(p.updated_at).toLocaleDateString())}</span>
+      <div class="pub-meta">
+        ${canManage ? `<span title="Views">👁 ${p.views ?? 0}</span>` : ''}
+        ${canManage ? `<button type="button" class="pub-chip" data-subs="${esc(p.slug)}" title="Messages sent through forms on this page">✉ ${counts[p.slug] || 0}</button>` : ''}
+        <button type="button" class="pub-chip${p.listed ? ' on' : ''}" data-listed="${esc(p.slug)}" title="Who can find it">${p.listed ? 'in gallery' : 'link only'}</button>
+        ${canManage ? `<button type="button" class="pub-chip${p.paused ? '' : ' on'}" data-paused="${esc(p.slug)}" title="Turn the page off without deleting it">${p.paused ? 'off' : 'on'}</button>` : ''}
+      </div>
+    </div>
     <button class="btn pub-use" type="button" data-use="${esc(p.slug)}" title="Publish this project to this link">use</button>
-    <button class="btn pub-del" type="button" data-del="${esc(p.slug)}">unpublish</button>
-  </li>`).join('');
+    <button class="btn pub-del" type="button" data-del="${esc(p.slug)}">delete</button>
+  </li>`).join('') + (canManage ? '' : `<li class="pub-empty">Views, form messages and turning pages off need one more database step: run supabase/manage.sql.</li>`);
+}
+async function setFlag(slug, field, value){
+  const { error } = await supabase.from('pages').update({ [field]: value }).eq('slug', slug).eq('owner', me.id);
+  if (error) { studio.status(`couldn't change the page: ${error.message}`, 'error'); return; }
+  const msg = field === 'listed' ? (value ? 'shown in the gallery' : 'now only people with the link can open it') : (value ? 'page turned off' : 'page turned on');
+  studio.status(`/p/${slug}: ${msg} · may take up to a minute`, 'ok');
+  loadList();
 }
 $('#pubList').addEventListener('click', async e => {
   const use = e.target.closest('[data-use]')?.dataset.use;
   if (use) { slugInput.value = use; check(); return; }
+  const l = e.target.closest('[data-listed]')?.dataset.listed;
+  if (l) { const p = pages.find(x => x.slug === l); return setFlag(l, 'listed', !p?.listed); }
+  const pz = e.target.closest('[data-paused]')?.dataset.paused;
+  if (pz) { const p = pages.find(x => x.slug === pz); return setFlag(pz, 'paused', !p?.paused); }
+  const sb = e.target.closest('[data-subs]')?.dataset.subs;
+  if (sb) return showSubs(sb);
   const slug = e.target.closest('[data-del]')?.dataset.del;
-  if (!slug || !confirm(`Unpublish openconstructor.pw/p/${slug}? The link will stop working.`)) return;
+  if (!slug || !confirm(`Delete openconstructor.pw/p/${slug}? The link will stop working and its form messages will be deleted too.`)) return;
   const { error } = await supabase.from('pages').delete().eq('slug', slug).eq('owner', me.id);
   if (error) { studio.status(`unpublish failed: ${error.message}`, 'error'); return; }
   forget(slug);
@@ -234,6 +267,43 @@ $('#pubList').addEventListener('click', async e => {
   if (lastUrl === pageUrl(slug)) hideResult();
   if (slugInput.value === slug) check();
   loadList();
+});
+
+// ── form messages of one page ──
+let subs = [], subsSlug = '';
+async function showSubs(slug){
+  subsSlug = slug;
+  const box = $('#pubSubs');
+  box.classList.remove('hidden'); $('#pubList').classList.add('hidden');
+  box.innerHTML = '<div class="pub-empty">loading…</div>';
+  const { data, error } = await supabase.from('form_submissions').select('id, data, created_at').eq('slug', slug).order('created_at', { ascending: false }).limit(500);
+  if (error) { box.innerHTML = `<div class="pub-empty">couldn't load messages: ${esc(error.message)}</div>`; return; }
+  subs = data || [];
+  renderSubs();
+}
+function renderSubs(){
+  const box = $('#pubSubs');
+  const rows = subs.map(r => `<li><div class="pub-sub-head"><span>${esc(new Date(r.created_at).toLocaleString())}</span><button type="button" class="btn icon" data-sub-del="${r.id}" title="Delete this message">×</button></div>
+    <dl>${Object.entries(r.data || {}).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc([].concat(v).join(', '))}</dd>`).join('')}</dl></li>`).join('');
+  box.innerHTML = `<div class="pub-list-head"><button type="button" class="btn" data-subs-back>← back</button><span>messages from /p/${esc(subsSlug)} · ${subs.length}</span>${subs.length ? '<button type="button" class="btn" data-subs-csv>⬇ CSV</button>' : ''}</div>
+    ${subs.length ? `<ul class="pub-sub-list">${rows}</ul>` : '<div class="pub-empty">No messages yet. When visitors send a form on this page, it shows up here.</div>'}`;
+}
+$('#pubSubs').addEventListener('click', async e => {
+  if (e.target.closest('[data-subs-back]')) { $('#pubSubs').classList.add('hidden'); $('#pubList').classList.remove('hidden'); loadList(); return; }
+  if (e.target.closest('[data-subs-csv]')) {
+    const keys = [...new Set(subs.flatMap(r => Object.keys(r.data || {})))];
+    const cell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const csv = [['date', ...keys].map(cell).join(','), ...subs.map(r => [r.created_at, ...keys.map(k => [].concat(r.data?.[k] ?? '').join(', '))].map(cell).join(','))].join('\r\n');
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })), download: `${subsSlug}-messages.csv` });
+    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    return;
+  }
+  const id = e.target.closest('[data-sub-del]')?.dataset.subDel;
+  if (id && confirm('Delete this message?')) {
+    const { error } = await supabase.from('form_submissions').delete().eq('id', id);
+    if (error) { studio.status(`couldn't delete: ${error.message}`, 'error'); return; }
+    subs = subs.filter(r => String(r.id) !== id); renderSubs();
+  }
 });
 
 // ── open ──
@@ -257,6 +327,7 @@ export async function openPublish(){
   const remembered = memory()[studio.name()];
   slugInput.value = remembered || slugify(studio.name());
   hideResult();
+  $('#pubSubs').classList.add('hidden'); $('#pubList').classList.remove('hidden');
   modal.classList.remove('hidden');
   setTimeout(() => slugInput.focus(), 50);
   check();
