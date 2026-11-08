@@ -22,9 +22,9 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 
 function badge(slug){
   const report = `${ISSUES}/new?title=${encodeURIComponent(`Report published page /p/${slug}`)}&body=${encodeURIComponent(`Page: ${HOME}/p/${slug}\nReason: `)}`;
-  const box = 'all:initial;position:fixed;right:12px;bottom:12px;z-index:2147483647;display:flex;align-items:center;gap:10px;padding:6px 10px;border:1px solid #3a302d;border-radius:6px;background:#121010ee;box-shadow:0 6px 24px #0008;font:12px/1.4 ui-monospace,Consolas,monospace;color:#cbc0bb';
-  const link = 'all:unset;cursor:pointer;color:#f2ece9;font:inherit';
-  const muted = 'all:unset;cursor:pointer;color:#948884;font:inherit;text-decoration:underline';
+  const box = 'all:initial;position:fixed;right:12px;bottom:12px;z-index:2147483647;display:flex;align-items:center;gap:10px;padding:6px 10px;border:1px solid #363636;border-radius:6px;background:#111111ee;box-shadow:0 6px 24px #0008;font:12px/1.4 ui-monospace,Consolas,monospace;color:#c4c4c4';
+  const link = 'all:unset;cursor:pointer;color:#f2f2f2;font:inherit';
+  const muted = 'all:unset;cursor:pointer;color:#8e8e8e;font:inherit;text-decoration:underline';
   return `\n<div data-oc-badge style="${box}"><a href="${HOME}" target="_blank" rel="noopener" style="${link}">Made with <b style="all:unset;color:#e8875c;font-weight:600">openconstructor</b></a><a href="${esc(report)}" target="_blank" rel="noopener" style="${muted}">report</a></div>\n`;
 }
 
@@ -67,8 +67,8 @@ function inject(html, slug, title, hash = ''){
 
 function notice(status, title, text, link = { href: HOME, label: 'open openconstructor' }){
   const body = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} · openconstructor</title>
-<style>:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:#0c0a09;color:#f2ece9;font:14px/1.6 "JetBrains Mono",Consolas,ui-monospace,monospace}
-main{max-width:440px;text-align:center}.code{font-size:56px;font-weight:700;color:#e8875c;letter-spacing:-.02em;margin:0}h1{font-size:15px;font-weight:600;margin:6px 0 4px;text-transform:uppercase;letter-spacing:.08em;color:#cbc0bb}p{color:#948884;margin:0 0 22px}
+<style>:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:#0a0a0a;color:#f2f2f2;font:14px/1.6 "JetBrains Mono",Consolas,ui-monospace,monospace}
+main{max-width:440px;text-align:center}.code{font-size:56px;font-weight:700;color:#e8875c;letter-spacing:-.02em;margin:0}h1{font-size:15px;font-weight:600;margin:6px 0 4px;text-transform:uppercase;letter-spacing:.08em;color:#c4c4c4}p{color:#8e8e8e;margin:0 0 22px}
 a{display:inline-block;padding:8px 16px;border-radius:4px;background:#e8875c;color:#1f0f08;font-weight:600;text-decoration:none}a:hover{background:#f0a27c}</style></head>
 <body><main><p class="code">${status}</p><h1>${esc(title)}</h1><p>${esc(text)}</p><a href="${esc(link.href)}">${esc(link.label)}</a></main></body></html>`;
   return new Response(body, { status, headers: { ...PAGE_HEADERS, 'Cache-Control': 'no-store' } });

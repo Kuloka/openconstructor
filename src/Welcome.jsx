@@ -128,7 +128,7 @@ export default function Welcome(){
       </header>
 
       <section className="wl-hero">
-        <div className="wl-badge"><span className="wl-dot" /><ShinyText text={tr("AI interface builder · public beta")} speed={3} color="#a89c97" shineColor="#ffc2a8" /></div>
+        <div className="wl-badge"><span className="wl-dot" /><ShinyText text={tr("AI interface builder · public beta")} speed={3} color="#a1a1a1" shineColor="#ffc2a8" /></div>
         <h1 className="wl-title">
           <BlurText text={tr("Build interfaces")} animateBy="words" direction="top" delay={140} className="wl-title-line" />
           <GradientText colors={['#e8875c', '#ffb08f', '#e8875c', '#b8633e']} animationSpeed={6} className="wl-title-grad">with words and blocks</GradientText>
