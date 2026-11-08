@@ -63,7 +63,12 @@ $('messages').addEventListener('click', e => {
 // "thinking" → "composing" when the answer arrives, and the real code is typed into a small window
 // while it's placed. At the end it folds into "thought for 7s" (click to see the steps again).
 // Returns end(): end() removes it (error), end.compose(name, code), end.answer(), end.finish().
-const GLYPH = ['·', '◦', '◇', '◈', '⬡', '⬢'].map(c => c + '︎');
+// "Thinking" glyph: an 8-bit spark built from little blocks, frame by frame (soft warm orange)
+const GLYPH = (() => {
+  const P1 = [[0, 1], [1, 0], [0, -1], [-1, 0]], P2 = [[0, 2], [2, 0], [0, -2], [-2, 0]], X1 = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
+  const px = (cells, lit) => '<svg viewBox="0 0 24 24">' + cells.map(([x, y]) => `<rect x="${10.2 + x * 4.4}" y="${10.2 + y * 4.4}" width="3.6" height="3.6" rx=".6" fill="${(!x && !y) || lit ? '#f5b48f' : '#e8875c'}"/>`).join('') + '</svg>';
+  return [px([[0, 0]]), px([[0, 0], ...P1]), px([[0, 0], ...X1]), px([[0, 0], ...P1, ...P2]), px([[0, 0], ...P2, ...X1]), px([[0, 0], ...P1, ...P2, ...X1], 1)];
+})();
 export function thinking({ ghost = false } = {}){
   const node = document.createElement('div');
   node.className = 'message assistant thinking';
@@ -100,10 +105,10 @@ export function thinking({ ghost = false } = {}){
   const plan = [[0, 'reading your request'], [700, 'thinking it through'], [3500, 'planning the layout'], [8000, 'choosing colors and type'], [14000, 'writing the code']];
   const timers = plan.map(([at, label]) => setTimeout(() => step(label), at));
   const clock = setInterval(() => { time.textContent = Math.floor((Date.now() - t0) / 1000) + 's'; }, 250);
-  // the glyph: a dot grows into the cube's hexagon and back, one frame every 250ms
+  // the glyph: the spark grows from one block and back, one frame every 400ms
   const glyph = node.querySelector('.th-glyph'), frames = GLYPH.length * 2 - 2;
-  let gi = 0; glyph.textContent = GLYPH[reduceMotion() ? GLYPH.length - 1 : 0];
-  const spin = reduceMotion() ? 0 : setInterval(() => { gi = (gi + 1) % frames; glyph.textContent = GLYPH[gi < GLYPH.length ? gi : frames - gi]; }, 250);
+  let gi = 0; glyph.innerHTML = GLYPH[reduceMotion() ? GLYPH.length - 1 : 0];
+  const spin = reduceMotion() ? 0 : setInterval(() => { gi = (gi + 1) % frames; glyph.innerHTML = GLYPH[gi < GLYPH.length ? gi : frames - gi]; }, 400);
   const stopWaiting = () => { timers.forEach(clearTimeout); };
 
   const end = () => { over = true; stopWaiting(); clearInterval(clock); clearInterval(spin); dropGhost(); node.remove(); };
