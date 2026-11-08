@@ -778,7 +778,11 @@ async function supabaseUser(env, token){
   return u?.id ? u : null;
 }
 // ---------- Page pictures: made in the editor at publish time (page-shot.js), kept in KV ----------
-// og:<slug>   1200×630 link preview   ·   shot:<slug>   whole page, 480px wide, for the gallery
+// Stored by content: ogc:<owner>:<hash> 1200×630 link preview · fullc:<owner>:<hash> whole page, 480px
+// wide, for the gallery · hasc:<owner>:<hash> marker. shothash:<slug> points a page at a hash (owner in
+// its metadata), so a rename or a re-publish of the same HTML reuses the pictures. Per account, not
+// global: otherwise anyone could upload fake pictures for the hash of someone else's HTML.
+// Older pages still have og:<slug> / shot:<slug>.
 // shothash:<slug>   hash of the page HTML the pictures were made from. The editor skips making new
 // pictures when it matches; /api/<kind>/<slug>/<hash> is cached forever (a new hash = a new address,
 // so link previews refresh too); /api/<kind>/<slug> answers 304 to a matching If-None-Match.
@@ -796,6 +800,18 @@ async function shotPut(request, env, slug){
   const row = r.ok ? (await r.json())[0] : null;
   if (!row || row.owner !== user.id) return fail(403, 'This is not your page.');
   let form; try { form = await request.formData(); } catch { return fail(400, 'Bad request.'); }
+  const at = Date.now(), sent = String(form.get('hash') || ''), own = user.id;
+  const point = async hash => {
+    await env.SYNC.put('shothash:' + slug, hash, { metadata: { o: own, at } });
+    // the page itself too: its og:image address carries the hash
+    await Promise.all([`${HOME}/api/og/${slug}`, `${HOME}/api/shot/${slug}`, `${HOME}/p/${slug}`].map(u => caches.default.delete(new Request(u)))).catch(() => {});
+    return hash;
+  };
+  // only a hash: reuse this account's pictures of the same HTML if they exist
+  if (!form.get('og')) {
+    if (!HASH_RE.test(sent) || !await env.SYNC.get(`hasc:${own}:${sent}`)) return fail(404, 'No pictures of this page yet.');
+    return json(200, { ok: true, hash: await point(sent), reused: true });
+  }
   const jpeg = async f => {
     if (!f || typeof f.arrayBuffer !== 'function' || f.size > SHOT_MAX) return null;
     const b = new Uint8Array(await f.arrayBuffer());
@@ -803,17 +819,17 @@ async function shotPut(request, env, slug){
   };
   const og = await jpeg(form.get('og')), full = await jpeg(form.get('full'));
   if (!og || !full) return fail(400, 'Send two JPEG pictures under 600 KB.');
-  const at = Date.now(), sent = String(form.get('hash') || '');
   const hash = HASH_RE.test(sent) ? sent : at.toString(16).padStart(16, '0').slice(-16);
-  await Promise.all([env.SYNC.put('og:' + slug, og, { metadata: { at, hash } }), env.SYNC.put('shot:' + slug, full, { metadata: { at, hash } }), env.SYNC.put('shothash:' + slug, hash)]);
-  // the page itself too: its og:image address carries the hash
-  await Promise.all([`${HOME}/api/og/${slug}`, `${HOME}/api/shot/${slug}`, `${HOME}/p/${slug}`].map(u => caches.default.delete(new Request(u)))).catch(() => {});
-  return json(200, { ok: true, hash });
+  await Promise.all([env.SYNC.put(`ogc:${own}:${hash}`, og), env.SYNC.put(`fullc:${own}:${hash}`, full)]);
+  await env.SYNC.put(`hasc:${own}:${hash}`, '1');
+  await Promise.all([env.SYNC.delete('og:' + slug), env.SYNC.delete('shot:' + slug)]).catch(() => {});
+  return json(200, { ok: true, hash: await point(hash) });
 }
-const shotHash = async (env, slug) => (env.SYNC && await env.SYNC.get('shothash:' + slug)) || '';
+const shotRef = async (env, slug) => { const r = env.SYNC ? await env.SYNC.getWithMetadata('shothash:' + slug) : null; return { hash: r?.value || '', owner: r?.metadata?.o || '' }; };
+const shotHash = async (env, slug) => (await shotRef(env, slug)).hash;
 async function shotGet(request, env, ctx, kind, slug, want = ''){
   if (!SLUG_RE.test(slug) || (want && !HASH_RE.test(want))) return fail(404, 'Unknown page.');
-  const cur = await shotHash(env, slug);
+  const { hash: cur, owner } = await shotRef(env, slug);
   const etag = cur ? `"${cur}"` : '';
   // the editor asks "is the picture for this HTML already there?" with HEAD; browsers revalidate with If-None-Match
   if (etag && (request.method === 'HEAD' || request.headers.get('If-None-Match') === etag)) {
@@ -824,7 +840,8 @@ async function shotGet(request, env, ctx, kind, slug, want = ''){
   const cache = caches.default, key = new Request(`${HOME}/api/${kind}/${slug}${want ? '/' + want : ''}`);
   let res = await cache.match(key);
   if (res) return res;
-  const bytes = env.SYNC ? await env.SYNC.get((kind === 'og' ? 'og:' : 'shot:') + slug, 'arrayBuffer') : null;
+  const bytes = !env.SYNC ? null : owner && cur ? await env.SYNC.get(`${kind === 'og' ? 'ogc' : 'fullc'}:${owner}:${cur}`, 'arrayBuffer')
+    : await env.SYNC.get((kind === 'og' ? 'og:' : 'shot:') + slug, 'arrayBuffer');
   if (!bytes) return kind === 'og' ? Response.redirect(`${HOME}/og.png`, 302) : fail(404, 'No picture yet.');
   res = new Response(bytes, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': want ? 'public, max-age=31536000, immutable' : 'public, max-age=300', ...(etag ? { ETag: etag } : {}), 'Access-Control-Allow-Origin': '*' } });
   ctx.waitUntil(cache.put(key, res.clone()));

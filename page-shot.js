@@ -2,11 +2,14 @@
 // - og:   1200×630 JPEG of the top of the page — the link preview in Telegram, X, Reddit, Slack…
 // - full: the whole page, 480px wide — the gallery card that scrolls on hover.
 // The page is laid out in a hidden, script-less iframe, then drawn through an SVG <foreignObject>.
-// Remote images and web fonts don't load there (they show as empty / fallback font) — fine for a preview.
+// An SVG image can't fetch anything, so web fonts (only the subsets the page's text uses) and remote
+// images are fetched first and inlined as data: URIs; whatever can't be fetched (no CORS, too slow)
+// falls back to a system font / empty box.
 const VW = 1440, MAX_H = 6000, FULL_W = 480;
 
 export async function pageShots(html){
   const doc = new DOMParser().parseFromString(html, 'text/html');
+  await inlineAssets(doc).catch(() => {});
   doc.querySelectorAll('script, noscript, iframe, object, embed, video, audio, link[rel="stylesheet"], link[rel="preload"]').forEach(n => n.remove());
   doc.querySelectorAll('[data-oc-badge]').forEach(n => n.remove());
   // the hidden-on-screen "reveal on scroll" state would leave sections invisible in a still picture
@@ -35,6 +38,36 @@ export async function pageShots(html){
   const ogH = Math.min(h, Math.round(VW * 630 / 1200));
   const [og, full] = await Promise.all([draw(1200, Math.round(ogH * 1200 / VW), ogH), draw(FULL_W, Math.round(h * FULL_W / VW), h)]);
   return { og, full, height: h };
+}
+
+const FONT_CSS = /^https:\/\/(fonts\.googleapis\.com|fonts\.bunny\.net|api\.fontshare\.com)\//;
+const BUDGET = 3_000_000; // bytes of fonts + images inlined into one picture
+const get = (url, ms = 4000) => fetch(url, { mode: 'cors', credentials: 'omit', signal: AbortSignal.timeout(ms) }).then(r => { if (!r.ok) throw Error(r.status); return r; });
+const dataUrl = blob => new Promise((ok, no) => { const f = new FileReader(); f.onload = () => ok(f.result); f.onerror = no; f.readAsDataURL(blob); });
+// does a "U+0000-00FF, U+0131" range cover any character the page shows?
+const covers = (range, chars) => range.split(',').some(part => {
+  const [a, b] = part.trim().replace(/^U\+/i, '').split('-'); if (a.includes('?')) return true;
+  const lo = parseInt(a, 16), hi = b ? parseInt(b, 16) : lo;
+  for (const c of chars) if (c >= lo && c <= hi) return true;
+  return false;
+});
+export async function inlineAssets(doc){
+  let spent = 0;
+  const chars = new Set([...(doc.body?.textContent || '') + 'abcdefghijklmnopqrstuvwxyz0123456789'].map(c => c.codePointAt(0)));
+  // web fonts: <link> stylesheets and @import from known font CDNs
+  const sheets = [...doc.querySelectorAll('link[rel="stylesheet"][href]')].map(l => l.getAttribute('href')).filter(h => FONT_CSS.test(h));
+  doc.querySelectorAll('style').forEach(st => { st.textContent = st.textContent.replace(/@import\s+url\(\s*['"]?([^'")]+)['"]?\s*\)[^;]*;/g, (m, u) => FONT_CSS.test(u) ? (sheets.push(u), '') : m); });
+  const faces = (await Promise.all(sheets.slice(0, 6).map(u => get(u).then(r => r.text()).catch(() => '')))).join('\n').match(/@font-face\s*\{[^}]*\}/g) || [];
+  const used = faces.filter(f => { const r = f.match(/unicode-range:\s*([^;}]+)/); return !r || covers(r[1], chars); }).slice(0, 40);
+  const css = await Promise.all(used.map(async face => {
+    const m = face.match(/url\(\s*['"]?(https:[^'")]+)['"]?\s*\)/); if (!m) return face;
+    try { const b = await (await get(m[1])).blob(); if ((spent += b.size) > BUDGET) return ''; return face.replace(m[0], `url(${await dataUrl(b)})`); } catch { return ''; }
+  }));
+  if (css.some(Boolean)) { const st = doc.createElement('style'); st.textContent = css.join('\n'); doc.head.prepend(st); }
+  // remote pictures
+  await Promise.all([...doc.querySelectorAll('img[src^="http"]')].slice(0, 24).map(async img => {
+    try { const b = await (await get(img.getAttribute('src'))).blob(); if (b.size > 900_000 || (spent += b.size) > BUDGET) return; img.setAttribute('src', await dataUrl(b)); img.removeAttribute('srcset'); img.removeAttribute('loading'); } catch {}
+  }));
 }
 
 // Lay the page out at desktop width (scripts off); read its height and background colour
@@ -72,6 +105,11 @@ export async function uploadShots(slug, html, token){
     const hash = await htmlHash(html);
     const head = await fetch('/api/shot/' + encodeURIComponent(slug), { method: 'HEAD', cache: 'no-store' }).catch(() => null);
     if (head?.ok && head.headers.get('ETag') === `"${hash}"`) return true;
+    // pictures are stored by content: if this account already has pictures of exactly this HTML
+    // (a renamed or re-published page), just point the page at them
+    const link = new FormData(); link.append('hash', hash);
+    const linked = await fetch('/api/shot/' + encodeURIComponent(slug), { method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: link }).catch(() => null);
+    if (linked?.ok) return true;
     const { og, full } = await pageShots(html);
     const body = new FormData();
     body.append('og', og, 'og.jpg'); body.append('full', full, 'full.jpg'); body.append('hash', hash);
