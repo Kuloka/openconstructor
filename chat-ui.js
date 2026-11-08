@@ -3,6 +3,7 @@
 import { t } from './i18n.js';
 import { MD_RE, md } from './markdown.js';
 import logoSvg from './src/logo.svg?raw';
+import { liveBuild } from './live-build.js';
 
 const $ = id => document.getElementById(id);
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -71,17 +72,22 @@ export function thinking({ ghost = false } = {}){
   const title = node.querySelector('.th-title'), list = node.querySelector('.th-steps'), time = node.querySelector('.th-time');
   const t0 = Date.now();
   let queue = Promise.resolve(), over = false, stepAt = t0;
-  // a shimmering placeholder over the canvas: something is being built there
-  let ghostEl = null;
+  // Building something: a small browser window in the chat where the page is drawn live as the code
+  // streams in (a blueprint until then), and a bigger one over the canvas (live-build.js)
+  const lb = ghost ? liveBuild() : null;
+  if (lb) list.after(lb.el);
+  let ghostEl = null, gb = null;
   const cv = $('canvas')?.getBoundingClientRect();
-  if (ghost && cv && cv.width > 200 && !reduceMotion()) {
+  if (ghost && cv && cv.width > 360 && cv.height > 260) {
     ghostEl = document.createElement('div'); ghostEl.className = 'th-ghost'; ghostEl.setAttribute('aria-hidden', 'true');
-    ghostEl.innerHTML = '<i class="g1"></i><i class="g2"></i><i class="g3"></i><span class="g-row"><i></i><i></i><i></i></span>';
+    gb = liveBuild({ big: true }); ghostEl.append(gb.el);
     ghostEl.style.left = cv.left + cv.width / 2 + 'px'; ghostEl.style.top = cv.top + cv.height / 2 + 'px';
+    ghostEl.style.width = Math.min(640, cv.width * .7) + 'px';
     document.body.append(ghostEl);
     $('canvasEmpty')?.style.setProperty('visibility', 'hidden');
   }
-  const dropGhost = () => { const g = ghostEl; ghostEl = null; if (!g) return; $('canvasEmpty')?.style.removeProperty('visibility'); g.classList.add('out'); setTimeout(() => g.remove(), 260); };
+  const dropGhost = () => { const g = ghostEl; ghostEl = null; if (!g) return; $('canvasEmpty')?.style.removeProperty('visibility'); g.classList.add('out'); setTimeout(() => { gb?.destroy(); g.remove(); }, 260); };
+  const build = code => { lb?.update(code); gb?.update(code); };
   // steps run one after another so each label finishes typing before the next starts
   const step = label => (queue = queue.then(() => {
     if (over) return;
@@ -110,13 +116,16 @@ export function thinking({ ghost = false } = {}){
     if (liveWhy.trim()) { const r = node.querySelector('.th-reason'); r.hidden = false; r.textContent = liveWhy.slice(-500); }
     const txt = liveText.replace(/<think>[\s\S]*?(<\/think>|$)/gi, '');
     if (/^\s*\{[^}]*"action"\s*:\s*"(reply|answer|chat)"/i.test(txt)) {
-      if (liveMode !== 'reply') { liveMode = 'reply'; retype(title, 'answering'); dropGhost(); step('writing the answer'); }
+      if (liveMode !== 'reply') { liveMode = 'reply'; retype(title, 'answering'); dropGhost(); if (lb) lb.el.hidden = true; step('writing the answer'); }
       const l = node.querySelector('.th-live'); l.hidden = false; l.textContent = txt.replace(/^\s*\{[^}]*\}\s*/, '').slice(-700);
     } else if (/```|<[a-z]/i.test(txt)) {
       if (liveMode !== 'code') { liveMode = 'code'; retype(title, 'composing'); ghostEl?.classList.add('build'); step('writing the code'); }
-      const pre = node.querySelector('.th-code'); pre.hidden = false;
       const at = txt.indexOf('```');
-      pre.firstChild.textContent = codeLines(at >= 0 ? txt.slice(txt.indexOf('\n', at) + 1) : txt).slice(-8).join('\n');
+      const code = at >= 0 ? txt.slice(txt.indexOf('\n', at) + 1) : txt.slice(Math.max(0, txt.search(/<[a-z]/i)));
+      const pre = node.querySelector('.th-code'); pre.hidden = false;
+      // with the live preview the code is just a 2-line ticker under it
+      pre.firstChild.textContent = codeLines(code).slice(lb ? -2 : -8).join('\n');
+      build(code);
     }
     toBottom();
   };
@@ -134,23 +143,26 @@ export function thinking({ ghost = false } = {}){
     setState('composing…', 'busy');
     step(`composing “${String(name || 'element').slice(0, 40)}”`);
     return (queue = queue.then(async () => {
-      if (over || streamed) return; // already shown live
+      if (over) return;
+      if (streamed) { lb?.done(code); gb?.done(code); return; } // already drawn live: show the finished page
       const pre = node.querySelector('.th-code'), out = pre.firstChild;
       pre.hidden = false;
       // for display only: one tag / CSS declaration per line, so compact code still "writes" line by line
       const lines = codeLines(code).slice(0, 600);
-      if (reduceMotion()) { out.textContent = lines.slice(-8).join('\n'); return; }
-      // ~1.3s: show a moving window over the last lines as the code "writes itself"
-      const per = Math.max(1, Math.ceil(lines.length / 45));
+      if (reduceMotion()) { out.textContent = lines.slice(-(lb ? 2 : 8)).join('\n'); lb?.done(code); gb?.done(code); return; }
+      // ~1.5s: the code "writes itself" and the preview draws along with it, section by section
+      const per = Math.max(1, Math.ceil(lines.length / 50)), src = String(code);
       for (let i = 0; i < lines.length && !over; i += per) {
-        out.textContent = lines.slice(Math.max(0, i + per - 8), i + per).join('\n');
+        out.textContent = lines.slice(Math.max(0, i + per - (lb ? 2 : 8)), i + per).join('\n');
+        build(src.slice(0, Math.round(src.length * Math.min(1, (i + per) / lines.length))));
         pre.scrollTop = pre.scrollHeight; toBottom();
-        await new Promise(r => setTimeout(r, 28));
+        await new Promise(r => setTimeout(r, 30));
       }
+      lb?.done(code); gb?.done(code);
     }));
   };
   end.step = label => { stopWaiting(); return step(label); };
-  end.answer = () => { stopWaiting(); dropGhost(); retype(title, 'answering'); return queue; };
+  end.answer = () => { stopWaiting(); dropGhost(); if (lb) lb.el.hidden = true; retype(title, 'answering'); return queue; };
   // Fold into a one-line summary that stays in the chat
   end.finish = (lastStep = 'done') => {
     stopWaiting();
