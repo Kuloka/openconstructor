@@ -949,6 +949,8 @@ export default {
   "Code from the email": "Код из письма",
   "continue": "продолжить",
   "send the email again": "отправить письмо ещё раз",
+  "show password": "показать пароль",
+  "hide password": "скрыть пароль",
   "← use password instead": "← войти с паролем",
   "Please confirm your email first: enter the code from our email, or click its link.": "Сначала подтвердите почту: введите код из нашего письма или нажмите ссылку в нём.",
   "This email already has an account. Sign in with your password, or get a sign-in code by email.": "Этот адрес уже зарегистрирован. Войдите с паролем или получите код для входа на почту.",

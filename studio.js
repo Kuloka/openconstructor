@@ -891,7 +891,7 @@ $('library').onclick = e => {
 /* ── Modals and code ─────────────────────────────────────── */
 function showModal(id){ $(id).classList.remove('hidden'); }
 document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => $(b.dataset.close).classList.add('hidden'));
-document.querySelectorAll('.modal').forEach(m => m.onclick = e => { if (e.target === m) m.classList.add('hidden'); });
+document.querySelectorAll('.modal:not(#authModal)').forEach(m => m.onclick = e => { if (e.target === m) m.classList.add('hidden'); });
 $('settingsButton').onclick = () => openSettings();
 function edit(id){ editing = id; const x = items.find(i => i.id === id); $('codeTitle').textContent = x ? 'element code' : 'add component'; $('codeName').value = x?.name || ''; $('codeInput').value = x?.code || ''; showModal('codeModal'); }
 $('addCode').onclick = () => edit(null);

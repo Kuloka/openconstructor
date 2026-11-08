@@ -27,7 +27,7 @@ modal.innerHTML = `<div class="modal-card auth-card">
   <div class="auth-or">or with email</div>
   <form id="authForm" class="auth-form">
     <label class="field">Email<input type="email" id="authEmail" placeholder="you@example.com" autocomplete="email" required></label>
-    <label class="field">Password<input type="password" id="authPass" placeholder="at least 8 characters" autocomplete="current-password" minlength="8"></label>
+    <label class="field">Password<span class="pass-wrap"><input type="password" id="authPass" placeholder="at least 8 characters" autocomplete="current-password" minlength="8"><button type="button" class="pass-eye" id="authEye" aria-label="show password" title="show password"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path class="eye-open" d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle class="eye-open" cx="12" cy="12" r="3"/><path class="eye-shut" d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4M6.6 6.6C3.9 8.4 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></button></span></label>
     <button class="btn primary block" type="submit" id="authSubmit">sign in</button>
     <button class="btn block auth-magic" type="button" id="authMagic">email me a sign-in code instead</button>
   </form>
@@ -41,8 +41,30 @@ modal.innerHTML = `<div class="modal-card auth-card">
   <p class="auth-legal">By continuing you agree to the <a href="/terms" target="_blank">terms of use</a> and the <a href="/privacy" target="_blank">privacy policy</a>.</p>
 </div>`;
 document.body.append(modal);
-modal.querySelector('[data-close]').onclick = () => modal.classList.add('hidden');
-modal.onclick = e => { if (e.target === modal) modal.classList.add('hidden'); };
+const card = modal.querySelector('.auth-card');
+// closes smoothly; a click outside doesn't throw away what was typed — the card just nudges
+function closeAuth(){
+  if (modal.classList.contains('hidden') || modal.classList.contains('closing')) return;
+  modal.classList.add('closing');
+  setTimeout(() => { modal.classList.add('hidden'); modal.classList.remove('closing'); }, 180);
+}
+modal.querySelector('[data-close]').onclick = closeAuth;
+modal.onclick = e => {
+  if (e.target !== modal) return;
+  const typed = $('authEmail').value || $('authPass').value || card.classList.contains('coding');
+  if (!typed) return closeAuth();
+  card.classList.remove('nudge'); void card.offsetWidth; card.classList.add('nudge');
+};
+card.addEventListener('animationend', () => card.classList.remove('nudge'));
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeAuth(); });
+$('authEye').onclick = () => {
+  const p = $('authPass'), show = p.type === 'password';
+  p.type = show ? 'text' : 'password';
+  $('authEye').classList.toggle('on', show);
+  $('authEye').setAttribute('aria-label', show ? 'hide password' : 'show password');
+  $('authEye').title = show ? 'hide password' : 'show password';
+  p.focus();
+};
 
 let mode = 'signin';
 function setMode(m){
@@ -55,7 +77,6 @@ function setMode(m){
   msg('');
 }
 // "code only": the password form and the other options step aside, only the big code field stays
-const card = modal.querySelector('.auth-card');
 function codeMode(on){
   card.classList.toggle('coding', on);
   $('authCodeForm')?.classList.toggle('hidden', !on);
@@ -120,7 +141,7 @@ $('authForm').onsubmit = async e => {
     return msg('This email already has an account. Sign in with your password, or get a sign-in code by email.', 'err');
   }
   if (mode === 'signup' && !data.session) { askCode(email, 'signup'); return msg(`Almost there — we sent a code to ${email}. Enter it below, or click the link in the email.`, 'ok'); }
-  modal.classList.add('hidden');
+  closeAuth();
 };
 $('authMagic').onclick = async () => {
   const email = $('authEmail').value.trim();
@@ -153,7 +174,7 @@ $('authCodeForm').onsubmit = async e => {
   busy(false);
   if (error) return msg(/expired|invalid/i.test(error.message) ? 'This code is wrong or expired — check it, or send the email again.' : errText(error), 'err');
   codeMode(false); codeFor = null;
-  modal.classList.add('hidden');
+  closeAuth();
 };
 $('authCode').oninput = e => { e.target.value = e.target.value.replace(/\D/g, ''); };
 $('authBack').onclick = () => { codeMode(false); codeFor = null; msg(''); setTimeout(() => $('authPass').focus(), 50); };

@@ -944,6 +944,8 @@ export default {
   "Code from the email": "E-postadaki kod",
   "continue": "devam",
   "send the email again": "e-postayı tekrar gönder",
+  "show password": "şifreyi göster",
+  "hide password": "şifreyi gizle",
   "← use password instead": "← şifreyle giriş yap",
   "Please confirm your email first: enter the code from our email, or click its link.": "Önce e-postanızı doğrulayın: e-postamızdaki kodu girin veya bağlantıya tıklayın.",
   "This email already has an account. Sign in with your password, or get a sign-in code by email.": "Bu e-postanın zaten bir hesabı var. Şifrenizle giriş yapın veya e-postayla giriş kodu alın.",

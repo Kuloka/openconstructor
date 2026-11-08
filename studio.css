@@ -373,6 +373,20 @@ body.resizing iframe { pointer-events: none; }
 .auth-form .field { margin: 10px 0; }
 .auth-form .btn { height: 34px; margin-top: 6px; }
 .auth-magic { background: transparent; border-style: dashed; }
+.pass-wrap { position: relative; display: block; }
+.pass-wrap input { width: 100%; padding-right: 38px; }
+.pass-eye { position: absolute; top: 50%; right: 4px; display: grid; place-items: center; width: 30px; height: 28px; margin-top: -14px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--subtle); }
+.pass-eye:hover { color: var(--text); }
+.pass-eye .eye-shut, .pass-eye.on .eye-open { display: none; }
+.pass-eye.on .eye-shut { display: inline; }
+#authModal.closing { animation: fade-out .18s ease-in forwards; }
+#authModal.closing .auth-card { animation: auth-out .18s ease-in forwards; }
+#authModal:not(.hidden):not(.closing) .auth-card { animation: auth-in .22s cubic-bezier(.2,.7,.2,1); }
+.auth-card.nudge { animation: auth-nudge .32s ease !important; }
+@keyframes fade-out { to { opacity: 0; } }
+@keyframes auth-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
+@keyframes auth-out { to { opacity: 0; transform: translateY(6px) scale(.98); } }
+@keyframes auth-nudge { 30% { transform: scale(1.02); } 60% { transform: scale(.995); } }
 .auth-card.coding .auth-tabs, .auth-card.coding .auth-oauth, .auth-card.coding .auth-or, .auth-card.coding #authForm { display: none; }
 .auth-card.coding { display: flex; flex-direction: column; }
 .auth-card.coding .auth-msg { order: 1; margin-top: 14px; }

@@ -946,6 +946,8 @@ export default {
   "Code from the email": "Code aus der E-Mail",
   "continue": "weiter",
   "send the email again": "E-Mail erneut senden",
+  "show password": "Passwort anzeigen",
+  "hide password": "Passwort verbergen",
   "← use password instead": "← mit Passwort anmelden",
   "Please confirm your email first: enter the code from our email, or click its link.": "Bitte bestätige zuerst deine E-Mail: gib den Code aus unserer E-Mail ein oder klicke auf den Link.",
   "This email already has an account. Sign in with your password, or get a sign-in code by email.": "Diese E-Mail hat bereits ein Konto. Melde dich mit deinem Passwort an oder hol dir einen Anmeldecode per E-Mail.",
