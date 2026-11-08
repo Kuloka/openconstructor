@@ -6,7 +6,7 @@
 .sync-steps span { color: var(--muted); font-size: 12px; line-height: 1.5; }
 .sync-steps i { font-style: normal; color: var(--text-2); }
 .sync-steps .btn { justify-self: start; }
-.sync-code { display: flex; align-items: center; gap: 8px; justify-self: start; padding: 6px 6px 6px 12px; border: 1px solid var(--accent); border-radius: 6px; background: #e4572e10; animation: sync-pop .3s cubic-bezier(.2,.7,.2,1); }
+.sync-code { display: flex; align-items: center; gap: 8px; justify-self: start; padding: 6px 6px 6px 12px; border: 1px solid var(--accent); border-radius: 6px; background: #b9a6ff10; animation: sync-pop .3s cubic-bezier(.2,.7,.2,1); }
 .sync-code code { color: var(--text); font-size: 18px; letter-spacing: .12em; user-select: all; }
 @keyframes sync-pop { from { opacity: 0; transform: scale(.96); } }
 .sync-hint { min-height: 18px; margin: 14px 0 0; color: var(--muted); font-size: 12px; }

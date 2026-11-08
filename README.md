@@ -1,4 +1,4 @@
-<p align="center"><img src="src/logo.svg" width="72" alt="openconstructor logo"></p>
+<p align="center"><a href="https://openconstructor.pw"><img src="public/og.png" alt="openconstructor — build interfaces with words and blocks"></a></p>
 
 <h1 align="center">openconstructor</h1>
 

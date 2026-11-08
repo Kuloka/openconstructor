@@ -109,7 +109,7 @@ export default function Welcome(){
   return (
     <div className={`wl${closing ? ' wl-out' : ''}`} ref={scroller} role="dialog" aria-label="Welcome to openconstructor">
       <div className="wl-aurora" aria-hidden="true">
-        <Aurora colorStops={['#7a1f0c', '#e4572e', '#3a1006']} amplitude={1.1} blend={0.65} speed={0.35} height={0.5} glow={0.6} />
+        <Aurora colorStops={['#3d3170', '#b9a6ff', '#17122e']} amplitude={1.1} blend={0.65} speed={0.35} height={0.5} glow={0.6} />
       </div>
 
       <header className="wl-nav">
@@ -126,10 +126,10 @@ export default function Welcome(){
       </header>
 
       <section className="wl-hero">
-        <div className="wl-badge"><span className="wl-dot" /><ShinyText text={tr("AI interface builder · public beta")} speed={3} color="#a89c97" shineColor="#ffc2a8" /></div>
+        <div className="wl-badge"><span className="wl-dot" /><ShinyText text={tr("AI interface builder · public beta")} speed={3} color="#a3a3ae" shineColor="#ffc2a8" /></div>
         <h1 className="wl-title">
           <BlurText text={tr("Build interfaces")} animateBy="words" direction="top" delay={140} className="wl-title-line" />
-          <GradientText colors={['#e4572e', '#ffb08f', '#e4572e', '#c2410c']} animationSpeed={6} className="wl-title-grad">with words and blocks</GradientText>
+          <GradientText colors={['#b9a6ff', '#e3d9ff', '#b9a6ff', '#8a74e6']} animationSpeed={6} className="wl-title-grad">with words and blocks</GradientText>
         </h1>
         <p className="wl-sub">A library of polished components, a free-form canvas and an AI assistant that lays out pages from a description. Export clean HTML and CSS.</p>
 
@@ -155,7 +155,7 @@ export default function Welcome(){
         <h2>From idea to layout in three steps</h2>
         <div className="wl-steps">
           {STEPS.map(s => (
-            <SpotlightCard key={s.n} className="wl-card" spotlightColor="rgba(228,87,46,0.2)">
+            <SpotlightCard key={s.n} className="wl-card" spotlightColor="rgba(185,166,255,0.2)">
               <div className="wl-step-top"><span className="wl-step-ic">{s.icon}</span><span className="wl-step-n">{s.n}</span></div>
               <h3>{s.title}</h3>
               <p>{s.text}</p>
@@ -171,7 +171,7 @@ export default function Welcome(){
         <div className="wl-templates">
           {templates.map(t => (
             <button key={t.id} className="wl-tpl" onClick={() => close(() => startNew(t.name).then(() => loadTemplate(t)))}>
-              <SpotlightCard className="wl-card wl-tpl-card" spotlightColor="rgba(228,87,46,0.18)">
+              <SpotlightCard className="wl-card wl-tpl-card" spotlightColor="rgba(185,166,255,0.18)">
                 <Thumb t={t} />
                 <div className="wl-tpl-info"><h3>{t.name}</h3><p>{t.desc}</p></div>
                 <span className="wl-tpl-open">Open →</span>

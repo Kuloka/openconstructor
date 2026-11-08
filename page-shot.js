@@ -11,7 +11,7 @@ export async function pageShots(html){
   doc.querySelectorAll('[data-oc-badge]').forEach(n => n.remove());
   // the hidden-on-screen "reveal on scroll" state would leave sections invisible in a still picture
   const still = doc.createElement('style');
-  still.textContent = '*,*::before,*::after{animation-play-state:paused!important;transition:none!important}.oc-reveal,[class*="reveal"]{opacity:1!important;transform:none!important;animation:none!important}';
+  still.textContent = '*,*::before,*::after{animation-play-state:paused!important;transition:none!important}[data-oc-motion],[data-oc-motion] *{animation:none!important}.oc-reveal,[class*="reveal"]{opacity:1!important;transform:none!important;animation:none!important}';
   doc.head.append(still);
   // inside the picture the "screen" is the whole page, so 100vh would stretch hero sections: pin vh to a 900px screen
   const vh = css => css.replace(/(\d*\.?\d+)(d|s|l)?vh\b/g, (_, n) => `${(+n * 9).toFixed(1)}px`);

@@ -1028,6 +1028,20 @@ $('export').onclick = () => {
 // Blocks fade/slide in as they scroll into view (page.reveal). Pure CSS; browsers without
 // scroll-driven animations simply show the blocks.
 const revealCss = () => page.reveal ? `<style>@supports (animation-timeline: view()){@media (prefers-reduced-motion: no-preference){.oc-page>div,.oc-stack>section,.oc-stack>div{animation:oc-reveal linear both;animation-timeline:view();animation-range:entry 0% cover 20%}@keyframes oc-reveal{from{opacity:0;transform:translateY(36px) scale(.985)}}}}</style>` : '';
+// Every AI-built page moves on scroll like the cinematic references: sections and cards rise in, pictures
+// zoom in. Zero-specificity selectors (:where) so any animation the model wrote itself still wins;
+// skipped when the page already has its own scroll animations.
+const MOTION_CSS = '<style>@supports (animation-timeline:view()){@media (prefers-reduced-motion:no-preference){'
+  + ':where([data-oc-motion]>:not(:first-child,header,nav,style,header+*)){animation:oc-rise linear both;animation-timeline:view();animation-range:entry 0% cover 30%}'
+  + ':where([data-oc-motion] :is(article,li,figure,[class*="card"]):not(header *,nav *)){animation:oc-rise2 linear both;animation-timeline:view();animation-range:entry 0% cover 25%}'
+  + ':where([data-oc-motion] :is(img,video):not(header *,nav *)){animation:oc-zoom linear both;animation-timeline:view();animation-range:entry 0% cover 40%}'
+  + '@keyframes oc-rise{from{opacity:0;transform:translateY(64px)}}@keyframes oc-rise2{from{opacity:0;transform:translateY(32px) scale(.97)}}@keyframes oc-zoom{from{opacity:.3;transform:scale(.88)}}}}</style>';
+function withMotion(code){
+  if (/animation-timeline|data-oc-motion/.test(code)) return code;
+  let done = false;
+  const out = code.replace(/^((?:\s*<style[\s\S]*?<\/style>)*\s*)<([a-z][\w-]*)/i, (_, pre, tag) => (done = true, pre + '<' + tag + ' data-oc-motion'));
+  return done ? MOTION_CSS + out : code;
+}
 function buildScreensHTML(list){
   const title = escapeHTML(nameEl.textContent.trim() || 'My interface');
   const css = [], html = [];
@@ -1606,6 +1620,7 @@ Rules:
   · a COMPLETE site of 7+ sections, not just a hero: header, hero with the 3D object, a big statement, products or a 3D showcase (CSS cube), numbered services 01–04, case studies, logo wall, call to action, footer;
   · in this style do NOT use photo: (stock photos break the mood) — case-study and product cards get dark cards with coloured radial-gradient light pools, CSS 3D objects or the art: picture instead;
   · lots of space (section padding 110px+), few words per block, everything respects prefers-reduced-motion.
+- Motion (EVERY website, landing or full page, any style): it must feel alive like an award-winning site — sections and cards rise in on scroll, pictures zoom from .88 to 1 as they enter, one big statement whose words light up one after another while scrolling, a logo wall as an endless marquee with mask fades, hover lift + soft glow on cards and buttons, a slow float on the hero visual. Pure CSS: scroll effects inside @supports (animation-timeline:view()){…} with animation-timeline:view() and animation-range:entry 0% cover 30%; everything wrapped so prefers-reduced-motion turns it off. The header and the hero are visible at once (no scroll reveal on them).
 - 3D: when the user asks for a 3D model, 3D asset, 3D object or 3D scene (or the Current element is a 3D scene), you CAN do it: use action "scene3d" and, instead of the html block, ONE \`\`\`json block with the scene. Shape:
 {"size":[520,400],"background":null,"environment":"studio|sunset|night","autoRotate":20,"floor":{"shadow":true},"camera":{"position":[3,2,4],"target":[0,0.6,0],"fov":40},"objects":[{"name":"seat","shape":"box","size":[1,0.12,1],"rounded":0.04,"position":[0,0.5,0],"rotation":[0,0,0],"color":"#c2410c","metalness":0,"roughness":0.6,"children":[]}]}
 shapes: box (size [w,h,d], rounded), sphere (radius), cylinder (radius or radiusTop/radiusBottom, height, sides), cone (radius, height), torus (radius, tube, arc°), capsule (radius, length), plane (size [w,h]), icosahedron/dodecahedron/octahedron/tetrahedron (radius, detail), ring (inner, outer), lathe (points [[r,y],…] profile — vases, cups, bottles), extrude (points [[x,y],…] outline + depth, bevel — swords, stars, logos), group (children only).
@@ -1717,6 +1732,7 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
       result.code = await resolveMedia(result.code, custom.attachments || [], qs => stop.step('finding photos: ' + qs.slice(0, 4).join(', ') + (qs.length > 4 ? '…' : '')), kept, qs => stop.step('drawing 3D art: ' + qs.map(q => q.slice(0, 40)).join(' · ')));
       artHue = 220;
       result.code = await fixContrast(withBrand(result.code), full);
+      if (full) result.code = withMotion(result.code);
     }
     if (result.action !== 'update' && target && !target.scene && !custom.place && isRewriteOf(target.code, result.code)) result.action = 'update';
     if (result.action === 'update' && target) {
