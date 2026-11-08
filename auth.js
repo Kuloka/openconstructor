@@ -32,9 +32,10 @@ modal.innerHTML = `<div class="modal-card auth-card">
     <button class="btn block auth-magic" type="button" id="authMagic">email me a sign-in code instead</button>
   </form>
   <form id="authCodeForm" class="auth-form hidden" autocomplete="off">
-    <label class="field">Code from the email<input id="authCode" inputmode="numeric" pattern="[0-9]{6,10}" maxlength="10" placeholder="123456" autocomplete="one-time-code" required></label>
+    <label class="field auth-code-field">Code from the email<input id="authCode" inputmode="numeric" pattern="[0-9]{6,10}" maxlength="10" placeholder="••••••" autocomplete="one-time-code" required></label>
     <button class="btn primary block" type="submit">continue</button>
     <button class="btn block" type="button" id="authResend">send the email again</button>
+    <button class="btn block auth-back" type="button" id="authBack">← use password instead</button>
   </form>
   <p class="auth-msg" id="authMsg"></p>
   <p class="auth-legal">By continuing you agree to the <a href="/terms" target="_blank">terms of use</a> and the <a href="/privacy" target="_blank">privacy policy</a>.</p>
@@ -50,8 +51,14 @@ function setMode(m){
   $('authTitle').textContent = m === 'signin' ? 'sign in' : 'create account';
   $('authSubmit').textContent = m === 'signin' ? 'sign in' : 'create account';
   $('authPass').autocomplete = m === 'signin' ? 'current-password' : 'new-password';
-  $('authCodeForm')?.classList.add('hidden');
+  codeMode(false);
   msg('');
+}
+// "code only": the password form and the other options step aside, only the big code field stays
+const card = modal.querySelector('.auth-card');
+function codeMode(on){
+  card.classList.toggle('coding', on);
+  $('authCodeForm')?.classList.toggle('hidden', !on);
 }
 modal.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => setMode(b.dataset.mode));
 const msg = (text, kind = '') => { const el = $('authMsg'); el.textContent = text; el.className = 'auth-msg ' + kind; };
@@ -131,7 +138,7 @@ $('authMagic').onclick = async () => {
 let codeFor = null;
 function askCode(email, type){
   codeFor = { email, type };
-  $('authCodeForm').classList.remove('hidden');
+  codeMode(true);
   $('authCode').value = '';
   setTimeout(() => $('authCode').focus(), 50);
 }
@@ -145,9 +152,11 @@ $('authCodeForm').onsubmit = async e => {
   if (error) ({ error } = await supabase.auth.verifyOtp({ email: codeFor.email, token, type: codeFor.type === 'signup' ? 'email' : 'signup' }));
   busy(false);
   if (error) return msg(/expired|invalid/i.test(error.message) ? 'This code is wrong or expired — check it, or send the email again.' : errText(error), 'err');
-  $('authCodeForm').classList.add('hidden'); codeFor = null;
+  codeMode(false); codeFor = null;
   modal.classList.add('hidden');
 };
+$('authCode').oninput = e => { e.target.value = e.target.value.replace(/\D/g, ''); };
+$('authBack').onclick = () => { codeMode(false); codeFor = null; msg(''); setTimeout(() => $('authPass').focus(), 50); };
 $('authResend').onclick = async () => {
   if (!codeFor) return;
   busy(true);

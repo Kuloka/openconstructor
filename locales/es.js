@@ -946,6 +946,7 @@ export default {
   "Code from the email": "Código del correo",
   "continue": "continuar",
   "send the email again": "enviar el correo otra vez",
+  "← use password instead": "← entrar con contraseña",
   "Please confirm your email first: enter the code from our email, or click its link.": "Primero confirma tu correo: introduce el código de nuestro correo o pulsa su enlace.",
   "This email already has an account. Sign in with your password, or get a sign-in code by email.": "Este correo ya tiene una cuenta. Entra con tu contraseña o recibe un código de acceso por correo.",
   "Almost there — we sent a code to {0}. Enter it below, or click the link in the email.": "Casi listo — enviamos un código a {0}. Escríbelo abajo o pulsa el enlace del correo.",
