@@ -915,4 +915,6 @@ export default {
   "picture added · Ctrl+Z after closing the editor to undo": "görsel eklendi · geri almak için düzenleyiciyi kapatıp Ctrl+Z",
   "editing ended before the picture was ready": "görsel hazır olmadan düzenleme bitti",
   "Sign in to generate images with the free AI.": "Ücretsiz yapay zekâ ile görsel üretmek için giriş yap.",
+  "Cinematic & 3D": "Sinematik ve 3D",
+  "drawing 3D art: {0}": "3D görsel çiziliyor: {0}",
 };

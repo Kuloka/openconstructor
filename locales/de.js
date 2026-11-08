@@ -917,4 +917,6 @@ export default {
   "picture added · Ctrl+Z after closing the editor to undo": "Bild hinzugefügt · Strg+Z nach dem Schließen des Editors macht es rückgängig",
   "editing ended before the picture was ready": "die Bearbeitung endete, bevor das Bild fertig war",
   "Sign in to generate images with the free AI.": "Melde dich an, um mit der kostenlosen KI Bilder zu erzeugen.",
+  "Cinematic & 3D": "Kino & 3D",
+  "drawing 3D art: {0}": "zeichne 3D-Grafik: {0}",
 };

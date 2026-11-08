@@ -2,6 +2,7 @@
 // `icon` is the inner markup of a 24×24 stroke SVG.
 export const CATEGORIES = [
   { id: 'AI & Chat', icon: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>' },
+  { id: 'Cinematic & 3D', icon: '<path d="m12 2 9 5v10l-9 5-9-5V7z"/><path d="m3 7 9 5 9-5M12 12v10"/>' },
   { id: 'Game UI', icon: '<path d="M6 11h4M8 9v4"/><path d="M15 12h.01M18 10h.01"/><path d="M17.3 5H6.7a4 4 0 0 0-3.9 3.2l-1 5.2A3 3 0 0 0 6.6 16l2-2h6.8l2 2a3 3 0 0 0 4.8-2.6l-1-5.2A4 4 0 0 0 17.3 5z"/>' },
   { id: 'Buttons', icon: '<rect x="3" y="8" width="18" height="8" rx="4"/>' },
   { id: 'Forms & Inputs', icon: '<rect x="3" y="5" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="11" height="5" rx="1.5"/>' },

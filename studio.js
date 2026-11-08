@@ -8,7 +8,7 @@ import {CATEGORIES} from './categories.js';
 import { TARGETS } from './export-targets.js'; // the converters themselves (exporters.js) load on first export
 import { PRESETS as BG_PRESETS, DEFAULT_SPEC as BG_DEFAULT, toCSS as bgCSS, luminance as bgLum, mountBackgroundEditor } from './background.js';
 import logoSvg from './src/logo.svg?raw';
-import { parseScene, parseAnswer } from './ai-parse.js';
+import { parseScene, parseAnswer, firstJSON, looseJSON } from './ai-parse.js';
 import { MD_RE, md } from './markdown.js';
 import { initChatUI, toBottom, typeText, retype, message, thinking } from './chat-ui.js';
 import { fixContrast as fixContrastIn } from './contrast.js';
@@ -1384,9 +1384,15 @@ nameEl.addEventListener('blur', () => {
 /* ── Photos and attachments in AI answers ──
    The model writes src="photo:latte art" / url('photo:cozy cafe?portrait') for stock photos and
    src="attachment:1" for the user's attached images; here they become data: URLs (frames and exports
-   can't load anything from the network). Photos come from /api/photo (worker.js). */
+   can't load anything from the network). Photos come from /api/photo (worker.js).
+   src="art:neon cube over dark terrain, 3d render" is a picture DRAWN by the free FLUX model (/api/image) —
+   cinematic / 3D heroes. At most 2 per answer; signed out or out of quota → a dark neon-glow picture. */
 // only inside attribute values / url(): visible text like "photo: by Anna" stays untouched
-const MEDIA_RE = /(?<=["'(]\s*)(photo|attachment|kept):([^"'()<>\n]{1,80})/g;
+const MEDIA_RE = /(?<=["'(]\s*)(photo|attachment|kept|art):([^"'()<>\n]{1,240})/g;
+const ART_MAX = 2;
+// in the page's accent hue (cinematic sites set artHue while their media is resolved)
+let artHue = 220;
+const artPlaceholder = (h = 220) => 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 90" preserveAspectRatio="xMidYMid slice"><defs><radialGradient id="a" cx=".62" cy=".42" r=".5"><stop stop-color="hsl(${h},100%,62%)" stop-opacity=".75"/><stop offset="1" stop-color="hsl(${h},100%,62%)" stop-opacity="0"/></radialGradient><radialGradient id="b" cx=".25" cy=".8" r=".45"><stop stop-color="hsl(${(h + 45) % 360},100%,60%)" stop-opacity=".5"/><stop offset="1" stop-color="hsl(${(h + 45) % 360},100%,60%)" stop-opacity="0"/></radialGradient></defs><rect width="160" height="90" fill="#04060d"/><rect width="160" height="90" fill="url(#b)"/><rect width="160" height="90" fill="url(#a)"/></svg>`).replace(/'/g, '%27').replace(/\(/g, '%28').replace(/\)/g, '%29');
 const PLACEHOLDER = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 10"><defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="#3a2a24"/><stop offset="1" stop-color="#15110f"/></linearGradient></defs><rect width="16" height="10" fill="url(#g)"/></svg>').replace(/'/g, '%27').replace(/\(/g, '%28').replace(/\)/g, '%29');
 async function toDataURL(blob, max = 900, quality = .72){
   const bmp = await createImageBitmap(blob);
@@ -1406,13 +1412,30 @@ async function fetchPhoto(q, o, i){
   })().catch(e => { photoCache.delete(key); throw e; }));
   return photoCache.get(key);
 }
-// Replace every photo:/attachment: token. Repeats of one query get different photos (i = 0, 1, 2…).
+// art: a picture drawn by the free AI (needs an account; never opens the sign-in window by itself)
+const artCache = new Map();
+async function drawArt(q){
+  if (!artCache.has(q)) artCache.set(q, (async () => {
+    const { supabase } = await import('./auth.js');
+    const { data } = (await supabase?.auth.getSession()) || {};
+    if (!data?.session) throw Error('signed out');
+    const { aiImage } = await import('./ai-image.js');
+    return toDataURL(await aiImage(q), 1600, .8);
+  })().catch(e => { artCache.delete(q); throw e; }));
+  return artCache.get(q);
+}
+// Replace every photo:/attachment:/art: token. Repeats of one query get different photos (i = 0, 1, 2…).
 // kept:N = an image the element already had (sent to the model as a short token).
-async function resolveMedia(code, attachments = [], onPhotos, kept = []){
+async function resolveMedia(code, attachments = [], onPhotos, kept = [], onArt){
   const found = [...code.matchAll(MEDIA_RE)];
   if (!found.length) return code;
-  const seen = new Map(), jobs = [];
+  const seen = new Map(), jobs = [], arts = [];
   for (const m of found) {
+    if (m[1] === 'art') {
+      const q = m[2].trim().slice(0, 240);
+      if (arts.includes(q) || arts.length < ART_MAX) { if (!arts.includes(q)) arts.push(q); m.art = q; }
+      continue; // over the limit: the neon placeholder
+    }
     if (m[1] !== 'photo') continue;
     let [q, o = 'landscape'] = m[2].trim().split('?');
     q = q.trim().toLowerCase(); if (!['landscape', 'portrait', 'square'].includes(o)) o = 'landscape';
@@ -1421,13 +1444,18 @@ async function resolveMedia(code, attachments = [], onPhotos, kept = []){
     if (jobs.length < 12 && !jobs.some(j => j.q === q && j.o === o && j.i === m.job.i)) jobs.push(m.job);
   }
   if (jobs.length) onPhotos?.([...new Set(jobs.map(j => j.q))]);
-  const got = new Map();
-  await Promise.all(jobs.map(j => fetchPhoto(j.q, j.o, j.i).then(url => got.set(`${j.q}|${j.o}|${j.i}`, url), () => {})));
+  if (arts.length) (onArt || onPhotos)?.(arts);
+  const got = new Map(), drawn = new Map();
+  await Promise.all([
+    ...jobs.map(j => fetchPhoto(j.q, j.o, j.i).then(url => got.set(`${j.q}|${j.o}|${j.i}`, url), () => {})),
+    ...arts.map(q => drawArt(q).then(url => drawn.set(q, url), () => {})),
+  ]);
   let k = 0;
   return code.replace(MEDIA_RE, (all, kind, ref) => {
     const m = found[k++];
     if (kind === 'attachment') { const a = attachments.filter(x => x.url)[(parseInt(ref) || 1) - 1]; return a?.url || PLACEHOLDER; }
     if (kind === 'kept') return kept[(parseInt(ref) || 1) - 1] || PLACEHOLDER;
+    if (kind === 'art') return (m?.art && drawn.get(m.art)) || artPlaceholder(artHue);
     const j = m?.job; return (j && got.get(`${j.q}|${j.o}|${j.i}`)) || PLACEHOLDER;
   });
 }
@@ -1546,6 +1574,12 @@ async function runAI(request, custom = {}){
     asked.append(strip); toBottom();
   }
   const stop = thinking({ ghost: true });
+  // cinematic / 3D site requests get one finished section as a quality reference (the rules alone are too abstract for small models)
+  const cineRef = text => {
+    if (!/\b3d\b|3д|cinemat|кинемат|immersive|иммерсив|neon|неон|futur|футур|premium|премиум|luxury|люкс|award|awwwards/i.test(text) || /\b(model|object|asset|scene)\b|модел|объект|ассет|сцен/i.test(text)) return '';
+    const ref = presets.find(p => p.name === 'Neon square hero');
+    return ref ? '\n\nStyle reference — one finished section in the expected cinematic quality. Do NOT copy its texts or layout one-to-one — write every text in the language of the request, keep the 3D object clear of the headline; match its polish (glow, CSS 3D object, huge tight type, spacing) across the WHOLE page, and use an art: hero image:\n```html\n' + ref.code + '\n```' : '';
+  };
   const system = `You are openconstructor AI, you build interfaces. Answer in EXACTLY this format and nothing else:
 line 1 — a one-line JSON header WITHOUT the code: {"action":"add|update|reply","full":true|false,"name":"short element name","reply":"short reply to the user"}
 then, unless action is "reply", the HTML and CSS in ONE fenced block:
@@ -1562,6 +1596,16 @@ Rules:
 - Forms (contact, sign-up, newsletter, order): use a real <form> with a submit button and give every field a short name attribute (name="email", name="message") — on a published page the messages reach the page's author.
 - Self-contained HTML and CSS only: one <style> plus markup. No JavaScript, external links or fonts. Icons as inline SVG.
 - Real photos make pages feel finished: for websites, landing pages, heroes, product/menu cards, galleries, team and testimonials use photos — <img src="photo:2-4 English words" alt="…"> sized by CSS with object-fit:cover, or background-image:url('photo:2-4 English words'). Append ?portrait or ?square for tall or square slots (photo:barista portrait?portrait). Describe what should be in the picture (photo:latte art cup, photo:cozy cafe interior). Never write http image URLs. Small UI components (buttons, inputs, toggles) need no photos.${custom.attachNote || ''}
+- Cinematic / 3D websites: when the user asks for a 3D, immersive, cinematic, futuristic, neon, luxury or "premium/award-winning" website, page or landing, build HTML (NOT scene3d) in this style:
+  · near-black background (#03050a–#0a0a0f), light text; ONE neon accent (electric blue #4d8dff, violet, cyan or magenta) used for glow: box-shadow 0 0 20px/60px/140px in the accent, text-shadow, radial-gradient light pools behind objects;
+  · huge tight headlines: font-size clamp(44px,8vw,112px), line-height .95, letter-spacing -0.045em, weight 600, a second half of the sentence in a muted grey (Immersive experiences. <span>Lasting impressions.</span>); tiny uppercase labels above with letter-spacing .3em;
+  · 3D objects in pure CSS: a parent with perspective:900px, a child with transform-style:preserve-3d and rotateX/rotateY, slow infinite float/spin keyframes — glowing neon frames, cubes from 6 faces (translateZ = half size) with dotted radial-gradient "particles" or glass faces, perspective grid floors (rotateX(60deg) on a line grid);
+  · the hero background is a generated 3D render: <img src="art:…"> or background-image:url('art:…') with an English description ending in "cinematic 3d render, dark background, volumetric light" (art:glowing blue neon square floating above dark rocky terrain, cinematic 3d render, dark background, volumetric light). Use art: at most twice, only for big hero / showcase visuals; darken with a gradient overlay so the text stays readable;
+  · motion on scroll without JS: @supports (animation-timeline:view()){.x{animation:rise linear both;animation-timeline:view();animation-range:entry 0% cover 35%}} @keyframes rise{from{opacity:0;transform:translateY(60px)}} — also for media that scales from .8 to 1 and words that light up from #2a3040 to white; marquee logo walls with mask fades; thin 1px #ffffff1c dividers, numbered services 01–04, wide case-study cards;
+  · the hero MUST show a glowing CSS 3D object next to (not over) the headline — e.g. the neon frame from the reference (.stage with perspective + a rotated, glowing square + a light pool + a perspective ground);
+  · a COMPLETE site of 7+ sections, not just a hero: header, hero with the 3D object, a big statement, products or a 3D showcase (CSS cube), numbered services 01–04, case studies, logo wall, call to action, footer;
+  · in this style do NOT use photo: (stock photos break the mood) — case-study and product cards get dark cards with coloured radial-gradient light pools, CSS 3D objects or the art: picture instead;
+  · lots of space (section padding 110px+), few words per block, everything respects prefers-reduced-motion.
 - 3D: when the user asks for a 3D model, 3D asset, 3D object or 3D scene (or the Current element is a 3D scene), you CAN do it: use action "scene3d" and, instead of the html block, ONE \`\`\`json block with the scene. Shape:
 {"size":[520,400],"background":null,"environment":"studio|sunset|night","autoRotate":20,"floor":{"shadow":true},"camera":{"position":[3,2,4],"target":[0,0.6,0],"fov":40},"objects":[{"name":"seat","shape":"box","size":[1,0.12,1],"rounded":0.04,"position":[0,0.5,0],"rotation":[0,0,0],"color":"#c2410c","metalness":0,"roughness":0.6,"children":[]}]}
 shapes: box (size [w,h,d], rounded), sphere (radius), cylinder (radius or radiusTop/radiusBottom, height, sides), cone (radius, height), torus (radius, tube, arc°), capsule (radius, length), plane (size [w,h]), icosahedron/dodecahedron/octahedron/tetrahedron (radius, detail), ring (inner, outer), lathe (points [[r,y],…] profile — vases, cups, bottles), extrude (points [[x,y],…] outline + depth, bevel — swords, stars, logos), group (children only).
@@ -1574,7 +1618,7 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
   // photos already in the selected element travel as short kept:N tokens, not megabytes of base64
   const kept = [];
   const slim = code => String(code).replace(/data:image\/[\w.+-]+;base64,[A-Za-z0-9+/=]+/g, d => 'kept:' + kept.push(d));
-  const user = custom.user || ((recent ? 'Conversation so far (for context):\n' + recent + '\n\n' : '') + 'Current element' + (implicit ? ' (not selected — the page built last)' : ' (selected)') + ': ' + JSON.stringify(target ? (target.scene ? { name: target.name, type: '3D scene', scene: target.scene } : { name: target.name, code: slim(target.code) }) : null) + '\nOther elements: ' + JSON.stringify(items.map(x => ({ name: x.name }))) + (target && !custom.ask ? '\nIf the request changes, fixes or restyles anything in the Current element, answer with action "update" and the COMPLETE updated element. Use "add" only for a clearly separate new block.' : '') + '\nRequest: ' + (custom.ask || request) + (custom.extra || ''));
+  const user = custom.user || ((recent ? 'Conversation so far (for context):\n' + recent + '\n\n' : '') + 'Current element' + (implicit ? ' (not selected — the page built last)' : ' (selected)') + ': ' + JSON.stringify(target ? (target.scene ? { name: target.name, type: '3D scene', scene: target.scene } : { name: target.name, code: slim(target.code) }) : null) + '\nOther elements: ' + JSON.stringify(items.map(x => ({ name: x.name }))) + (target && !custom.ask ? '\nIf the request changes, fixes or restyles anything in the Current element, answer with action "update" and the COMPLETE updated element. Use "add" only for a clearly separate new block.' : '') + '\nRequest: ' + (custom.ask || request) + cineRef(custom.ask || request) + (custom.extra || ''));
   try {
     // One automatic retry when the answer can't be parsed (free models sometimes break the format);
     // a model that rejects images gets the request again without them.
@@ -1598,7 +1642,24 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
       }
     };
     let result, prepared = false;
-    if (variantsOn && !custom.user && !custom.ask && !custom.images?.length) {
+    // A new cinematic / 3D SITE: the page is assembled from the hand-made cinematic sections (cine-template.js);
+    // the model only writes the content as JSON — small free models can't reach that polish on their own.
+    const cineMode = !custom.user && !custom.ask && !custom.images?.length && (!target || implicit) && !!cineRef(request)
+      && /сайт|site|page|страниц|лендинг|landing|портфолио|portfolio|главн/i.test(request);
+    if (cineMode) {
+      stop.step('writing the content for a cinematic 3D site');
+      const { cinePage, cinePrompt } = await import('./cine-template.js');
+      let data = null;
+      for (let attempt = 0; attempt < 2 && !data; attempt++) {
+        stop.liveReset();
+        const content = await chat(p, key, m.id, cinePrompt(), (recent ? 'Conversation so far (for context):\n' + recent + '\n\n' : '') + 'Request: ' + request + (attempt ? '\n\nIMPORTANT: reply with ONLY the JSON object.' : ''), [], (piece, why) => stop.live(piece, why));
+        try { const j = firstJSON(String(content).replace(/<think>[\s\S]*?<\/think>/gi, '')); data = j && looseJSON(j.json); } catch { data = null; }
+        if (data && typeof data !== 'object') data = null;
+      }
+      if (!data) throw Error('The model answered in an unexpected format');
+      artHue = Number.isFinite(+data.hue) ? +data.hue : 220;
+      result = { action: 'add', full: true, name: String(data.brand || 'Cinematic site').slice(0, 60) + ' · 3D site', code: cinePage(data), reply: String(data.reply || '') };
+    } else if (variantsOn && !custom.user && !custom.ask && !custom.images?.length) {
       stop.step('making 3 different variants');
       const hints = [
         'VARIANT 1 of 3 — a clean, minimal take: generous whitespace, restrained palette.',
@@ -1625,6 +1686,7 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
       } else if (done.length) result = builds[0] || done[0];
       else throw settled[0].reason;
     } else result = await getResult();
+    if (cineMode && !result.reply) result.reply = 'Done — a cinematic 3D site is on the canvas. Select any part and ask the AI to change it.';
     if (!result.scene && (result.action === 'reply' || (!result.code && result.reply))) {
       await stop.answer(); await stop.finish('answered');
       setState('ready'); message(String(result.reply || '…'), 'assistant'); logChat('assistant', result.reply || '…'); $('prompt').value = ''; return;
@@ -1650,7 +1712,10 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
     await stop.compose(result.name, result.code);
     const full = result.full === true || result.full === 'true';
     if (!prepared) {
-      result.code = await resolveMedia(result.code, custom.attachments || [], qs => stop.step('finding photos: ' + qs.slice(0, 4).join(', ') + (qs.length > 4 ? '…' : '')), kept);
+      // cinematic pages: stock photos break the mood whatever the model was told → drawn art / neon light instead
+      if (cineRef(custom.ask || request)) result.code = result.code.replace(/(["'(]\s*)photo:([^"'()<>\n?]{1,80})(\?\w+)?/g, (_, q, what) => `${q}art:${what.trim()}, cinematic 3d render, dark background, volumetric neon light`);
+      result.code = await resolveMedia(result.code, custom.attachments || [], qs => stop.step('finding photos: ' + qs.slice(0, 4).join(', ') + (qs.length > 4 ? '…' : '')), kept, qs => stop.step('drawing 3D art: ' + qs.map(q => q.slice(0, 40)).join(' · ')));
+      artHue = 220;
       result.code = await fixContrast(withBrand(result.code), full);
     }
     if (result.action !== 'update' && target && !target.scene && !custom.place && isRewriteOf(target.code, result.code)) result.action = 'update';

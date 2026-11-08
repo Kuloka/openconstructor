@@ -920,4 +920,6 @@ export default {
   "picture added · Ctrl+Z after closing the editor to undo": "картинка добавлена · Ctrl+Z после закрытия редактора — отменить",
   "editing ended before the picture was ready": "редактирование закрылось раньше, чем картинка была готова",
   "Sign in to generate images with the free AI.": "Войдите, чтобы рисовать картинки бесплатным ИИ.",
+  "Cinematic & 3D": "Кино и 3D",
+  "drawing 3D art: {0}": "рисую 3D-арт: {0}",
 };

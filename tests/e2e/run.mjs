@@ -187,3 +187,19 @@ scenario('AI image in the inline editor fills the picked part', async (ed) => {
   assert.match(after.code, /data:image\/webp/);
   assert.equal(JSON.parse(globalThis.__img2).prompt, 'mountain lake at dawn');
 }, { connect: false, signedIn: true, routes: [{ match: u => /\/api\/image$/.test(u), handle: rq => { globalThis.__img2 = rq.postData; return { type: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64') }; } }] });
+
+// art: tokens are drawn by the free FLUX model (signed in); the cinematic request carries the style reference
+const PNG1 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+scenario('cinematic 3D site: built from the template, AI writes content, art drawn', async (ed, opts) => {
+  globalThis.__artPosts = [];
+  opts.reply = () => JSON.stringify({ brand: 'Nordlicht', hue: 30, titleA: 'Свет как материал.', titleB: 'Эмоции как результат.', heroArt: 'amber neon cube over dark sand dunes, cinematic 3d render', featureArt: 'glowing hall, cinematic 3d render', services: [['Идея', 'Концепция'], ['Сборка', 'Монтаж'], ['Контент', 'Видео'], ['Сервис', '24/7']], reply: 'Готово' });
+  await ed.ask('сделай кинематографичный 3D сайт для студии света'); await ed.idle();
+  await ed.until(`(JSON.parse(localStorage.getItem('form-canvas-v3') || '[]')[0]?.code || '').includes('data:image')`);
+  const [it] = await ed.items();
+  assert.equal(it.name, 'Nordlicht · 3D site');
+  assert.match(it.code, /Свет как материал\./);
+  assert.match(it.code, /class="ci-art" src="data:image\/(webp|jpeg|png)/);
+  assert.ok(!it.code.includes('#4d8dff'), 'accent hue applied');
+  assert.deepEqual(globalThis.__artPosts.map(p => JSON.parse(p).prompt).sort(), ['amber neon cube over dark sand dunes, cinematic 3d render', 'glowing hall, cinematic 3d render']);
+  assert.match(ed.posts[0], /CONTENT for a cinematic/);
+}, { signedIn: true, routes: [{ match: u => /\/api\/image$/.test(u), handle: rq => { globalThis.__artPosts.push(rq.postData); return { type: 'image/png', body: PNG1 }; } }] });
