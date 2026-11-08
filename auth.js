@@ -32,7 +32,7 @@ modal.innerHTML = `<div class="modal-card auth-card">
     <button class="btn block auth-magic" type="button" id="authMagic">email me a sign-in code instead</button>
   </form>
   <form id="authCodeForm" class="auth-form hidden" autocomplete="off">
-    <label class="field auth-code-field">Code from the email<input id="authCode" inputmode="numeric" pattern="[0-9]{6,10}" maxlength="10" placeholder="••••••••" autocomplete="one-time-code" required></label>
+    <label class="field auth-code-field">Code from the email<input id="authCode" inputmode="numeric" pattern="[0-9]{6,10}" maxlength="10" placeholder="••••••" autocomplete="one-time-code" required></label>
     <button class="btn primary block" type="submit">continue</button>
     <button class="btn block" type="button" id="authResend">send the email again</button>
     <button class="btn block auth-back" type="button" id="authBack">← use password instead</button>
