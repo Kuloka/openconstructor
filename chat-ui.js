@@ -112,7 +112,7 @@ export function thinking({ ghost = false } = {}){
   const spin = reduceMotion() ? 0 : setInterval(() => { gi = (gi + 1) % frames; glyph.innerHTML = GLYPH[gi < GLYPH.length ? gi : frames - gi]; }, 400);
   // the title keeps changing while it waits: thinking → vibing → coding…
   let wi = 0;
-  const words = reduceMotion() ? 0 : setInterval(() => { wi = (wi + 1) % MOODS.length; retype(title, MOODS[wi], { speed: 75, erase: 40 }); }, 3200);
+  const words = reduceMotion() ? 0 : setInterval(() => { wi = (wi + 1) % MOODS.length; retype(title, MOODS[wi], { speed: 120, erase: 70 }); }, 2200);
   const stopWaiting = () => { timers.forEach(clearTimeout); clearInterval(words); };
 
   const end = () => { over = true; stopWaiting(); clearInterval(clock); clearInterval(spin); dropGhost(); node.remove(); };
