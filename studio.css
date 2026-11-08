@@ -373,8 +373,8 @@ body.resizing iframe { pointer-events: none; }
 .auth-form .field { margin: 10px 0; }
 .auth-form .btn { height: 34px; margin-top: 6px; }
 .auth-magic { background: transparent; border-style: dashed; }
-.auth-x { width: 30px; height: 30px; display: grid; place-items: center; }
-.auth-x svg { width: 80%; height: 80%; stroke-width: 2.4; }
+.btn.icon.auth-x { box-sizing: border-box; width: 30px; height: 30px; min-width: 30px; min-height: 30px; aspect-ratio: 1; padding: 0; display: grid; place-items: center; line-height: 0; }
+.auth-x svg { display: block; width: 62.5%; height: 62.5%; overflow: visible; stroke-width: 2.2; }
 .pass-wrap { position: relative; display: block; }
 .pass-wrap input { width: 100%; padding-right: 38px; }
 .pass-eye { position: absolute; top: 50%; right: 4px; display: grid; place-items: center; width: 30px; height: 28px; margin-top: -14px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--subtle); }
