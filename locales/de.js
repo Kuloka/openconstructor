@@ -231,6 +231,8 @@ export default {
   'tinkering': 'tüftle',
   'assembling': 'setze zusammen',
   'polishing': 'poliere',
+  'brewing': 'braue',
+  'crafting': 'werkle',
   'answering': 'antworte',
   'ai is thinking…': 'KI denkt nach…',
   'reading your request': 'lese deine Anfrage',

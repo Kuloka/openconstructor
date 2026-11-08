@@ -234,6 +234,8 @@ export default {
   'tinkering': 'мастерю',
   'assembling': 'складываю',
   'polishing': 'шлифую',
+  'brewing': 'варю',
+  'crafting': 'творю',
   'answering': 'отвечаю',
   'ai is thinking…': 'ии думает…',
   'reading your request': 'читаю запрос',

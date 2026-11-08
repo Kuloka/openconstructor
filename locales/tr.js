@@ -229,6 +229,8 @@ export default {
   'tinkering': 'kurcalıyor',
   'assembling': 'birleştiriyor',
   'polishing': 'cilalıyor',
+  'brewing': 'demliyor',
+  'crafting': 'üretiyor',
   'answering': 'yanıtlıyor',
   'ai is thinking…': 'yapay zekâ düşünüyor…',
   'reading your request': 'isteğin okunuyor',

@@ -231,6 +231,8 @@ export default {
   'tinkering': 'trasteando',
   'assembling': 'ensamblando',
   'polishing': 'puliendo',
+  'brewing': 'cocinando',
+  'crafting': 'creando',
   'answering': 'respondiendo',
   'ai is thinking…': 'la ia está pensando…',
   'reading your request': 'leyendo tu petición',
