@@ -29,7 +29,12 @@ modal.innerHTML = `<div class="modal-card auth-card">
     <label class="field">Email<input type="email" id="authEmail" placeholder="you@example.com" autocomplete="email" required></label>
     <label class="field">Password<input type="password" id="authPass" placeholder="at least 8 characters" autocomplete="current-password" minlength="8"></label>
     <button class="btn primary block" type="submit" id="authSubmit">sign in</button>
-    <button class="btn block auth-magic" type="button" id="authMagic">email me a sign-in link instead</button>
+    <button class="btn block auth-magic" type="button" id="authMagic">email me a sign-in code instead</button>
+  </form>
+  <form id="authCodeForm" class="auth-form hidden" autocomplete="off">
+    <label class="field">Code from the email<input id="authCode" inputmode="numeric" pattern="[0-9]{6,10}" maxlength="10" placeholder="123456" autocomplete="one-time-code" required></label>
+    <button class="btn primary block" type="submit">continue</button>
+    <button class="btn block" type="button" id="authResend">send the email again</button>
   </form>
   <p class="auth-msg" id="authMsg"></p>
   <p class="auth-legal">By continuing you agree to the <a href="/terms" target="_blank">terms of use</a> and the <a href="/privacy" target="_blank">privacy policy</a>.</p>
@@ -45,6 +50,7 @@ function setMode(m){
   $('authTitle').textContent = m === 'signin' ? 'sign in' : 'create account';
   $('authSubmit').textContent = m === 'signin' ? 'sign in' : 'create account';
   $('authPass').autocomplete = m === 'signin' ? 'current-password' : 'new-password';
+  $('authCodeForm')?.classList.add('hidden');
   msg('');
 }
 modal.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => setMode(b.dataset.mode));
@@ -96,8 +102,17 @@ $('authForm').onsubmit = async e => {
     ? await supabase.auth.signInWithPassword({ email, password })
     : await supabase.auth.signUp({ email, password, options: { emailRedirectTo: back() } });
   busy(false);
-  if (error) return msg(errText(error), 'err');
-  if (mode === 'signup' && !data.session) return msg('Almost there — check your inbox and confirm your email.', 'ok');
+  if (error) {
+    if (error.message === 'Email not confirmed') { askCode(email, 'signup'); return msg('Please confirm your email first: enter the code from our email, or click its link.', 'err'); }
+    return msg(errText(error), 'err');
+  }
+  // Supabase answers a sign-up for an existing address with a user that has no identities and sends
+  // no email (so nobody can probe which addresses are registered) — tell the person what to do instead
+  if (mode === 'signup' && data.user && Array.isArray(data.user.identities) && !data.user.identities.length) {
+    setMode('signin');
+    return msg('This email already has an account. Sign in with your password, or get a sign-in code by email.', 'err');
+  }
+  if (mode === 'signup' && !data.session) { askCode(email, 'signup'); return msg(`Almost there — we sent a code to ${email}. Enter it below, or click the link in the email.`, 'ok'); }
   modal.classList.add('hidden');
 };
 $('authMagic').onclick = async () => {
@@ -106,7 +121,41 @@ $('authMagic').onclick = async () => {
   busy(true);
   const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: back() } });
   busy(false);
-  msg(error ? errText(error) : 'Sign-in link sent to ' + email, error ? 'err' : 'ok');
+  if (error) return msg(errText(error), 'err');
+  askCode(email, 'email');
+  msg(`We sent a code to ${email}. Enter it below, or click the link in the email. Not there? Check the spam folder.`, 'ok');
+};
+
+// One-time code from the email (works on any device, unlike the link). type: 'signup' confirms a new
+// account, 'email' signs in an existing one.
+let codeFor = null;
+function askCode(email, type){
+  codeFor = { email, type };
+  $('authCodeForm').classList.remove('hidden');
+  $('authCode').value = '';
+  setTimeout(() => $('authCode').focus(), 50);
+}
+$('authCodeForm').onsubmit = async e => {
+  e.preventDefault();
+  if (!codeFor) return;
+  const token = $('authCode').value.replace(/\D/g, '');
+  busy(true);
+  let { error } = await supabase.auth.verifyOtp({ email: codeFor.email, token, type: codeFor.type });
+  // a code from a sign-in email works for an unconfirmed account too, and the other way round
+  if (error) ({ error } = await supabase.auth.verifyOtp({ email: codeFor.email, token, type: codeFor.type === 'signup' ? 'email' : 'signup' }));
+  busy(false);
+  if (error) return msg(/expired|invalid/i.test(error.message) ? 'This code is wrong or expired — check it, or send the email again.' : errText(error), 'err');
+  $('authCodeForm').classList.add('hidden'); codeFor = null;
+  modal.classList.add('hidden');
+};
+$('authResend').onclick = async () => {
+  if (!codeFor) return;
+  busy(true);
+  const { error } = codeFor.type === 'signup'
+    ? await supabase.auth.resend({ type: 'signup', email: codeFor.email, options: { emailRedirectTo: back() } })
+    : await supabase.auth.signInWithOtp({ email: codeFor.email, options: { emailRedirectTo: back() } });
+  busy(false);
+  msg(error ? errText(error) : `Sent again to ${codeFor.email}. It can take a minute; check the spam folder too.`, error ? 'err' : 'ok');
 };
 
 // ── Account button in the title bar ──
