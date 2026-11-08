@@ -355,6 +355,7 @@ const far = (a, b) => rgb(a).reduce((s, v, i) => s + Math.abs(v - rgb(b)[i]), 0)
 // cached for an hour; one lookup per visitor per second.
 const PRIVATE_HOST = /^(localhost|127\.|10\.|192\.168\.|169\.254\.|0\.|\[|.*\.local$|.*\.internal$)/i;
 const publicUrl = raw => {
+  if (/^[a-z][a-z0-9+.-]*:/i.test(raw) && !/^https?:\/\//i.test(raw)) return null; // file:, data:, ftp: …
   let u; try { u = new URL(/^https?:\/\//i.test(raw) ? raw : 'https://' + raw); } catch { return null; }
   if (!/^https?:$/.test(u.protocol) || PRIVATE_HOST.test(u.hostname) || /^172\.(1[6-9]|2\d|3[01])\./.test(u.hostname)) return null;
   return u;
