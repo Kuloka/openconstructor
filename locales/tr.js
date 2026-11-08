@@ -927,4 +927,9 @@ export default {
   "sign in for more": "devam etmek için giriş yapın",
   "share": "paylaş",
   "more…": "daha fazla…",
+  "AI": "YZ",
+  "canvas": "tuval",
+  "how it looks on a phone": "telefonda böyle görünüyor",
+  "Nothing here yet.": "Burada henüz bir şey yok.",
+  "describe a page to the AI": "yapay zekâya bir sayfa anlatın",
 };

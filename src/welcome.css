@@ -94,8 +94,11 @@
 .wl-foot { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; max-width: 1120px; margin: 104px auto 0; padding: 20px 24px; border-top: 1px solid #2a2321; color: #645a56; font-size: 12px; }
 
 @media (max-width: 760px) {
-  .wl-nav nav { display: none; }
-  .wl-nav .wl-btn { margin-left: auto; }
+  .wl-nav { gap: 10px; padding: 14px 16px; }
+  .wl-nav nav, .wl-nav .wl-btn.ghost { display: none; }
+  .wl-nav .wl-lang { margin-left: auto; }
+  .wl-nav .wl-btn { padding-inline: 12px; white-space: nowrap; }
+  .wl-nav .wl-brand > span:not(.wl-logo) { display: none; }
   .wl-hero { padding-top: 40px; }
   .wl-prompt { flex-wrap: wrap; }
   .wl-prompt .wl-btn { width: 100%; }

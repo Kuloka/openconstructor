@@ -929,4 +929,9 @@ export default {
   "sign in for more": "anmelden, um weiterzumachen",
   "share": "teilen",
   "more…": "mehr…",
+  "AI": "KI",
+  "canvas": "Leinwand",
+  "how it looks on a phone": "so sieht es auf dem Handy aus",
+  "Nothing here yet.": "Hier ist noch nichts.",
+  "describe a page to the AI": "beschreibe der KI eine Seite",
 };

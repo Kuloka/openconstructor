@@ -929,4 +929,9 @@ export default {
   "sign in for more": "inicia sesión para seguir",
   "share": "compartir",
   "more…": "más…",
+  "AI": "IA",
+  "canvas": "lienzo",
+  "how it looks on a phone": "así se ve en un móvil",
+  "Nothing here yet.": "Aquí aún no hay nada.",
+  "describe a page to the AI": "describe una página a la IA",
 };

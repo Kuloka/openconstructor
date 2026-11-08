@@ -932,4 +932,9 @@ export default {
   "sign in for more": "войдите, чтобы продолжить",
   "share": "поделиться",
   "more…": "ещё…",
+  "AI": "ИИ",
+  "canvas": "холст",
+  "how it looks on a phone": "так страница выглядит на телефоне",
+  "Nothing here yet.": "Здесь пока пусто.",
+  "describe a page to the AI": "опишите страницу ИИ",
 };
