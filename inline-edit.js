@@ -279,7 +279,7 @@ function start(id, at){
   node.classList.add('editing'); canvas.classList.add('inline-editing');
   // helper outline lives outside #__root so it never gets saved
   const box = doc.createElement('div'); box.id = '__oc_pick';
-  box.style.cssText = 'position:fixed;display:none;pointer-events:none;outline:2px solid #e4572e;outline-offset:1px;border-radius:2px;z-index:2147483647;background:#e4572e10';
+  box.style.cssText = 'position:fixed;display:none;pointer-events:none;outline:2px solid #e8875c;outline-offset:1px;border-radius:2px;z-index:2147483647;background:#e8875c10';
   doc.body.append(box);
   root.contentEditable = 'true'; root.spellcheck = false; root.style.outline = 'none';
   session = { id, frame, doc, root, picked: null, dirty: false, before: root.innerHTML };

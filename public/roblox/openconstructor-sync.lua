@@ -150,7 +150,7 @@ local info = DockWidgetPluginGuiInfo.new(Enum.InitialDockState.Float, false, fal
 local widget = plugin:CreateDockWidgetPluginGui("openconstructorSync", info)
 widget.Title = "openconstructor sync"
 
-local ACCENT = Color3.fromRGB(228, 87, 46)
+local ACCENT = Color3.fromRGB(232, 135, 92)
 local BG = Color3.fromRGB(18, 16, 16)
 local FG = Color3.fromRGB(236, 230, 228)
 local MUTED = Color3.fromRGB(148, 136, 132)
