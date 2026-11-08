@@ -63,10 +63,11 @@ $('messages').addEventListener('click', e => {
 // "thinking" → "composing" when the answer arrives, and the real code is typed into a small window
 // while it's placed. At the end it folds into "thought for 7s" (click to see the steps again).
 // Returns end(): end() removes it (error), end.compose(name, code), end.answer(), end.finish().
+const GLYPH = ['·', '◦', '◇', '◈', '⬡', '⬢'].map(c => c + '︎');
 export function thinking({ ghost = false } = {}){
   const node = document.createElement('div');
   node.className = 'message assistant thinking';
-  node.innerHTML = `<button class="th-head" type="button" aria-expanded="true"><span class="oc-logo thinking-logo" aria-hidden="true">${logoSvg}</span><span class="th-title"></span><span class="th-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="th-time">0s</span></button><ol class="th-steps"></ol><div class="th-reason" hidden></div><div class="th-live" hidden></div><pre class="th-code" hidden><code></code></pre>`;
+  node.innerHTML = `<button class="th-head" type="button" aria-expanded="true"><span class="oc-logo thinking-logo" aria-hidden="true">${logoSvg}</span><span class="th-glyph" aria-hidden="true"></span><span class="th-title"></span><span class="th-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="th-time">0s</span></button><ol class="th-steps"></ol><div class="th-reason" hidden></div><div class="th-live" hidden></div><pre class="th-code" hidden><code></code></pre>`;
   $('messages').append(node); toBottom();
   const title = node.querySelector('.th-title'), list = node.querySelector('.th-steps'), time = node.querySelector('.th-time');
   const t0 = Date.now();
@@ -99,9 +100,13 @@ export function thinking({ ghost = false } = {}){
   const plan = [[0, 'reading your request'], [700, 'thinking it through'], [3500, 'planning the layout'], [8000, 'choosing colors and type'], [14000, 'writing the code']];
   const timers = plan.map(([at, label]) => setTimeout(() => step(label), at));
   const clock = setInterval(() => { time.textContent = Math.floor((Date.now() - t0) / 1000) + 's'; }, 250);
+  // the glyph: a dot grows into the cube's hexagon and back, one frame every 250ms
+  const glyph = node.querySelector('.th-glyph'), frames = GLYPH.length * 2 - 2;
+  let gi = 0; glyph.textContent = GLYPH[reduceMotion() ? GLYPH.length - 1 : 0];
+  const spin = reduceMotion() ? 0 : setInterval(() => { gi = (gi + 1) % frames; glyph.textContent = GLYPH[gi < GLYPH.length ? gi : frames - gi]; }, 250);
   const stopWaiting = () => { timers.forEach(clearTimeout); };
 
-  const end = () => { over = true; stopWaiting(); clearInterval(clock); dropGhost(); node.remove(); };
+  const end = () => { over = true; stopWaiting(); clearInterval(clock); clearInterval(spin); dropGhost(); node.remove(); };
   // Streaming: the model's reasoning and its answer show up live as they arrive
   const codeLines = code => String(code).replace(/>\s*</g, '>\n<').replace(/([;{}])(?=[^\n])/g, '$1\n').split('\n').map(l => l.trim()).filter(Boolean);
   let liveText = '', liveWhy = '', streamed = false, liveMode = '', liveRaf = 0;
@@ -157,7 +162,7 @@ export function thinking({ ghost = false } = {}){
     step(lastStep);
     return (queue = queue.then(() => {
       if (over) return;
-      over = true; clearInterval(clock); dropGhost();
+      over = true; clearInterval(clock); clearInterval(spin); dropGhost();
       list.querySelectorAll('li').forEach(li => li.className = 'done');
       const s = Math.max(1, Math.round((Date.now() - t0) / 1000));
       node.classList.add('folded');

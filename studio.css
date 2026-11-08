@@ -254,10 +254,9 @@ body.resizing iframe { pointer-events: none; }
 .th-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: default; }
 .message.thinking.folded .th-head, .message.thinking .th-head[aria-expanded] { cursor: pointer; }
 .th-title { color: var(--text-2); }
-.message.thinking:not(.folded) .th-title { background: linear-gradient(90deg, var(--muted) 0%, var(--text) 50%, var(--muted) 100%) 0 0 / 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: th-shine 1.6s linear infinite; }
-@keyframes th-shine { to { background-position: -200% 0; } }
+.message.thinking:not(.folded) .th-title { background: linear-gradient(90deg, var(--accent) 0%, var(--accent) 40%, #ffd2bf 50%, var(--accent) 60%, var(--accent) 100%) 0 0 / 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: th-shine 2.4s linear infinite; }
+@keyframes th-shine { from { background-position: 100% 0; } to { background-position: -150% 0; } }
 .th-time { margin-left: auto; color: var(--subtle); font-variant-numeric: tabular-nums; font-size: 11px; }
-.message.thinking.folded .thinking-logo * { animation: none; }
 .th-steps { display: grid; gap: 3px; margin: 0; padding: 0 0 0 2px; list-style: none; font-size: 12px; }
 .message.thinking.folded .th-steps { display: none; }
 .th-steps li { display: flex; align-items: center; gap: 8px; animation: msg-in .2s ease-out; }
@@ -273,23 +272,12 @@ body.resizing iframe { pointer-events: none; }
 .th-code { max-height: 132px; margin: 2px 0 0; padding: 8px 10px; overflow: hidden; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--muted); font-size: 11px; line-height: 1.5; white-space: pre; -webkit-mask-image: linear-gradient(to bottom, transparent, #000 30%); mask-image: linear-gradient(to bottom, transparent, #000 30%); animation: msg-in .2s ease-out; }
 @media (prefers-reduced-motion: reduce) { .th-steps li.run .th-mark, .message.thinking .th-title, .typing::after { animation: none; } }
 .thinking-logo { width: 16px; height: 16px; }
-/* «Думает»: кубик перекатывается — светлая, средняя и тёмная грани по кругу передают цвет друг другу,
-   плюс лёгкое покачивание и свечение */
-/* Thinking cube "assembles": faces fly apart, the cube turns a third round in the air, faces snap back
-   with a flash. A hexagon turned 120deg looks the same, so the loop is seamless. */
-.thinking-logo svg { overflow: visible; animation: oc-snap 2.4s cubic-bezier(.5,0,.2,1) infinite; }
+/* While thinking: a glyph grows from a dot into the cube's hexagon and back, frame by frame
+   (frames set by chat-ui.js); the cube logo comes back once the answer is in */
+.th-glyph { display: none; width: 16px; flex: none; color: var(--accent); font: 15px/16px "Segoe UI Symbol", ui-monospace, monospace; text-align: center; font-variant-emoji: text; }
+.message.thinking:not(.folded) .th-glyph { display: block; }
+.message.thinking:not(.folded) .thinking-logo { display: none; }
 .thinking-logo svg > rect { fill: transparent; }
-.thinking-logo svg > g { transform-box: view-box; transform-origin: 12px 12px; animation: oc-spin 2.4s cubic-bezier(.6,0,.3,1) infinite; }
-.thinking-logo .f1, .thinking-logo .f2, .thinking-logo .f3 { transform-box: fill-box; transform-origin: center; animation: 2.4s cubic-bezier(.5,0,.2,1) infinite; }
-.thinking-logo .f1 { animation-name: oc-f1; }
-.thinking-logo .f2 { animation-name: oc-f2; }
-.thinking-logo .f3 { animation-name: oc-f3; }
-@keyframes oc-f1 { 0%, 14% { transform: none; fill: #ff7a4d; } 36% { transform: translate(0, -3px) scale(.8); fill: #ff7a4d; } 64% { transform: translate(0, -3px) scale(.8); fill: #9c3317; } 82%, 100% { transform: none; fill: #9c3317; } }
-@keyframes oc-f2 { 0%, 14% { transform: none; fill: #e4572e; } 36% { transform: translate(-2.6px, 1.5px) scale(.8); fill: #e4572e; } 64% { transform: translate(-2.6px, 1.5px) scale(.8); fill: #ff7a4d; } 82%, 100% { transform: none; fill: #ff7a4d; } }
-@keyframes oc-f3 { 0%, 14% { transform: none; fill: #9c3317; } 36% { transform: translate(2.6px, 1.5px) scale(.8); fill: #9c3317; } 64% { transform: translate(2.6px, 1.5px) scale(.8); fill: #e4572e; } 82%, 100% { transform: none; fill: #e4572e; } }
-@keyframes oc-spin { 0%, 30% { transform: rotate(0); filter: drop-shadow(0 0 0 #ff7a4d00); } 70% { transform: rotate(120deg); filter: drop-shadow(0 0 0 #ff7a4d00); } 84% { transform: rotate(120deg); filter: drop-shadow(0 0 4px #ff7a4dcc); } 100% { transform: rotate(120deg); filter: drop-shadow(0 0 0 #ff7a4d00); } }
-@keyframes oc-snap { 0%, 78% { transform: none; } 84% { transform: scale(1.15); } 92%, 100% { transform: none; } }
-@media (prefers-reduced-motion: reduce) { .thinking-logo svg, .thinking-logo svg > g, .thinking-logo .f1, .thinking-logo .f2, .thinking-logo .f3 { animation: none; } }
 .thinking-time { margin-left: auto; color: var(--subtle); font-variant-numeric: tabular-nums; }
 @keyframes oc-blink { 50% { opacity: 0; } }
 @keyframes oc-pulse { 50% { opacity: .45; } }
