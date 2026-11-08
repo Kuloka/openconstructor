@@ -29,16 +29,16 @@ export function typeText(el, text, { speed = 16 } = {}){
   });
 }
 // Erase what's there, then type the new text — used when a label changes
-export function retype(el, text){
+export function retype(el, text, { speed = 16, erase = 12 } = {}){
   const id = (el._typing = (el._typing || 0) + 1);
-  if (reduceMotion() || !el.textContent) return typeText(el, text);
+  if (reduceMotion() || !el.textContent) return typeText(el, text, { speed });
   el.classList.add('typing');
   return new Promise(done => {
-    const erase = () => {
+    const erase_ = () => {
       if (el._typing !== id) return done();
-      const t = el.textContent; if (t.length) { el.textContent = t.slice(0, -2); setTimeout(erase, 12); } else typeText(el, text).then(done);
+      const t = el.textContent, n = erase > 20 ? 1 : 2; if (t.length) { el.textContent = t.slice(0, -n); setTimeout(erase_, erase); } else typeText(el, text, { speed }).then(done);
     };
-    erase();
+    erase_();
   });
 }
 
@@ -112,7 +112,7 @@ export function thinking({ ghost = false } = {}){
   const spin = reduceMotion() ? 0 : setInterval(() => { gi = (gi + 1) % frames; glyph.innerHTML = GLYPH[gi < GLYPH.length ? gi : frames - gi]; }, 400);
   // the title keeps changing while it waits: thinking → vibing → coding…
   let wi = 0;
-  const words = reduceMotion() ? 0 : setInterval(() => { wi = (wi + 1) % MOODS.length; retype(title, MOODS[wi]); }, 2800);
+  const words = reduceMotion() ? 0 : setInterval(() => { wi = (wi + 1) % MOODS.length; retype(title, MOODS[wi], { speed: 75, erase: 40 }); }, 3200);
   const stopWaiting = () => { timers.forEach(clearTimeout); clearInterval(words); };
 
   const end = () => { over = true; stopWaiting(); clearInterval(clock); clearInterval(spin); dropGhost(); node.remove(); };
