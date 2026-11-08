@@ -275,15 +275,20 @@ body.resizing iframe { pointer-events: none; }
 .thinking-logo { width: 16px; height: 16px; }
 /* «Думает»: кубик перекатывается — светлая, средняя и тёмная грани по кругу передают цвет друг другу,
    плюс лёгкое покачивание и свечение */
-.thinking-logo svg { overflow: visible; animation: oc-bob 1.5s ease-in-out infinite; }
+/* Thinking cube "assembles": faces fly apart, the cube turns a third round in the air, faces snap back
+   with a flash. A hexagon turned 120deg looks the same, so the loop is seamless. */
+.thinking-logo svg { overflow: visible; animation: oc-snap 2.4s cubic-bezier(.5,0,.2,1) infinite; }
 .thinking-logo svg > rect { fill: transparent; }
-.thinking-logo svg > g { animation: oc-glow 1.5s ease-in-out infinite; }
-.thinking-logo .f1, .thinking-logo .f2, .thinking-logo .f3 { animation: oc-turn 1.5s ease-in-out infinite; }
-.thinking-logo .f2 { animation-delay: -1s; }
-.thinking-logo .f3 { animation-delay: -.5s; }
-@keyframes oc-turn { 0%, 22% { fill: #ff7a4d; } 33%, 55% { fill: #9c3317; } 66%, 88% { fill: #e4572e; } 100% { fill: #ff7a4d; } }
-@keyframes oc-bob { 50% { transform: translateY(-1.5px); } }
-@keyframes oc-glow { 0%, 100% { filter: drop-shadow(0 0 0 #e4572e00); } 50% { filter: drop-shadow(0 1px 3px #e4572eaa); } }
+.thinking-logo svg > g { transform-box: view-box; transform-origin: 12px 12px; animation: oc-spin 2.4s cubic-bezier(.6,0,.3,1) infinite; }
+.thinking-logo .f1, .thinking-logo .f2, .thinking-logo .f3 { transform-box: fill-box; transform-origin: center; animation: 2.4s cubic-bezier(.5,0,.2,1) infinite; }
+.thinking-logo .f1 { animation-name: oc-f1; }
+.thinking-logo .f2 { animation-name: oc-f2; }
+.thinking-logo .f3 { animation-name: oc-f3; }
+@keyframes oc-f1 { 0%, 14% { transform: none; fill: #ff7a4d; } 36% { transform: translate(0, -3px) scale(.8); fill: #ff7a4d; } 64% { transform: translate(0, -3px) scale(.8); fill: #9c3317; } 82%, 100% { transform: none; fill: #9c3317; } }
+@keyframes oc-f2 { 0%, 14% { transform: none; fill: #e4572e; } 36% { transform: translate(-2.6px, 1.5px) scale(.8); fill: #e4572e; } 64% { transform: translate(-2.6px, 1.5px) scale(.8); fill: #ff7a4d; } 82%, 100% { transform: none; fill: #ff7a4d; } }
+@keyframes oc-f3 { 0%, 14% { transform: none; fill: #9c3317; } 36% { transform: translate(2.6px, 1.5px) scale(.8); fill: #9c3317; } 64% { transform: translate(2.6px, 1.5px) scale(.8); fill: #e4572e; } 82%, 100% { transform: none; fill: #e4572e; } }
+@keyframes oc-spin { 0%, 30% { transform: rotate(0); filter: drop-shadow(0 0 0 #ff7a4d00); } 70% { transform: rotate(120deg); filter: drop-shadow(0 0 0 #ff7a4d00); } 84% { transform: rotate(120deg); filter: drop-shadow(0 0 4px #ff7a4dcc); } 100% { transform: rotate(120deg); filter: drop-shadow(0 0 0 #ff7a4d00); } }
+@keyframes oc-snap { 0%, 78% { transform: none; } 84% { transform: scale(1.15); } 92%, 100% { transform: none; } }
 @media (prefers-reduced-motion: reduce) { .thinking-logo svg, .thinking-logo svg > g, .thinking-logo .f1, .thinking-logo .f2, .thinking-logo .f3 { animation: none; } }
 .thinking-time { margin-left: auto; color: var(--subtle); font-variant-numeric: tabular-nums; }
 @keyframes oc-blink { 50% { opacity: 0; } }
