@@ -273,11 +273,18 @@ body.resizing iframe { pointer-events: none; }
 .th-code { max-height: 132px; margin: 2px 0 0; padding: 8px 10px; overflow: hidden; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--muted); font-size: 11px; line-height: 1.5; white-space: pre; -webkit-mask-image: linear-gradient(to bottom, transparent, #000 30%); mask-image: linear-gradient(to bottom, transparent, #000 30%); animation: msg-in .2s ease-out; }
 @media (prefers-reduced-motion: reduce) { .th-steps li.run .th-mark, .message.thinking .th-title, .typing::after { animation: none; } }
 .thinking-logo { width: 16px; height: 16px; }
-/* «Думает»: грани кубика загораются по очереди — блок собирается */
-.thinking-logo .f1, .thinking-logo .f2, .thinking-logo .f3 { animation: oc-face 1.2s ease-in-out infinite; }
-.thinking-logo .f2 { animation-delay: .2s; }
-.thinking-logo .f3 { animation-delay: .4s; }
-@keyframes oc-face { 0%, 100% { opacity: 1; } 40% { opacity: .25; } }
+/* «Думает»: кубик перекатывается — светлая, средняя и тёмная грани по кругу передают цвет друг другу,
+   плюс лёгкое покачивание и свечение */
+.thinking-logo svg { overflow: visible; animation: oc-bob 1.5s ease-in-out infinite; }
+.thinking-logo svg > rect { fill: transparent; }
+.thinking-logo svg > g { animation: oc-glow 1.5s ease-in-out infinite; }
+.thinking-logo .f1, .thinking-logo .f2, .thinking-logo .f3 { animation: oc-turn 1.5s ease-in-out infinite; }
+.thinking-logo .f2 { animation-delay: -1s; }
+.thinking-logo .f3 { animation-delay: -.5s; }
+@keyframes oc-turn { 0%, 22% { fill: #ff7a4d; } 33%, 55% { fill: #9c3317; } 66%, 88% { fill: #e4572e; } 100% { fill: #ff7a4d; } }
+@keyframes oc-bob { 50% { transform: translateY(-1.5px); } }
+@keyframes oc-glow { 0%, 100% { filter: drop-shadow(0 0 0 #e4572e00); } 50% { filter: drop-shadow(0 1px 3px #e4572eaa); } }
+@media (prefers-reduced-motion: reduce) { .thinking-logo svg, .thinking-logo svg > g, .thinking-logo .f1, .thinking-logo .f2, .thinking-logo .f3 { animation: none; } }
 .thinking-time { margin-left: auto; color: var(--subtle); font-variant-numeric: tabular-nums; }
 @keyframes oc-blink { 50% { opacity: 0; } }
 @keyframes oc-pulse { 50% { opacity: .45; } }
