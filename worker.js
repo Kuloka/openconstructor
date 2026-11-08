@@ -29,24 +29,26 @@ function badge(slug){
 }
 
 // Social preview tags (each skipped when the page already declares its own)
-function ogTags(html, slug, title){
+// The picture address carries the hash of the page it shows: cached forever, and a new one after each change
+function ogTags(html, slug, title, hash = ''){
   const t = String(title || '').trim() || 'Made with openconstructor';
   const has = k => new RegExp(`<meta[^>]+(?:property|name)\\s*=\\s*["']?${k.replace(/[.:]/g, '\\$&')}["'\\s/>]`, 'i').test(html);
+  const image = `${HOME}/api/og/${slug}${hash ? '/' + hash : ''}`;
   return [
     ['property', 'og:title', t],
     ['property', 'og:description', 'Made with openconstructor'],
-    ['property', 'og:image', `${HOME}/api/og/${slug}`],
+    ['property', 'og:image', image],
     ['property', 'og:image:width', '1200'],
     ['property', 'og:image:height', '630'],
-    ['name', 'twitter:image', `${HOME}/api/og/${slug}`],
+    ['name', 'twitter:image', image],
     ['property', 'og:url', `${HOME}/p/${slug}`],
     ['property', 'og:type', 'website'],
     ['name', 'twitter:card', 'summary_large_image'],
   ].filter(([, k]) => !has(k)).map(([a, k, v]) => `<meta ${a}="${k}" content="${esc(v)}">`).join('\n');
 }
 
-function inject(html, slug, title){
-  const meta = ogTags(html, slug, title);
+function inject(html, slug, title, hash = ''){
+  const meta = ogTags(html, slug, title, hash);
   if (meta) {
     const h = /<head\b[^>]*>/i.exec(html);
     if (h) {
@@ -214,7 +216,8 @@ async function servePage(request, env, ctx, slug, screen = '', base = null){
       return notice(404, 'page not found', 'This page does not exist or was unpublished by its author.');
     }
     if (row.paused) return notice(404, 'page is turned off', 'The author has turned this page off for now. Try again later.');
-    res = formsWork(new Response(inject(row.html, slug, row.title), { status: 200, headers: { ...PAGE_HEADERS, 'Cache-Control': 'public, max-age=60' } }), slug);
+    const hash = await shotHash(env, slug).catch(() => '');
+    res = formsWork(new Response(inject(row.html, slug, row.title, hash), { status: 200, headers: { ...PAGE_HEADERS, 'Cache-Control': 'public, max-age=60' } }), slug);
     ctx.waitUntil(cache.put(key, res.clone()));
   }
   res = await routeScreens(res, screen, base ?? `/p/${slug}`, base === '');
@@ -776,7 +779,11 @@ async function supabaseUser(env, token){
 }
 // ---------- Page pictures: made in the editor at publish time (page-shot.js), kept in KV ----------
 // og:<slug>   1200×630 link preview   ·   shot:<slug>   whole page, 480px wide, for the gallery
+// shothash:<slug>   hash of the page HTML the pictures were made from. The editor skips making new
+// pictures when it matches; /api/<kind>/<slug>/<hash> is cached forever (a new hash = a new address,
+// so link previews refresh too); /api/<kind>/<slug> answers 304 to a matching If-None-Match.
 const SHOT_MAX = 600_000;
+const HASH_RE = /^[0-9a-f]{16}$/;
 async function shotPut(request, env, slug){
   if (!env.SYNC) return fail(503, 'Page pictures are not configured.');
   if (!SLUG_RE.test(slug)) return fail(404, 'Unknown page.');
@@ -796,19 +803,30 @@ async function shotPut(request, env, slug){
   };
   const og = await jpeg(form.get('og')), full = await jpeg(form.get('full'));
   if (!og || !full) return fail(400, 'Send two JPEG pictures under 600 KB.');
-  const at = Date.now();
-  await Promise.all([env.SYNC.put('og:' + slug, og, { metadata: { at } }), env.SYNC.put('shot:' + slug, full, { metadata: { at } })]);
-  await Promise.all(['og', 'shot'].map(k => caches.default.delete(new Request(`${HOME}/api/${k}/${slug}`)))).catch(() => {});
-  return json(200, { ok: true });
+  const at = Date.now(), sent = String(form.get('hash') || '');
+  const hash = HASH_RE.test(sent) ? sent : at.toString(16).padStart(16, '0').slice(-16);
+  await Promise.all([env.SYNC.put('og:' + slug, og, { metadata: { at, hash } }), env.SYNC.put('shot:' + slug, full, { metadata: { at, hash } }), env.SYNC.put('shothash:' + slug, hash)]);
+  // the page itself too: its og:image address carries the hash
+  await Promise.all([`${HOME}/api/og/${slug}`, `${HOME}/api/shot/${slug}`, `${HOME}/p/${slug}`].map(u => caches.default.delete(new Request(u)))).catch(() => {});
+  return json(200, { ok: true, hash });
 }
-async function shotGet(request, env, ctx, kind, slug){
-  if (!SLUG_RE.test(slug)) return fail(404, 'Unknown page.');
-  const cache = caches.default, key = new Request(`${HOME}/api/${kind}/${slug}`);
+const shotHash = async (env, slug) => (env.SYNC && await env.SYNC.get('shothash:' + slug)) || '';
+async function shotGet(request, env, ctx, kind, slug, want = ''){
+  if (!SLUG_RE.test(slug) || (want && !HASH_RE.test(want))) return fail(404, 'Unknown page.');
+  const cur = await shotHash(env, slug);
+  const etag = cur ? `"${cur}"` : '';
+  // the editor asks "is the picture for this HTML already there?" with HEAD; browsers revalidate with If-None-Match
+  if (etag && (request.method === 'HEAD' || request.headers.get('If-None-Match') === etag)) {
+    return new Response(null, { status: request.method === 'HEAD' ? 200 : 304, headers: { ETag: etag, 'Cache-Control': 'public, max-age=300', 'Access-Control-Allow-Origin': '*' } });
+  }
+  // an old hashed address: send to the current picture
+  if (want && want !== cur) return new Response(null, { status: 302, headers: { Location: `${HOME}/api/${kind}/${slug}${cur ? '/' + cur : ''}`, 'Cache-Control': 'public, max-age=300' } });
+  const cache = caches.default, key = new Request(`${HOME}/api/${kind}/${slug}${want ? '/' + want : ''}`);
   let res = await cache.match(key);
   if (res) return res;
   const bytes = env.SYNC ? await env.SYNC.get((kind === 'og' ? 'og:' : 'shot:') + slug, 'arrayBuffer') : null;
   if (!bytes) return kind === 'og' ? Response.redirect(`${HOME}/og.png`, 302) : fail(404, 'No picture yet.');
-  res = new Response(bytes, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=300', 'Access-Control-Allow-Origin': '*' } });
+  res = new Response(bytes, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': want ? 'public, max-age=31536000, immutable' : 'public, max-age=300', ...(etag ? { ETag: etag } : {}), 'Access-Control-Allow-Origin': '*' } });
   ctx.waitUntil(cache.put(key, res.clone()));
   return res;
 }
@@ -866,8 +884,8 @@ export default {
     if (url.pathname === '/api/image') return image(request, env, url);
     if (url.pathname === '/api/photo') return request.method === 'GET' ? photo(request, env, ctx, url) : fail(405, 'Method not allowed', { Allow: 'GET' });
     if (url.pathname === '/api/sync') return request.method === 'POST' ? syncPut(request, env) : fail(405, 'Method not allowed', { Allow: 'POST' });
-    const pm = /^\/api\/(shot|og)\/([^/]+)$/.exec(url.pathname);
-    if (pm) return request.method === 'POST' && pm[1] === 'shot' ? shotPut(request, env, decodeURIComponent(pm[2])) : request.method === 'GET' || request.method === 'HEAD' ? shotGet(request, env, ctx, pm[1], decodeURIComponent(pm[2])) : fail(405, 'Method not allowed', { Allow: 'GET, POST' });
+    const pm = /^\/api\/(shot|og)\/([^/]+)(?:\/([^/]+))?$/.exec(url.pathname);
+    if (pm) return request.method === 'POST' && pm[1] === 'shot' && !pm[3] ? shotPut(request, env, decodeURIComponent(pm[2])) : request.method === 'GET' || request.method === 'HEAD' ? shotGet(request, env, ctx, pm[1], decodeURIComponent(pm[2]), pm[3] || '') : fail(405, 'Method not allowed', { Allow: 'GET, POST' });
     const sm = /^\/api\/sync\/([^/]+)$/.exec(url.pathname);
     if (sm) return request.method === 'GET' ? syncGet(request, env, ctx, sm[1]) : fail(405, 'Method not allowed', { Allow: 'GET' });
     const fm = /^\/api\/form\/([^/]+)$/.exec(url.pathname);

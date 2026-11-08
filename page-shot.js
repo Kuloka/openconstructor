@@ -59,12 +59,22 @@ function measure(html){
   });
 }
 
-// Make both pictures and hand them to the worker; quiet on failure (the page is published either way)
+// 16 hex characters of SHA-256 of the page HTML: the pictures' version
+export async function htmlHash(html){
+  const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(html));
+  return [...new Uint8Array(d)].slice(0, 8).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Make both pictures and hand them to the worker; quiet on failure (the page is published either way).
+// Skipped when the worker already has pictures of exactly this HTML (an update that changed nothing visible).
 export async function uploadShots(slug, html, token){
   try {
+    const hash = await htmlHash(html);
+    const head = await fetch('/api/shot/' + encodeURIComponent(slug), { method: 'HEAD', cache: 'no-store' }).catch(() => null);
+    if (head?.ok && head.headers.get('ETag') === `"${hash}"`) return true;
     const { og, full } = await pageShots(html);
     const body = new FormData();
-    body.append('og', og, 'og.jpg'); body.append('full', full, 'full.jpg');
+    body.append('og', og, 'og.jpg'); body.append('full', full, 'full.jpg'); body.append('hash', hash);
     const r = await fetch('/api/shot/' + encodeURIComponent(slug), { method: 'POST', headers: { Authorization: 'Bearer ' + token }, body });
     if (!r.ok) console.warn('page pictures were not saved:', r.status);
     return r.ok;
