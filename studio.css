@@ -798,6 +798,16 @@ body.resizing iframe { pointer-events: none; }
 @keyframes bp-draw { 0% { opacity: 0; transform: scaleX(.2); } 18%, 78% { opacity: 1; transform: none; } 100% { opacity: 0; } }
 @keyframes lb-scan { 50% { filter: brightness(1.6); } }
 @keyframes lb-blink { 50% { opacity: .3; } }
+/* thinking indicator: a spinning ring of light while working, a still sparkle when done */
+.th-orb { position: relative; flex: none; display: grid; place-items: center; width: 16px; height: 16px; }
+.th-orb::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(from 0deg, transparent 0 25%, #e4572e 60%, #ffc9a8 85%, transparent); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px)); mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px)); filter: drop-shadow(0 0 3px #e4572eaa); animation: th-orb-spin .9s linear infinite; }
+.th-orb::after { content: ""; width: 5px; height: 5px; border-radius: 50%; background: #ffb08f; box-shadow: 0 0 8px 2px #e4572e99; animation: th-orb-pulse 1.4s ease-in-out infinite; }
+.th-orb svg { display: none; width: 14px; height: 14px; fill: var(--accent); }
+.message.thinking.folded .th-orb::before, .message.thinking.folded .th-orb::after { display: none; }
+.message.thinking.folded .th-orb svg { display: block; }
+@keyframes th-orb-spin { to { transform: rotate(1turn); } }
+@keyframes th-orb-pulse { 50% { transform: scale(.55); opacity: .6; } }
+@media (prefers-reduced-motion: reduce) { .th-orb::before, .th-orb::after { animation: none; } }
 .message.thinking .th-code { max-height: 132px; }
 .message.thinking .lb ~ .th-code { max-height: 42px; margin-top: 0; }
 @media (prefers-reduced-motion: reduce) { .lb-bp b, .lb-head, .lb-label::before { animation: none !important; } .lb-bp b { opacity: 1; transform: none; } }
