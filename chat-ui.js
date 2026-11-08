@@ -69,10 +69,11 @@ const GLYPH = (() => {
   const px = (cells, lit) => '<svg viewBox="0 0 24 24">' + cells.map(([x, y]) => `<rect x="${10.2 + x * 4.4}" y="${10.2 + y * 4.4}" width="3.6" height="3.6" rx=".6" fill="${(!x && !y) || lit ? '#f5b48f' : '#e8875c'}"/>`).join('') + '</svg>';
   return [px([[0, 0]]), px([[0, 0], ...P1]), px([[0, 0], ...X1]), px([[0, 0], ...P1, ...P2]), px([[0, 0], ...P2, ...X1]), px([[0, 0], ...P1, ...P2, ...X1], 1)];
 })();
+const MOODS = ['thinking', 'vibing', 'coding', 'sketching', 'tinkering', 'assembling', 'polishing'];
 export function thinking({ ghost = false } = {}){
   const node = document.createElement('div');
   node.className = 'message assistant thinking';
-  node.innerHTML = `<button class="th-head" type="button" aria-expanded="true"><span class="oc-logo thinking-logo" aria-hidden="true">${logoSvg}</span><span class="th-glyph" aria-hidden="true"></span><span class="th-title"></span><span class="th-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="th-time">0s</span></button><ol class="th-steps"></ol><div class="th-reason" hidden></div><div class="th-live" hidden></div><pre class="th-code" hidden><code></code></pre>`;
+  node.innerHTML = `<button class="th-head" type="button" aria-expanded="true"><span class="oc-logo thinking-logo" aria-hidden="true">${logoSvg}</span><span class="th-glyph" aria-hidden="true"></span><span class="th-title"></span><span class="th-time">0s</span></button><ol class="th-steps"></ol><div class="th-reason" hidden></div><div class="th-live" hidden></div><pre class="th-code" hidden><code></code></pre>`;
   $('messages').append(node); toBottom();
   const title = node.querySelector('.th-title'), list = node.querySelector('.th-steps'), time = node.querySelector('.th-time');
   const t0 = Date.now();
@@ -109,7 +110,10 @@ export function thinking({ ghost = false } = {}){
   const glyph = node.querySelector('.th-glyph'), frames = GLYPH.length * 2 - 2;
   let gi = 0; glyph.innerHTML = GLYPH[reduceMotion() ? GLYPH.length - 1 : 0];
   const spin = reduceMotion() ? 0 : setInterval(() => { gi = (gi + 1) % frames; glyph.innerHTML = GLYPH[gi < GLYPH.length ? gi : frames - gi]; }, 400);
-  const stopWaiting = () => { timers.forEach(clearTimeout); };
+  // the title keeps changing while it waits: thinking → vibing → coding…
+  let wi = 0;
+  const words = reduceMotion() ? 0 : setInterval(() => { wi = (wi + 1) % MOODS.length; retype(title, MOODS[wi]); }, 2800);
+  const stopWaiting = () => { timers.forEach(clearTimeout); clearInterval(words); };
 
   const end = () => { over = true; stopWaiting(); clearInterval(clock); clearInterval(spin); dropGhost(); node.remove(); };
   // Streaming: the model's reasoning and its answer show up live as they arrive
