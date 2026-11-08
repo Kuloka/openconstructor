@@ -11,6 +11,7 @@ import { loadTemplate, prefillPrompt } from '../studio.js';
 import { startNew } from '../local-projects.js';
 import { openAuth, user as authUser } from '../auth.js';
 import { openDonate } from '../donate.js';
+import { track } from '../track.js';
 import './welcome.css';
 
 const Logo = ({ size = 28 }) => <span className="wl-logo" style={{ width: size, height: size }} dangerouslySetInnerHTML={{ __html: logoSvg }} />;
@@ -98,6 +99,7 @@ export default function Welcome(){
 
   function close(after){
     try { localStorage.setItem('oc-welcomed', '1'); } catch {}
+    track('editor', { once: true });
     if (location.hash === '#welcome') history.replaceState(null, '', location.pathname);
     setClosing(true);
     setTimeout(() => { setOpen(false); setClosing(false); after?.(); window.dispatchEvent(new CustomEvent('oc:welcome-closed')); }, 450);

@@ -4,6 +4,7 @@
 import { supabase, user, openAuth } from './auth.js';
 import { studio } from './studio.js';
 import './publish.css';
+import { track } from './track.js';
 
 const ORIGIN = 'https://openconstructor.pw';
 const MAX_HTML = 1_000_000;
@@ -68,6 +69,14 @@ modal.innerHTML = `<div class="modal-card pub-card" role="dialog" aria-labelledb
   <div class="pub-result hidden" id="pubResult">
     <a id="pubLink" target="_blank" rel="noopener"></a>
     <div class="pub-result-actions"><button class="btn" type="button" id="pubCopy">copy</button><button class="btn" type="button" id="pubOpen">open ↗</button></div>
+  </div>
+  <div class="pub-share hidden" id="pubShare">
+    <span>share</span>
+    <a class="btn" data-share="x" target="_blank" rel="noopener">X</a>
+    <a class="btn" data-share="telegram" target="_blank" rel="noopener">Telegram</a>
+    <a class="btn" data-share="reddit" target="_blank" rel="noopener">Reddit</a>
+    <a class="btn" data-share="linkedin" target="_blank" rel="noopener">LinkedIn</a>
+    <button class="btn hidden" type="button" id="pubNative">more…</button>
   </div>
   <div class="pub-embed hidden" id="pubEmbed">
     <div class="pub-embed-head"><span>embed on your site</span><button class="btn" type="button" id="pubEmbedCopy">copy</button></div>
@@ -182,6 +191,7 @@ $('#pubForm').addEventListener('submit', async e => {
     return;
   }
   const updated = state === 'mine';
+  if (!updated) track('publish');
   remember(studio.name(), slug);
   showResult(slug, row.title);
   state = 'mine'; goBtn.textContent = 'update';
@@ -192,14 +202,26 @@ $('#pubForm').addEventListener('submit', async e => {
   supabase.auth.getSession().then(({ data }) => data?.session && import('./page-shot.js').then(m => m.uploadShots(slug, html, data.session.access_token))).catch(() => {});
 });
 
+// Share links with a ready text; the link preview shows the page itself (og image made at publish time)
+const shareUrl = (net, url, title) => {
+  const u = encodeURIComponent(url), text = encodeURIComponent(`${title} — made with openconstructor, a free AI interface builder`);
+  return { x: `https://x.com/intent/post?text=${text}&url=${u}`, telegram: `https://t.me/share/url?url=${u}&text=${text}`,
+    reddit: `https://www.reddit.com/submit?url=${u}&title=${encodeURIComponent(title)}`, linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${u}` }[net];
+};
+let lastTitle = '';
 function showResult(slug, title){
-  lastUrl = pageUrl(slug);
+  lastUrl = pageUrl(slug); lastTitle = title || slug;
   const a = $('#pubLink'); a.href = lastUrl; a.textContent = lastUrl.replace(/^https:\/\//, '');
   $('#pubResult').classList.remove('hidden');
+  modal.querySelectorAll('[data-share]').forEach(l => { l.href = shareUrl(l.dataset.share, lastUrl, lastTitle); });
+  $('#pubNative').classList.toggle('hidden', !navigator.share);
+  $('#pubShare').classList.remove('hidden');
   $('#pubEmbedCode').value = embedCode(slug, title);
   $('#pubEmbed').classList.remove('hidden');
 }
-function hideResult(){ $('#pubResult').classList.add('hidden'); $('#pubEmbed').classList.add('hidden'); }
+function hideResult(){ $('#pubResult').classList.add('hidden'); $('#pubShare').classList.add('hidden'); $('#pubEmbed').classList.add('hidden'); }
+$('#pubShare').addEventListener('click', e => { if (e.target.closest('[data-share]')) track('share'); });
+$('#pubNative').onclick = () => { track('share'); navigator.share({ title: lastTitle, url: lastUrl }).catch(() => {}); };
 $('#pubCopy').onclick = async () => {
   try { await navigator.clipboard.writeText(lastUrl); studio.status('link copied', 'ok'); $('#pubCopy').textContent = 'copied'; setTimeout(() => $('#pubCopy').textContent = 'copy', 1400); }
   catch { studio.status('copy failed — select the link and copy it manually', 'error'); }

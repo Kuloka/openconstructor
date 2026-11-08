@@ -1,7 +1,7 @@
 // AI providers. All are CORS-checked: requests go straight from the browser with the user's key.
 // Once there is a server, this same module will be called through a proxy (keys will move to the server).
 export const PROVIDERS = [
-  { id: 'oc', name: 'openconstructor AI', logo: '', base: '/api', free: true, keyUrl: '', hint: '', note: 'no key needed — 20 free generations a day when signed in', kind: 'proxy', publicModels: true },
+  { id: 'oc', name: 'openconstructor AI', logo: '', base: '/api', free: true, keyUrl: '', hint: '', note: 'no key needed — 3 free tries a day without an account, 20 a day when signed in', kind: 'proxy', publicModels: true },
   { id: 'openrouter', name: 'OpenRouter', logo: 'openrouter', base: 'https://openrouter.ai/api/v1', free: true, keyUrl: 'https://openrouter.ai/keys', hint: 'sk-or-…', note: '300+ models in one key: Claude, GPT, Gemini and more — a dozen at no cost (Gemma 4, Nemotron), GPT-OSS from $0.02/M', publicModels: true },
   { id: 'gemini', name: 'Google Gemini', logo: 'gemini-color', base: 'https://generativelanguage.googleapis.com/v1beta/openai', free: true, keyUrl: 'https://aistudio.google.com/apikey', hint: 'AIza…', note: 'no-cost tier with Flash models, strong at layout', prefer: ['gemini-2.5-flash', 'gemini-flash-latest'] },
   { id: 'groq', name: 'Groq', logo: 'groq', base: 'https://api.groq.com/openai/v1', free: true, keyUrl: 'https://console.groq.com/keys', hint: 'gsk_…', note: 'no-cost plan with GPT-OSS 120B (fast) and Qwen 3.8 27B (best design, ~1 page a minute)', prefer: ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b'] },
@@ -117,13 +117,15 @@ async function readOpenAIStream(r, onDelta){
 // With onDelta(text, reasoning) the answer is streamed piece by piece (the free AI too).
 async function once(p, key, model, system, messages, onDelta){
   if (p.kind === 'proxy') {
+    // signed out works too: the server gives a few free tries a day, then asks to sign in (error code "signin")
     const token = await sessionToken();
-    if (!token) throw Error('Sign in to use the free openconstructor AI');
-    const r = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ model, messages: [{ role: 'system', content: system }, ...messages], ...(onDelta ? { stream: true } : {}) }) });
-    readQuota(r);
+    const r = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) }, body: JSON.stringify({ model, messages: [{ role: 'system', content: system }, ...messages], ...(onDelta ? { stream: true } : {}) }) });
+    if (token) readQuota(r);
     if (!r.ok) {
-      const e = Error(await errorText(r));
+      let d = null; try { d = await r.clone().json(); } catch {}
+      const e = Error(d?.error?.message || await errorText(r));
       e.status = r.status; // 401 sign in, 429 daily limit, 503 not configured / busy
+      e.code = d?.error?.code || (!token && (r.status === 401 || r.status === 429) ? 'signin' : '');
       throw e;
     }
     if (isSSE(r)) return readOpenAIStream(r, onDelta);

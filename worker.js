@@ -558,7 +558,6 @@ async function callUpstreamStream(env, body){
 async function aiChat(request, env){
   if (request.method !== 'POST') return fail(405, 'Method not allowed', { Allow: 'POST' });
   const token = bearer(request);
-  if (!token) return fail(401, 'Sign in to use the free openconstructor AI.');
   if (!freeBackend(env)) return fail(503, 'The free openconstructor AI is not configured yet. Add your own key to keep going.');
 
   const tooBig = () => fail(413, 'Request is too large for the free AI (200 KB max).');
@@ -568,8 +567,9 @@ async function aiChat(request, env){
   const parsed = parseAiBody(raw);
   if (parsed.error) return parsed.error;
 
-  // Called with the user's JWT: PostgREST rejects bad tokens, and auth.uid() is the user whose quota is counted
-  const t = await takeQuota(env, token);
+  // Signed in: the user's JWT goes to PostgREST, auth.uid() is the user whose quota is counted.
+  // Signed out: a few generations a day per visitor, so people can try it before making an account.
+  const t = token ? await takeQuota(env, token) : await anonQuota(request, env);
   if (t.error) return t.error;
   const quota = t.quota;
 
@@ -597,6 +597,12 @@ async function takeQuota(env, token){
       method: 'POST', headers: sbHeaders(env, token), body: JSON.stringify({ daily_limit: AI_DAILY, global_limit: AI_GLOBAL }),
     });
     if (r.status === 401 || r.status === 403) return { error: fail(401, 'Your session has expired. Sign in again to use the free AI.') };
+    // supabase/ai.sql not run yet (no consume_ai_quota): count in KV so the free AI still works
+    if (r.status === 404) {
+      const u = await supabaseUser(env, token);
+      if (!u) return { error: fail(401, 'Your session has expired. Sign in again to use the free AI.') };
+      return kvQuota(env, 'uq:' + u.id, AI_DAILY, `Daily free limit reached (${AI_DAILY}/day). Add your own key for unlimited use.`);
+    }
     if (!r.ok) throw new Error(`supabase ${r.status}`);
     q = await r.json();
   } catch (err) {
@@ -612,6 +618,26 @@ async function takeQuota(env, token){
     return { error: fail(429, `Daily free limit reached (${limit}/day). Add your own key for unlimited use.`, quota) };
   }
   return { quota };
+}
+
+// Visitors without an account: ANON_DAILY generations a day, counted per hashed IP (the IP itself is not stored).
+// The 429 carries code "signin" so the editor can offer an account (AI_DAILY a day) instead of a dead end.
+const ANON_DAILY = 3;
+async function anonQuota(request, env){
+  const ip = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For') || 'unknown';
+  const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode('oc-anon:' + ip)))].slice(0, 12).map(b => b.toString(16).padStart(2, '0')).join('');
+  return kvQuota(env, 'aq:' + hash, ANON_DAILY, `You've used the ${ANON_DAILY} free tries for today. Sign in (free, 10 seconds) to get ${AI_DAILY} generations a day.`, 'signin');
+}
+// A per-day counter in KV ("<key>:<YYYY-MM-DD>", expires after two days). Not atomic, which is fine for a soft limit.
+async function kvQuota(env, key, limit, message, code){
+  if (!env.SYNC) return code ? { error: json(401, { error: { message: 'Sign in to use the free openconstructor AI.', code } }) } : { quota: {} };
+  const k = `${key}:${new Date().toISOString().slice(0, 10)}`;
+  const used = +(await env.SYNC.get(k)) || 0;
+  const quota = { 'X-OC-Quota': `${used}/${limit}` };
+  if (used >= limit) return { error: json(429, { error: { message, ...(code ? { code } : {}) } }, quota) };
+  try { await env.SYNC.put(k, String(used + 1), { expirationTtl: 172800 }); }
+  catch (err) { console.error('ai: kv quota write failed', err?.message); }
+  return { quota: { 'X-OC-Quota': `${used + 1}/${limit}` } };
 }
 
 // ---------- AI images: FLUX schnell on Workers AI, one picture = one free generation ----------
@@ -650,6 +676,11 @@ async function aiQuota(request, env){
   try {
     const r = await fetch(`${env.SUPABASE_URL}/rest/v1/ai_usage?day=eq.${day}&select=count`, { headers: sbHeaders(env, token) });
     if (r.status === 401 || r.status === 403) return fail(401, 'Your session has expired. Sign in again.');
+    if (r.status === 404 && env.SYNC) { // no ai_usage table yet: the KV counter kvQuota keeps
+      const u = await supabaseUser(env, token);
+      if (!u) return fail(401, 'Your session has expired. Sign in again.');
+      return json(200, { used: +(await env.SYNC.get(`uq:${u.id}:${day}`)) || 0, limit: AI_DAILY });
+    }
     if (!r.ok) throw new Error(`supabase ${r.status}`);
     const rows = await r.json();
     return json(200, { used: (Array.isArray(rows) && rows[0]?.count) || 0, limit: AI_DAILY });

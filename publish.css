@@ -75,3 +75,8 @@
 .pub-dns code { overflow-wrap: anywhere; color: var(--text); }
 .pub-dns .btn.icon { width: 22px; height: 22px; min-width: 0; padding: 0; font-size: 11px; }
 .pub-dom-err { color: var(--err); font-size: 11.5px; }
+
+/* share links after publishing */
+.pub-share { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 4px; }
+.pub-share > span { margin-right: 4px; color: var(--muted); font-size: 12px; }
+.pub-share .btn { text-decoration: none; }

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * openconstructor — оболочка редактора.
  * Терминальная эстетика: моноширинный шрифт, плоские панели, тонкие линии, один тёплый акцент.
  * Раскладка как в VS Code: activity bar, панели с разделителями, строка состояния.
@@ -328,7 +328,7 @@ body.resizing iframe { pointer-events: none; }
 .model-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--subtle); font-size: 10.5px; }
 .model-check { color: var(--accent); }
 .model-group { position: sticky; top: -4px; z-index: 1; display: flex; align-items: center; gap: 8px; margin: 4px -4px 2px; padding: 6px 12px; background: var(--panel-2); color: var(--text-2); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
-.model-group:first-child { margin-top: -4px; }
+.model-sec:first-child .model-group { margin-top: -4px; }
 .model-group span:last-child { color: var(--subtle); text-transform: none; letter-spacing: 0; }
 .model-group .model-logo { width: 16px; height: 16px; background: none; }
 .model-add { display: block; width: 100%; height: 32px; border: 0; border-top: 1px solid var(--border-2); background: transparent; color: var(--accent); font-size: 12px; text-align: left; padding: 0 12px; }
@@ -806,3 +806,6 @@ body.resizing iframe { pointer-events: none; }
 /* locked blocks don't move; a small lock sits on the selection outline */
 .node.locked { cursor: default; }
 .node.locked.selected::after { content: '🔒'; position: absolute; top: 6px; right: 6px; z-index: 5; font-size: calc(12px * var(--inv, 1)); line-height: 1; pointer-events: none; }
+
+/* sign-up offer under an AI answer (signed-out visitors on the free AI) */
+.msg-cta { display: flex; flex-wrap: wrap; gap: 8px; margin: -2px 0 10px; }

@@ -61,6 +61,7 @@ async function remix(){
   const base = String(src.name || data.title || slug).trim().slice(0, 60) || slug;
   const name = /-remix$/.test(base) ? base : `${base}-remix`;
   studio.load({ items: src.items, page: src.page && typeof src.page === 'object' ? src.page : undefined, name });
+  import('./track.js').then(m => m.track('remix')).catch(() => {});
   try { localStorage.setItem(REMIX_KEY, JSON.stringify({ slug, name: studio.name() })); } catch {}
   studio.status(`Remixing "${data.title || slug}" — publish your version when ready`, 'ok');
 }

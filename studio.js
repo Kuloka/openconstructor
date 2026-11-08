@@ -2,6 +2,7 @@
 let presets = [];
 const presetsReady = import('./presets.js').then(m => { presets = m.presets; stats.presets = presets.length; renderLibrary(); return presets; });
 import { t, lang, AI_LANG } from './i18n.js';
+import { track } from './track.js';
 import * as vault from './keyvault.js';
 import { pickIcon } from './icons.js';
 import {CATEGORIES} from './categories.js';
@@ -1011,6 +1012,7 @@ async function exportWithAI(t){
   } catch (e) { stop(); setState('ai export failed', 'error'); message('AI export failed: ' + e.message, 'assistant'); }
 }
 $('export').onclick = () => {
+  track('export');
   const r = $('export').getBoundingClientRect();
   openCtx(r.right - 260, r.bottom + 6, [
     { label: '⬇ HTML page', key: '.html', run: exportHTML },
@@ -1254,9 +1256,12 @@ function current(){
 const usable = pid => byId(pid)?.kind === 'proxy' || !!keys[pid];
 export const canSend = () => usable(current().pid);
 let quota = null; // { used, limit } for the free AI
-const quotaText = () => !authUser ? ' · sign in to use' : quota ? ` · ${quota.used}/${quota.limit} today` : ' · 20 free a day';
+const quotaText = () => !authUser ? ' · 3 free tries a day' : quota ? ` · ${quota.used}/${quota.limit} today` : ' · 20 free a day';
 window.addEventListener('oc-quota', e => { quota = e.detail; renderPicker(); });
-window.addEventListener('oc:auth', () => { quota = null; if (authUser) freeQuota().catch(() => {}); renderPicker(); renderProviders(); });
+window.addEventListener('oc:auth', () => { quota = null; if (authUser) { freeQuota().catch(() => {}); track('signin', { once: true }); } renderPicker(); renderProviders(); });
+// daily visitors; returning visitors skip the welcome screen and land in the editor straight away
+track('visit', { once: true });
+try { if (localStorage.getItem('oc-welcomed') && location.hash !== '#welcome') track('editor', { once: true }); } catch {}
 
 const picker = document.createElement('div');
 picker.className = 'model-picker';
@@ -1281,7 +1286,8 @@ function renderPicker(){
     if (!list.length && q) return '';
     const status = pr.kind === 'proxy' ? quotaText() : !keys[pr.id] ? ' · key required' : loading[pr.id] ? ' · loading…' : modelErr[pr.id] ? ' · error' : '';
     const firstPaid = list.find(x => x.paid);
-    return `<div class="model-group">${providerLogo(pr)}${escapeHTML(pr.name)}<span>${status}</span></div>` + list.map(x => (x === firstPaid ? '<div class="model-sub">pay per use · $ per 1M tokens in · out</div>' : '') + `<button type="button" role="option" class="model-option${x.key === currentModel ? ' active' : ''}" data-model="${escapeHTML(x.key)}" aria-selected="${x.key === currentModel}">${modelLogo(x)}<span class="model-text"><span class="model-title">${escapeHTML(x.name)}</span><span class="model-meta">${escapeHTML(x.vendor || pr.name)}${x.ctx ? ' · ' + fmtCtx(x.ctx) + ' context' : ''}${x.note ? ' · ' + escapeHTML(x.note) : ''}</span></span>${x.price ? `<span class="model-price" title="price per 1M tokens: input · output">${fmtPrice(x.price)}</span>` : ''}${x.key === currentModel ? '<span class="model-check">✓</span>' : ''}</button>`).join('');
+    // each provider in its own section, so its sticky header pushes the previous one away instead of overlapping it
+    return `<div class="model-sec"><div class="model-group">${providerLogo(pr)}${escapeHTML(pr.name)}<span>${status}</span></div>` + list.map(x => (x === firstPaid ? '<div class="model-sub">pay per use · $ per 1M tokens in · out</div>' : '') + `<button type="button" role="option" class="model-option${x.key === currentModel ? ' active' : ''}" data-model="${escapeHTML(x.key)}" aria-selected="${x.key === currentModel}">${modelLogo(x)}<span class="model-text"><span class="model-title">${escapeHTML(x.name)}</span><span class="model-meta">${escapeHTML(x.vendor || pr.name)}${x.ctx ? ' · ' + fmtCtx(x.ctx) + ' context' : ''}${x.note ? ' · ' + escapeHTML(x.note) : ''}</span></span>${x.price ? `<span class="model-price" title="price per 1M tokens: input · output">${fmtPrice(x.price)}</span>` : ''}${x.key === currentModel ? '<span class="model-check">✓</span>' : ''}</button>`).join('') + '</div>';
   }).join('');
   picker.querySelector('.model-list').innerHTML = groups || '<div class="model-empty">nothing found</div>';
   const connected = PROVIDERS.filter(pr => keys[pr.id]).length, total = PROVIDERS.filter(pr => pr.kind !== 'proxy').length;
@@ -1325,7 +1331,7 @@ function renderProviders(){
   const box = $('providers'); if (!box) return;
   const focused = document.activeElement?.dataset?.key;
   box.innerHTML = PROVIDERS.map(p => {
-    if (p.kind === 'proxy') return `<div class="prov on prov-free">${providerLogo(p)}<div class="prov-info"><div class="prov-name">${escapeHTML(p.name)}</div><div class="prov-note">${escapeHTML(p.note)}</div></div>${authUser ? `<span class="prov-st ok">✓ signed in${quota ? ` · ${quota.used}/${quota.limit} used today` : ''}</span>` : '<button class="btn primary" type="button" data-free-signin>sign in to use</button>'}</div>`;
+    if (p.kind === 'proxy') return `<div class="prov on prov-free">${providerLogo(p)}<div class="prov-info"><div class="prov-name">${escapeHTML(p.name)}</div><div class="prov-note">${escapeHTML(p.note)}</div></div>${authUser ? `<span class="prov-st ok">✓ signed in${quota ? ` · ${quota.used}/${quota.limit} used today` : ''}</span>` : '<button class="btn primary" type="button" data-free-signin>sign in for 20 a day</button>'}</div>`;
     const k = keys[p.id] || '';
     const st = !k ? '' : loading[p.id] ? '<span class="prov-st">checking…</span>' : modelErr[p.id] ? `<span class="prov-st err" title="${escapeHTML(modelErr[p.id])}">✗ ${escapeHTML(String(modelErr[p.id]).slice(0, 60))}</span>` : `<span class="prov-st ok">✓ ${(modelsBy[p.id] || []).length} models</span>`;
     return `<div class="prov${k ? ' on' : ''}">${providerLogo(p)}<div class="prov-info"><div class="prov-name">${escapeHTML(p.name)}</div><div class="prov-note">${escapeHTML(p.note)} · <a href="${p.keyUrl}" target="_blank" rel="noreferrer">get a key ↗</a></div></div><input type="password" data-key="${p.id}" value="${escapeHTML(k)}" placeholder="${escapeHTML(p.hint || 'API key')}" autocomplete="off" spellcheck="false">${st}</div>`;
@@ -1569,11 +1575,28 @@ const YEAR = new Date().getFullYear();
 const fixYear = code => String(code).replace(/(©|&copy;|\(c\)|copyright)(\s*)(20\d\d)(?![\d–-])/gi, (m, sign, sp, y) => +y < YEAR ? sign + sp + YEAR : m);
 const withBrand = code => { code = fixYear(code); return page.brand?.logo ? code.replace(/brand:logo/g, page.brand.logo) : code; };
 
+// Signed-out visitors on the free AI: after the first good result (once a session) and when the free
+// tries run out, offer a free account — 20 generations a day, cloud projects, publishing.
+let nudged = false;
+function signupNudge(why){
+  if (why === 'first' && nudged) return;
+  nudged = true;
+  track('signup_prompt');
+  message(why === 'limit'
+    ? 'The free tries for today are used up. Create a free account — it takes 10 seconds — and get 20 generations a day, projects saved in the cloud and publishing by link.'
+    : 'Like it? Create a free account to get 20 AI generations a day, keep your projects in the cloud and publish your page by link.', 'assistant');
+  const row = document.createElement('div'); row.className = 'msg-cta';
+  row.innerHTML = `<button class="btn primary" type="button">${escapeHTML(t('create a free account'))}</button><button class="btn" type="button" data-signin>${escapeHTML(t('I have an account'))}</button>`;
+  row.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; track('signup_click'); openAuth(b.hasAttribute('data-signin') ? 'signin' : 'signup'); });
+  $('messages').append(row); toBottom();
+}
+
 async function runAI(request, custom = {}){
   const m = current(), p = byId(m.pid), key = keys[m.pid];
   if (!p) { $('chatStatus').textContent = 'Pick a model from the list below the input.'; return; }
-  if (p.kind === 'proxy') { if (!authUser) { $('chatStatus').textContent = 'Sign in (free) to use openconstructor AI — or connect your own key in ⚙.'; openAuth('signup'); return; } }
-  else if (!key) { $('chatStatus').textContent = `Add a ${p.name} key to use this model.`; openSettings(); return; }
+  // the free AI works signed out too (a few tries a day); the server says when it's time to sign in
+  if (p.kind !== 'proxy' && !key) { $('chatStatus').textContent = `Add a ${p.name} key to use this model.`; openSettings(); return; }
+  track('ai_send');
   // What a change request applies to: the selection, else the page being worked on (the last element the AI
   // built or the only full-width section), so 'make the photos bigger' edits it instead of adding a new page
   const fulls = items.filter(x => x.full);
@@ -1743,8 +1766,15 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
     } else { add(String(result.name || 'New element').slice(0, 80), result.code, { full, ...(custom.place || {}) }); lastAiId = selected; }
     await stop.finish(result.action === 'update' && target ? 'updated on the canvas' : 'placed on the canvas'); setState('element ready', 'ok');
     message(String(result.reply || 'Done. The element is on the page.'), 'assistant'); logChat('assistant', result.reply || 'Done. The element is on the page.'); $('prompt').value = ''; window.dispatchEvent(new CustomEvent('oc:generated'));
-    if (!custom.targetId) suggestNext();
-  } catch (e) { stop(); setState('ai error', 'error'); $('chatStatus').textContent = 'Error: ' + e.message; message('Could not apply the response. Try again or pick another model.', 'assistant'); }
+    track('ai_ok');
+    if (p.kind === 'proxy' && !authUser && !nudged) signupNudge('first');
+    else if (!custom.targetId) suggestNext();
+  } catch (e) {
+    stop();
+    if (e.code === 'signin') { setState('sign in for more', 'error'); track('ai_limit'); signupNudge('limit'); return; }
+    track('ai_fail');
+    setState('ai error', 'error'); $('chatStatus').textContent = 'Error: ' + e.message; message('Could not apply the response. Try again or pick another model.', 'assistant');
+  }
   finally { $('send').disabled = false; }
 }
 $('prompt').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('send').click(); } });
