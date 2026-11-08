@@ -2,6 +2,7 @@
 // "thinking" panel with its steps, live streaming view and the shimmering ghost on the canvas.
 import { t } from './i18n.js';
 import { MD_RE, md } from './markdown.js';
+import logoSvg from './src/logo.svg?raw';
 import { liveBuild } from './live-build.js';
 
 const $ = id => document.getElementById(id);
@@ -66,7 +67,7 @@ $('messages').addEventListener('click', e => {
 export function thinking({ ghost = false } = {}){
   const node = document.createElement('div');
   node.className = 'message assistant thinking';
-  node.innerHTML = `<button class="th-head" type="button" aria-expanded="true"><span class="th-orb" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2.5c.6 4.6 2.9 6.9 7.5 7.5-4.6.6-6.9 2.9-7.5 7.5-.6-4.6-2.9-6.9-7.5-7.5 4.6-.6 6.9-2.9 7.5-7.5z"/></svg></span><span class="th-title"></span><span class="th-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="th-time">0s</span></button><ol class="th-steps"></ol><div class="th-reason" hidden></div><div class="th-live" hidden></div><pre class="th-code" hidden><code></code></pre>`;
+  node.innerHTML = `<button class="th-head" type="button" aria-expanded="true"><span class="oc-logo thinking-logo" aria-hidden="true">${logoSvg}</span><span class="th-title"></span><span class="th-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="th-time">0s</span></button><ol class="th-steps"></ol><div class="th-reason" hidden></div><div class="th-live" hidden></div><pre class="th-code" hidden><code></code></pre>`;
   $('messages').append(node); toBottom();
   const title = node.querySelector('.th-title'), list = node.querySelector('.th-steps'), time = node.querySelector('.th-time');
   const t0 = Date.now();
