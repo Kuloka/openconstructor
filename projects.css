@@ -17,7 +17,7 @@
 .pj-list { display: grid; gap: 4px; margin: 12px 0 0; padding: 0; list-style: none; }
 .pj-row { display: flex; align-items: center; gap: 10px; padding: 4px 6px 4px 4px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg, var(--panel)); transition: border-color .12s; }
 .pj-row:hover { border-color: var(--border-2); }
-.pj-row.current { border-color: #b9a6ff66; background: var(--accent-dim, #b9a6ff1f); }
+.pj-row.current { border-color: #e4572e66; background: var(--accent-dim, #e4572e1f); }
 .pj-open { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; flex: 1; min-width: 0; padding: 6px 8px; border: 0; border-radius: 4px; background: transparent; text-align: left; }
 .pj-open:hover .pj-name { color: var(--accent); }
 .pj-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-weight: 600; }

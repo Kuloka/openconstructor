@@ -22,10 +22,10 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 
 function badge(slug){
   const report = `${ISSUES}/new?title=${encodeURIComponent(`Report published page /p/${slug}`)}&body=${encodeURIComponent(`Page: ${HOME}/p/${slug}\nReason: `)}`;
-  const box = 'all:initial;position:fixed;right:12px;bottom:12px;z-index:2147483647;display:flex;align-items:center;gap:10px;padding:6px 10px;border:1px solid #383838;border-radius:6px;background:#111111ee;box-shadow:0 6px 24px #0008;font:12px/1.4 ui-monospace,Consolas,monospace;color:#c6c6d0';
-  const link = 'all:unset;cursor:pointer;color:#f2f2f6;font:inherit';
-  const muted = 'all:unset;cursor:pointer;color:#8f8f9b;font:inherit;text-decoration:underline';
-  return `\n<div data-oc-badge style="${box}"><a href="${HOME}" target="_blank" rel="noopener" style="${link}">Made with <b style="all:unset;color:#b9a6ff;font-weight:600">openconstructor</b></a><a href="${esc(report)}" target="_blank" rel="noopener" style="${muted}">report</a></div>\n`;
+  const box = 'all:initial;position:fixed;right:12px;bottom:12px;z-index:2147483647;display:flex;align-items:center;gap:10px;padding:6px 10px;border:1px solid #3a302d;border-radius:6px;background:#121010ee;box-shadow:0 6px 24px #0008;font:12px/1.4 ui-monospace,Consolas,monospace;color:#cbc0bb';
+  const link = 'all:unset;cursor:pointer;color:#f2ece9;font:inherit';
+  const muted = 'all:unset;cursor:pointer;color:#948884;font:inherit;text-decoration:underline';
+  return `\n<div data-oc-badge style="${box}"><a href="${HOME}" target="_blank" rel="noopener" style="${link}">Made with <b style="all:unset;color:#e4572e;font-weight:600">openconstructor</b></a><a href="${esc(report)}" target="_blank" rel="noopener" style="${muted}">report</a></div>\n`;
 }
 
 // Social preview tags (each skipped when the page already declares its own)
@@ -65,9 +65,9 @@ function inject(html, slug, title){
 
 function notice(status, title, text, link = { href: HOME, label: 'open openconstructor' }){
   const body = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} · openconstructor</title>
-<style>:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:#0a0a0a;color:#f2f2f6;font:14px/1.6 "JetBrains Mono",Consolas,ui-monospace,monospace}
-main{max-width:440px;text-align:center}.code{font-size:56px;font-weight:700;color:#b9a6ff;letter-spacing:-.02em;margin:0}h1{font-size:15px;font-weight:600;margin:6px 0 4px;text-transform:uppercase;letter-spacing:.08em;color:#c6c6d0}p{color:#8f8f9b;margin:0 0 22px}
-a{display:inline-block;padding:8px 16px;border-radius:4px;background:#b9a6ff;color:#120c26;font-weight:600;text-decoration:none}a:hover{background:#cbbcff}</style></head>
+<style>:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:#0c0a09;color:#f2ece9;font:14px/1.6 "JetBrains Mono",Consolas,ui-monospace,monospace}
+main{max-width:440px;text-align:center}.code{font-size:56px;font-weight:700;color:#e4572e;letter-spacing:-.02em;margin:0}h1{font-size:15px;font-weight:600;margin:6px 0 4px;text-transform:uppercase;letter-spacing:.08em;color:#cbc0bb}p{color:#948884;margin:0 0 22px}
+a{display:inline-block;padding:8px 16px;border-radius:4px;background:#e4572e;color:#1a0703;font-weight:600;text-decoration:none}a:hover{background:#f06a3f}</style></head>
 <body><main><p class="code">${status}</p><h1>${esc(title)}</h1><p>${esc(text)}</p><a href="${esc(link.href)}">${esc(link.label)}</a></main></body></html>`;
   return new Response(body, { status, headers: { ...PAGE_HEADERS, 'Cache-Control': 'no-store' } });
 }
@@ -172,7 +172,7 @@ async function notifyAuthor(env, slug, data){
   const pageUrl = `${HOME}/p/${slug}`, title = page.title || slug;
   const html = `<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:560px;margin:0 auto;color:#18181b">
 <p style="margin:0 0 4px;color:#71717a;font-size:13px">New message from your page</p>
-<h2 style="margin:0 0 16px;font-size:20px"><a href="${pageUrl}" style="color:#b9a6ff;text-decoration:none">${esc(title)}</a></h2>
+<h2 style="margin:0 0 16px;font-size:20px"><a href="${pageUrl}" style="color:#e4572e;text-decoration:none">${esc(title)}</a></h2>
 <table style="width:100%;border-collapse:collapse;font-size:14px">${rows.map(([k, v]) => `<tr><td style="padding:8px 12px 8px 0;color:#71717a;vertical-align:top;white-space:nowrap">${esc(k)}</td><td style="padding:8px 0;white-space:pre-wrap">${esc(v)}</td></tr>`).join('')}</table>
 <p style="margin:20px 0 0;color:#71717a;font-size:12px">All messages are in the editor: publish → your published pages → ✉. ${replyTo ? 'Reply to this e-mail to answer the sender.' : ''} To stop these e-mails, switch off ✉ e-mail for this page there.</p>
 <p style="margin:8px 0 0;color:#a1a1aa;font-size:12px">openconstructor · <a href="${HOME}" style="color:#a1a1aa">openconstructor.pw</a></p></div>`;
@@ -375,7 +375,7 @@ async function brand(request, url){
   const theme = meta('theme-color'); if (theme) bump(theme, 30);
   const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(x => x[0]);
   const vivid = sorted.filter(h => sat(h) > .35 && lum(h) > .03 && lum(h) < .85);
-  const primary = vivid[0] || sorted.find(h => lum(h) > .05 && lum(h) < .8) || '#b9a6ff';
+  const primary = vivid[0] || sorted.find(h => lum(h) > .05 && lum(h) < .8) || '#e4572e';
   const accent = vivid.find(h => far(h, primary)) || null;
   // background / text from the body rule if present, else the most used very light / very dark colours
   const bodyRule = (css.match(/(?:^|[}\s,])(?:html|body)\s*\{([^}]*)\}/i) || [])[1] || '';
