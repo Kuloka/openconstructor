@@ -2,7 +2,7 @@
 let presets = [];
 const presetsReady = import('./presets.js').then(m => { presets = m.presets; stats.presets = presets.length; renderLibrary(); return presets; });
 import { t, lang, AI_LANG } from './i18n.js';
-import { track } from './track.js';
+import { track, failReason } from './track.js';
 import * as vault from './keyvault.js';
 import { pickIcon } from './icons.js';
 import {CATEGORIES} from './categories.js';
@@ -1772,7 +1772,7 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
   } catch (e) {
     stop();
     if (e.code === 'signin') { setState('sign in for more', 'error'); track('ai_limit'); signupNudge('limit'); return; }
-    track('ai_fail');
+    track('ai_fail'); track(failReason(e));
     setState('ai error', 'error'); $('chatStatus').textContent = 'Error: ' + e.message; message('Could not apply the response. Try again or pick another model.', 'assistant');
   }
   finally { $('send').disabled = false; }

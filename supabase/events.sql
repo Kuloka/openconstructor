@@ -19,7 +19,8 @@ create or replace function public.track_event(e text)
 returns void language plpgsql security definer set search_path = '' as $$
 begin
   if e is null or e not in ('visit', 'editor', 'ai_send', 'ai_ok', 'ai_fail', 'ai_limit', 'signup_prompt', 'signup_click', 'signin',
-                            'publish', 'share', 'export', 'gallery', 'remix', 'template') then
+                            'publish', 'share', 'export', 'gallery', 'remix', 'template',
+                            'fail_busy', 'fail_format', 'fail_long', 'fail_auth', 'fail_network', 'fail_other') then
     return;
   end if;
   insert into public.events as ev (day, event, count) values (current_date, e, 1)
