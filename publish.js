@@ -188,6 +188,8 @@ $('#pubForm').addEventListener('submit', async e => {
   setHint(updated ? 'updated. changes may take up to a minute to appear.' : 'published.', 'ok');
   studio.status(updated ? `updated ${pageUrl(slug)}` : `published at ${pageUrl(slug)}`, 'ok');
   loadList();
+  // link-preview picture + gallery picture, in the background
+  supabase.auth.getSession().then(({ data }) => data?.session && import('./page-shot.js').then(m => m.uploadShots(slug, html, data.session.access_token))).catch(() => {});
 });
 
 function showResult(slug, title){

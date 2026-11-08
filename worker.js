@@ -35,7 +35,10 @@ function ogTags(html, slug, title){
   return [
     ['property', 'og:title', t],
     ['property', 'og:description', 'Made with openconstructor'],
-    ['property', 'og:image', `${HOME}/og.png`],
+    ['property', 'og:image', `${HOME}/api/og/${slug}`],
+    ['property', 'og:image:width', '1200'],
+    ['property', 'og:image:height', '630'],
+    ['name', 'twitter:image', `${HOME}/api/og/${slug}`],
     ['property', 'og:url', `${HOME}/p/${slug}`],
     ['property', 'og:type', 'website'],
     ['name', 'twitter:card', 'summary_large_image'],
@@ -740,6 +743,45 @@ async function supabaseUser(env, token){
   const u = await r.json();
   return u?.id ? u : null;
 }
+// ---------- Page pictures: made in the editor at publish time (page-shot.js), kept in KV ----------
+// og:<slug>   1200×630 link preview   ·   shot:<slug>   whole page, 480px wide, for the gallery
+const SHOT_MAX = 600_000;
+async function shotPut(request, env, slug){
+  if (!env.SYNC) return fail(503, 'Page pictures are not configured.');
+  if (!SLUG_RE.test(slug)) return fail(404, 'Unknown page.');
+  const token = bearer(request);
+  if (!token) return fail(401, 'Sign in first.');
+  if ((+request.headers.get('Content-Length') || 0) > SHOT_MAX * 2 + 4096) return fail(413, 'Pictures are too large.');
+  const user = await supabaseUser(env, token);
+  if (!user) return fail(401, 'Your session has expired. Sign in again.');
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/pages?slug=eq.${encodeURIComponent(slug)}&select=owner`, { headers: sbHeaders(env, env.SUPABASE_ANON_KEY) });
+  const row = r.ok ? (await r.json())[0] : null;
+  if (!row || row.owner !== user.id) return fail(403, 'This is not your page.');
+  let form; try { form = await request.formData(); } catch { return fail(400, 'Bad request.'); }
+  const jpeg = async f => {
+    if (!f || typeof f.arrayBuffer !== 'function' || f.size > SHOT_MAX) return null;
+    const b = new Uint8Array(await f.arrayBuffer());
+    return b[0] === 0xff && b[1] === 0xd8 ? b : null; // JPEG only
+  };
+  const og = await jpeg(form.get('og')), full = await jpeg(form.get('full'));
+  if (!og || !full) return fail(400, 'Send two JPEG pictures under 600 KB.');
+  const at = Date.now();
+  await Promise.all([env.SYNC.put('og:' + slug, og, { metadata: { at } }), env.SYNC.put('shot:' + slug, full, { metadata: { at } })]);
+  await Promise.all(['og', 'shot'].map(k => caches.default.delete(new Request(`${HOME}/api/${k}/${slug}`)))).catch(() => {});
+  return json(200, { ok: true });
+}
+async function shotGet(request, env, ctx, kind, slug){
+  if (!SLUG_RE.test(slug)) return fail(404, 'Unknown page.');
+  const cache = caches.default, key = new Request(`${HOME}/api/${kind}/${slug}`);
+  let res = await cache.match(key);
+  if (res) return res;
+  const bytes = env.SYNC ? await env.SYNC.get((kind === 'og' ? 'og:' : 'shot:') + slug, 'arrayBuffer') : null;
+  if (!bytes) return kind === 'og' ? Response.redirect(`${HOME}/og.png`, 302) : fail(404, 'No picture yet.');
+  res = new Response(bytes, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=300', 'Access-Control-Allow-Origin': '*' } });
+  ctx.waitUntil(cache.put(key, res.clone()));
+  return res;
+}
+
 async function syncPut(request, env){
   if (!env.SYNC) return fail(503, 'Roblox sync is not configured.');
   const token = bearer(request);
@@ -793,6 +835,8 @@ export default {
     if (url.pathname === '/api/image') return image(request, env, url);
     if (url.pathname === '/api/photo') return request.method === 'GET' ? photo(request, env, ctx, url) : fail(405, 'Method not allowed', { Allow: 'GET' });
     if (url.pathname === '/api/sync') return request.method === 'POST' ? syncPut(request, env) : fail(405, 'Method not allowed', { Allow: 'POST' });
+    const pm = /^\/api\/(shot|og)\/([^/]+)$/.exec(url.pathname);
+    if (pm) return request.method === 'POST' && pm[1] === 'shot' ? shotPut(request, env, decodeURIComponent(pm[2])) : request.method === 'GET' || request.method === 'HEAD' ? shotGet(request, env, ctx, pm[1], decodeURIComponent(pm[2])) : fail(405, 'Method not allowed', { Allow: 'GET, POST' });
     const sm = /^\/api\/sync\/([^/]+)$/.exec(url.pathname);
     if (sm) return request.method === 'GET' ? syncGet(request, env, ctx, sm[1]) : fail(405, 'Method not allowed', { Allow: 'GET' });
     const fm = /^\/api\/form\/([^/]+)$/.exec(url.pathname);

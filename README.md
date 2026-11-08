@@ -6,7 +6,7 @@
 
 <p align="center"><a href="https://openconstructor.pw"><b>openconstructor.pw</b></a> — try it live</p>
 
-<p align="center"><a href="https://openconstructor.pw/roblox-ui-builder">Roblox UI builder</a> · <a href="https://openconstructor.pw/ai-ui-generator">AI UI generator</a> · <a href="https://openconstructor.pw/components">220+ components</a> · <a href="https://openconstructor.pw/html-to-react-vue-svelte">HTML to React / Vue / Svelte</a> · <a href="https://openconstructor.pw/love2d-ui">LÖVE 2D UI</a> · <a href="https://openconstructor.pw/gallery">Gallery</a></p>
+<p align="center"><a href="https://openconstructor.pw/roblox-ui-builder">Roblox UI builder</a> · <a href="https://openconstructor.pw/ai-ui-generator">AI UI generator</a> · <a href="https://openconstructor.pw/components">320+ components</a> · <a href="https://openconstructor.pw/html-to-react-vue-svelte">HTML to React / Vue / Svelte</a> · <a href="https://openconstructor.pw/love2d-ui">LÖVE 2D UI</a> · <a href="https://openconstructor.pw/gallery">Gallery</a></p>
 
 ---
 
@@ -14,7 +14,7 @@ Drop ready-made components onto one shared canvas, move them around freely, and 
 
 ## Features
 
-- **Component catalog** — 220+ components in 13 sections (AI & Chat, Dashboard, Commerce, Auth, Landing…), all plain HTML + CSS. Animated ones play on hover.
+- **Component catalog** — 320+ components in 13 sections (AI & Chat, Dashboard, Commerce, Auth, Landing…), all plain HTML + CSS. Animated ones play on hover.
 - **Free-form canvas** — drag, pan, zoom, desktop / laptop / tablet / phone sizes.
 - **Background editor** — solid, linear, radial and mesh gradients, dot / grid / line / noise patterns, or raw CSS.
 - **⚗ Fusion** — right-click an element → *fuse with…* → click another: the AI breeds a new component that does the first one's job in the second one's visual style.

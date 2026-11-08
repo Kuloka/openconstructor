@@ -27,7 +27,12 @@
   .gal-card { display: block; overflow: hidden; border: 1px solid #2a2321; border-radius: 10px; background: #121010; color: inherit; text-decoration: none; transition: transform .25s cubic-bezier(.22,1,.36,1), border-color .2s, box-shadow .25s; animation: rise .5s cubic-bezier(.22,1,.36,1) both; }
   .gal-card:hover { transform: translateY(-4px); border-color: #e4572e88; box-shadow: 0 18px 40px -20px #e4572e66; }
   .gal-shot { position: relative; height: 200px; overflow: hidden; background: #0c0a09; border-bottom: 1px solid #2a2321; }
-  .gal-shot iframe { position: absolute; left: 0; top: 0; width: 1440px; height: 1000px; border: 0; transform-origin: 0 0; pointer-events: none; }
+  .gal-shot iframe { position: absolute; left: 0; top: 0; width: 1440px; height: 1000px; border: 0; transform-origin: 0 0; pointer-events: none; transform: scale(var(--s, .2)) translateY(0); transition: transform .6s cubic-bezier(.22,1,.36,1); }
+  .gal-shot img { display: block; width: 100%; height: auto; transform: translateY(0); transition: transform .6s cubic-bezier(.22,1,.36,1); }
+  .gal-card:hover .gal-shot img { transform: translateY(var(--end, 0px)); transition-duration: var(--d, 0s); transition-timing-function: linear; }
+  .gal-card:hover .gal-shot iframe { transform: scale(var(--s, .2)) translateY(var(--end, 0px)); transition-duration: var(--d, 0s); transition-timing-function: linear; }
+  .gal-shot.long::after { content: "hover to scroll"; position: absolute; right: 8px; bottom: 8px; padding: 3px 7px; border-radius: 4px; background: #000a; color: #f2ece9; font-size: 11px; opacity: .85; transition: opacity .2s; }
+  .gal-card:hover .gal-shot.long::after { opacity: 0; }
   .gal-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; }
   .gal-meta b { overflow: hidden; color: #f2ece9; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
   .gal-meta span { flex: none; color: #8f837e; font-size: 12px; }
@@ -42,7 +47,7 @@
   .gal-more { display: flex; margin: 28px auto 0; border: 0; cursor: pointer; font: inherit; font-weight: 700; }
   .gal-more[hidden], .gal-empty[hidden] { display: none; }
   @keyframes rise { from { opacity: 0; transform: translateY(12px); } }
-  @media (prefers-reduced-motion: reduce) { .gal-card { animation: none; transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .gal-card { animation: none; transition: none; } .gal-card:hover .gal-shot iframe { transform: scale(var(--s, .2)); } .gal-card:hover .gal-shot img { transform: none; } .gal-shot.long::after { display: none; } }
 </style>
 </head>
 <body>
@@ -102,7 +107,7 @@
     grid.insertAdjacentHTML('beforeend', rows.map((p, i) => `
       <article style="animation-delay:${Math.min(i, 12) * 40}ms">
         <a class="gal-card" href="/p/${esc(p.slug)}" target="_blank" rel="noopener">
-          <div class="gal-shot"><iframe src="/p/${esc(p.slug)}" loading="lazy" sandbox="" tabindex="-1" title="${esc(p.title)}"></iframe></div>
+          <div class="gal-shot"><img src="/api/shot/${esc(p.slug)}" loading="lazy" alt="" data-slug="${esc(p.slug)}"></div>
           <div class="gal-meta"><b>${esc(p.title || p.slug)}</b><span>${new Date(p.updated_at).toLocaleDateString()}</span></div>
         </a>
         ${p.remixed_from ? `<div class="gal-credit">remix of <a href="/p/${esc(p.remixed_from)}" target="_blank" rel="noopener">/p/${esc(p.remixed_from)}</a></div>` : ''}
@@ -116,7 +121,24 @@
     if (none) empty.innerHTML = query ? 'Nothing matches that search.' : 'No pages yet — <a href="/">build one</a>, publish it and tick “show in the community gallery” to be the first here.';
   }
   // previews are full 1440px pages scaled down to the card width
-  function fit(){ grid.querySelectorAll('.gal-shot').forEach(s => { s.firstElementChild.style.transform = `scale(${s.clientWidth / 1440})`; }); }
+  // Cards show the page picture saved at publish time; on hover it scrolls through the whole page.
+  // Pages published before pictures existed fall back to a live (static, top-only) preview.
+  function fit(){
+    grid.querySelectorAll('.gal-shot').forEach(s => {
+      const el = s.firstElementChild;
+      if (el.tagName === 'IFRAME') { el.style.setProperty('--s', s.clientWidth / 1440); return; }
+      if (!el.dataset.hooked) {
+        el.dataset.hooked = 1;
+        el.addEventListener('load', fit);
+        el.addEventListener('error', () => { s.innerHTML = `<iframe src="/p/${el.dataset.slug}" loading="lazy" sandbox="" tabindex="-1" title=""></iframe>`; fit(); });
+      }
+      if (!el.naturalWidth) return;
+      const end = Math.max(0, el.naturalHeight * s.clientWidth / el.naturalWidth - s.clientHeight);
+      el.style.setProperty('--end', -end + 'px');
+      el.style.setProperty('--d', Math.min(12, end / 70).toFixed(2) + 's'); // ~70 px per second
+      s.classList.toggle('long', end > 40);
+    });
+  }
   addEventListener('resize', fit);
   let t; q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => { query = q.value.trim(); load(true); }, 250); });
   more.addEventListener('click', () => load(false));
