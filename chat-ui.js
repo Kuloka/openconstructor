@@ -111,8 +111,8 @@ export function thinking({ ghost = false } = {}){
   let gi = 0; glyph.innerHTML = GLYPH[reduceMotion() ? GLYPH.length - 1 : 0];
   const spin = reduceMotion() ? 0 : setInterval(() => { gi = (gi + 1) % frames; glyph.innerHTML = GLYPH[gi < GLYPH.length ? gi : frames - gi]; }, 400);
   // the title keeps changing until the end: thinking → vibing → coding…
-  let wi = 0;
-  const words = reduceMotion() ? 0 : setInterval(() => { wi = (wi + 1) % MOODS.length; retype(title, MOODS[wi], { speed: 120, erase: 70 }); }, 2200);
+  let wi = 0, exploring = false;
+  const words = reduceMotion() ? 0 : setInterval(() => { if (exploring) return; wi = (wi + 1) % MOODS.length; retype(title, MOODS[wi], { speed: 120, erase: 70 }); }, 2200);
   const stopWaiting = () => { timers.forEach(clearTimeout); };
 
   const end = () => { over = true; stopWaiting(); clearInterval(words); clearInterval(clock); clearInterval(spin); dropGhost(); node.remove(); };
@@ -164,6 +164,11 @@ export function thinking({ ghost = false } = {}){
     }));
   };
   end.step = label => { stopWaiting(); return step(label); };
+  // a web lookup: the title says "exploring internet" until it's done
+  end.web = async (label, job) => {
+    exploring = true; retype(title, 'exploring internet', { speed: 45, erase: 25 }); step(label);
+    try { return await job(); } finally { exploring = false; }
+  };
   end.answer = () => { stopWaiting(); dropGhost(); return queue; };
   // Fold into a one-line summary that stays in the chat
   end.finish = (lastStep = 'done') => {

@@ -350,6 +350,71 @@ const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
 const lum = h => { const [r, g, b] = rgb(h).map(v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }); return .2126 * r + .7152 * g + .0722 * b; };
 const sat = h => { const [r, g, b] = rgb(h).map(v => v / 255), mx = Math.max(r, g, b), mn = Math.min(r, g, b); return mx === 0 ? 0 : (mx - mn) / mx; };
 const far = (a, b) => rgb(a).reduce((s, v, i) => s + Math.abs(v - rgb(b)[i]), 0) > 90;
+// ---------- Web access for the AI: /api/web?q=search words  or  /api/web?url=https://… ----------
+// Search via DuckDuckGo's HTML page (Wikipedia as a fallback), then the text of the top pages. Results are
+// cached for an hour; one lookup per visitor per second.
+const PRIVATE_HOST = /^(localhost|127\.|10\.|192\.168\.|169\.254\.|0\.|\[|.*\.local$|.*\.internal$)/i;
+const publicUrl = raw => {
+  let u; try { u = new URL(/^https?:\/\//i.test(raw) ? raw : 'https://' + raw); } catch { return null; }
+  if (!/^https?:$/.test(u.protocol) || PRIVATE_HOST.test(u.hostname) || /^172\.(1[6-9]|2\d|3[01])\./.test(u.hostname)) return null;
+  return u;
+};
+const decodeEntities = t => t.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#x?([0-9a-f]+);/gi, (m, n) => { const c = parseInt(n, /x/i.test(m) ? 16 : 10); return c > 0 && c < 0x110000 ? String.fromCodePoint(c) : ' '; }).replace(/&[a-z]+;/gi, ' ');
+const pageText = html => decodeEntities(html.replace(/<(script|style|noscript|svg|template|iframe|head|nav|footer)\b[\s\S]*?<\/\1>/gi, ' ').replace(/<br\s*\/?>|<\/(p|div|li|h[1-6]|tr|section|article)>/gi, '\n').replace(/<[^>]+>/g, ' ')).replace(/[ \t\r\f\v]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim();
+async function readPage(u, max){
+  const r = await fetch(u.href, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; openconstructor-web/1.0; +https://openconstructor.pw)', Accept: 'text/html,text/plain;q=0.9,*/*;q=0.5' }, redirect: 'follow', signal: AbortSignal.timeout(5000), cf: { cacheTtl: 3600 } });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const type = r.headers.get('Content-Type') || '';
+  if (!/text\/html|text\/plain|application\/xhtml/i.test(type)) throw new Error('not a web page');
+  const html = (await r.text()).slice(0, 600_000);
+  const title = decodeEntities(((html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '').trim()).slice(0, 160);
+  const desc = decodeEntities((html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)/i) || [])[1] || '').slice(0, 300);
+  return { url: r.url || u.href, title, text: ((desc ? desc + '\n' : '') + pageText(html)).slice(0, max) };
+}
+async function ddgSearch(q){
+  const r = await fetch('https://html.duckduckgo.com/html/', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'Mozilla/5.0 (compatible; openconstructor-web/1.0)' }, body: 'q=' + encodeURIComponent(q), signal: AbortSignal.timeout(5000) });
+  if (!r.ok) return [];
+  const html = await r.text(), out = [];
+  for (const m of html.matchAll(/<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g)) {
+    let link = decodeEntities(m[1]); const uddg = link.match(/[?&]uddg=([^&]+)/); if (uddg) link = decodeURIComponent(uddg[1]);
+    if (/duckduckgo\.com\/y\.js|ad_provider/.test(link)) continue; // ads
+    out.push({ title: decodeEntities(m[2].replace(/<[^>]+>/g, '')).trim(), url: link, snippet: decodeEntities(m[3].replace(/<[^>]+>/g, '')).trim() });
+    if (out.length >= 6) break;
+  }
+  return out;
+}
+async function wikiSearch(q){
+  const r = await fetch('https://en.wikipedia.org/w/api.php?action=query&list=search&format=json&srlimit=5&srsearch=' + encodeURIComponent(q), { headers: { 'User-Agent': 'openconstructor-web/1.0 (https://openconstructor.pw)' }, signal: AbortSignal.timeout(5000) });
+  if (!r.ok) return [];
+  const j = await r.json();
+  return (j?.query?.search || []).map(x => ({ title: x.title, url: 'https://en.wikipedia.org/wiki/' + encodeURIComponent(x.title.replace(/ /g, '_')), snippet: decodeEntities(String(x.snippet).replace(/<[^>]+>/g, '')) }));
+}
+async function web(request, ctx, url){
+  const q = (url.searchParams.get('q') || '').trim().slice(0, 200), raw = (url.searchParams.get('url') || '').trim();
+  if (!q && !raw) return fail(400, 'Ask for ?q=words or ?url=address');
+  const ip = request.headers.get('cf-connecting-ip') || 'unknown', cache = caches.default;
+  const key = new Request(`${HOME}/__web/${q ? 'q/' + encodeURIComponent(q.toLowerCase()) : 'u/' + encodeURIComponent(raw)}`);
+  const hit = await cache.match(key);
+  if (hit) return hit;
+  const gate = new Request(`${HOME}/__webgate/${encodeURIComponent(ip)}`);
+  if (await cache.match(gate)) return fail(429, 'Please wait a second');
+  await cache.put(gate, new Response('1', { headers: { 'Cache-Control': 'max-age=1' } }));
+  let data;
+  if (raw) {
+    const u = publicUrl(raw); if (!u) return fail(400, 'Only public websites can be read');
+    try { data = { pages: [await readPage(u, 7000)] }; } catch (e) { return fail(502, `Couldn't open the site (${e.message})`); }
+  } else {
+    let results = await ddgSearch(q).catch(() => []);
+    if (!results.length) results = await wikiSearch(q).catch(() => []);
+    // the text of the first two readable results, for facts the snippets don't carry
+    const pages = (await Promise.all(results.slice(0, 3).map(r => { const u = publicUrl(r.url); return u ? readPage(u, 2500).catch(() => null) : null; }))).filter(Boolean).slice(0, 2);
+    data = { query: q, results, pages };
+  }
+  const res = json(200, data, { 'Cache-Control': 'public, max-age=3600' });
+  ctx.waitUntil(cache.put(key, res.clone()));
+  return res;
+}
+
 async function brand(request, url){
   const target = url.searchParams.get('url') || '';
   let u;
@@ -572,9 +637,18 @@ async function aiChat(request, env){
 
   // Signed in: the user's JWT goes to PostgREST, auth.uid() is the user whose quota is counted.
   // Signed out: a few generations a day per visitor, so people can try it before making an account.
-  const t = token ? await takeQuota(env, token) : await anonQuota(request, env);
-  if (t.error) return t.error;
-  const quota = t.quota;
+  // Calls that belong to one message (a web search and then the answer, a retry of a garbled answer)
+  // carry the same X-OC-Turn id and count once: up to 4 calls per id within 10 minutes.
+  const turn = /^[0-9a-f]{16,40}$/.test(request.headers.get('X-OC-Turn') || '') ? 'turn:' + request.headers.get('X-OC-Turn') : '';
+  const seen = turn && env.SYNC ? +(await env.SYNC.get(turn)) || 0 : 0;
+  let quota = {};
+  if (seen > 0 && seen < 4) await env.SYNC.put(turn, String(seen + 1), { expirationTtl: 600 });
+  else {
+    const t = token ? await takeQuota(env, token) : await anonQuota(request, env);
+    if (t.error) return t.error;
+    quota = t.quota;
+    if (turn && env.SYNC) await env.SYNC.put(turn, '1', { expirationTtl: 600 });
+  }
 
   let g;
   try { g = await (parsed.body.stream ? callUpstreamStream : callUpstream)(env, parsed.body); }
@@ -907,6 +981,7 @@ export default {
     if (sm) return request.method === 'GET' ? syncGet(request, env, ctx, sm[1]) : fail(405, 'Method not allowed', { Allow: 'GET' });
     const fm = /^\/api\/form\/([^/]+)$/.exec(url.pathname);
     if (fm) return request.method === 'POST' ? formSubmit(request, env, ctx, decodeURIComponent(fm[1])) : fail(405, 'Method not allowed', { Allow: 'POST' });
+    if (url.pathname === '/api/web') return request.method === 'GET' ? web(request, ctx, url) : fail(405, 'Method not allowed', { Allow: 'GET' });
     if (url.pathname === '/api/brand') return request.method === 'GET' ? brand(request, url) : fail(405, 'Method not allowed', { Allow: 'GET' });
     if (url.pathname.startsWith('/api/')) return fail(404, 'Not found');
     const m = /^\/p\/([^/]+)(?:\/([^/]+))?\/?$/.exec(url.pathname);

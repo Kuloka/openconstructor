@@ -14,7 +14,7 @@ import { MD_RE, md } from './markdown.js';
 import { initChatUI, toBottom, typeText, retype, message, thinking } from './chat-ui.js';
 import { fixContrast as fixContrastIn } from './contrast.js';
 const fixContrast = (code, full) => fixContrastIn(code, full, { light: isLightPage(), w: page.w, h: page.h, nodeDoc });
-import { PROVIDERS, byId, listModels, chat, freeQuota } from './providers.js';
+import { PROVIDERS, byId, listModels, chat, freeQuota, aiTurn } from './providers.js';
 import { signOut, user as authUser, openAuth } from './auth.js';
 import './donate.js';
 import './tour.js';
@@ -1649,6 +1649,7 @@ Rules:
 shapes: box (size [w,h,d], rounded), sphere (radius), cylinder (radius or radiusTop/radiusBottom, height, sides), cone (radius, height), torus (radius, tube, arc°), capsule (radius, length), plane (size [w,h]), icosahedron/dodecahedron/octahedron/tetrahedron (radius, detail), ring (inner, outer), lathe (points [[r,y],…] profile — vases, cups, bottles), extrude (points [[x,y],…] outline + depth, bevel — swords, stars, logos), group (children only).
 Each object: name, position [x,y,z] in meters (y up, ground at y=0, a chair is ~0.9 m tall), rotation [x,y,z] in degrees, scale, color "#hex", metalness 0-1, roughness 0-1, emissive "#hex" + emissiveIntensity for glow, opacity, flat:true for a low-poly look, animate {"spin":[0,45,0] deg/s, "bob":0.05, "pulse":0.05}, children (positions relative to the parent).
 Build recognizable things from MANY well-placed parts (a chair = seat + backrest + 4 legs; a character = body, head, eyes, arms, legs), with a coherent palette. Omit "camera" to auto-frame. Leave background null to sit on the page. For a change to a 3D Current element, return the WHOLE updated scene.
+- Internet: you can look things up on the web. When the request needs facts you may not know or that change (news, current events, prices, a real company, product, person, place or website, library docs, "find", "search", "latest", "today"), and the message has no "Web results" for it yet, reply with ONLY line 1: {"action":"search","query":"short web search query"} and nothing else — the results come back to you. Never search for things you can make up (design ideas, sample texts, generic content). When "Web results" are given, base your answer on them.
 - Do not style html or body; use unique class names with a shared prefix.
 ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current year is ${new Date().getFullYear()}. Use it for copyright lines, dates and \"since\"/\"years\" texts; never write an older year as the current one.\n- Clean, modern design: spacing, heading hierarchy, rounded corners, shadows, hover states. Respect prefers-reduced-motion for animations.
 - Write all UI text in the components in the same language as the user's request.
@@ -1657,19 +1658,41 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
   const kept = [];
   const slim = code => String(code).replace(/data:image\/[\w.+-]+;base64,[A-Za-z0-9+/=]+/g, d => 'kept:' + kept.push(d));
   const user = custom.user || ((recent ? 'Conversation so far (for context):\n' + recent + '\n\n' : '') + 'Current element' + (implicit ? ' (not selected — the page built last)' : ' (selected)') + ': ' + JSON.stringify(target ? (target.scene ? { name: target.name, type: '3D scene', scene: target.scene } : { name: target.name, code: slim(target.code) }) : null) + '\nOther elements: ' + JSON.stringify(items.map(x => ({ name: x.name }))) + (target && !custom.ask ? '\nIf the request changes, fixes or restyles anything in the Current element, answer with action "update" and the COMPLETE updated element. Use "add" only for a clearly separate new block.' : '') + '\nRequest: ' + (custom.ask || request) + cineRef(custom.ask || request) + (custom.extra || ''));
+  // web: pages linked in the request are read up front; the model can ask for a search (action "search")
+  let webNote = '', searches = 0;
+  const webGet = async qs => { const r = await fetch('/api/web?' + qs); if (!r.ok) throw Error((await r.json().catch(() => ({})))?.error?.message || 'HTTP ' + r.status); return r.json(); };
+  const pageNote = pg => `Page ${pg.url}${pg.title ? ' — ' + pg.title : ''}:\n${pg.text}`;
+  const searchQuery = content => { const m = String(content).replace(/<think>[\s\S]*?<\/think>/gi, '').match(/^\s*\{[^{}]*"action"\s*:\s*"search"[^{}]*\}/); if (!m) return ''; try { return String(JSON.parse(m[0]).query || '').trim().slice(0, 200); } catch { return ''; } };
+  aiTurn.id = [...crypto.getRandomValues(new Uint8Array(12))].map(b => b.toString(16).padStart(2, '0')).join('');
   try {
+    const links = custom.user ? [] : [...new Set((request.match(/\bhttps?:\/\/[^\s<>"')]+/gi) || []).map(u => u.replace(/[.,;:!?]+$/, '')))].slice(0, 2);
+    for (const link of links) {
+      try { const d = await stop.web(`reading ${link.replace(/^https?:\/\//, '').slice(0, 50)}`, () => webGet('url=' + encodeURIComponent(link))); webNote += '\n\n' + d.pages.map(pageNote).join('\n\n'); }
+      catch (err) { webNote += `\n\n(${link} could not be opened: ${err.message})`; }
+    }
+    if (webNote) webNote = '\n\nWeb pages from the request (fetched today):' + webNote;
     // One automatic retry when the answer can't be parsed (free models sometimes break the format);
     // a model that rejects images gets the request again without them.
     const getResult = async (extra = '', quiet = false) => {
       let images = custom.images || [];
       for (let attempt = 0; ; attempt++) {
         let content;
-        const ask = (extra ? user + '\n\n' + extra : user) + (attempt ? '\n\nIMPORTANT: your previous answer could not be read. Reply EXACTLY in the required format: the one-line JSON header, then ONE ```html block.' : '');
+        const ask = (extra ? user + '\n\n' + extra : user) + webNote + (searches >= 2 ? '\n\nDo not search again — answer with what you have.' : '') + (attempt ? '\n\nIMPORTANT: your previous answer could not be read. Reply EXACTLY in the required format: the one-line JSON header, then ONE ```html block.' : '');
         if (!quiet) stop.liveReset();
         try { content = await chat(p, key, m.id, system, ask, images, quiet ? null : (piece, why) => stop.live(piece, why)); }
         catch (err) {
           if (images.length && attempt < 2 && ![401, 429].includes(err.status)) { images = []; if (!quiet) stop.step('this model can’t see images — continuing without them'); continue; }
           throw err;
+        }
+        const q = !quiet && searches < 2 && searchQuery(content);
+        if (q) {
+          searches++; attempt--;
+          try {
+            const d = await stop.web(`searching the web: “${q.slice(0, 60)}”`, () => webGet('q=' + encodeURIComponent(q)));
+            const list = (d.results || []).slice(0, 6).map((r, i) => `${i + 1}. ${r.title} — ${r.url}\n   ${r.snippet}`).join('\n');
+            webNote += `\n\nWeb results for "${q}" (searched ${new Date().toISOString().slice(0, 10)}):\n${list || 'nothing found'}` + (d.pages || []).map(pg => '\n\n' + pageNote(pg)).join('');
+          } catch (err) { webNote += `\n\nWeb search for "${q}" failed (${err.message}) — answer from what you know and say the facts may be out of date.`; }
+          continue;
         }
         try {
           if (typeof content !== 'string' || !content.trim()) throw Error('Empty model response');

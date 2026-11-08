@@ -1,3 +1,5 @@
+// one id per user message: the free AI counts a search + answer (or a retry) as one generation
+export const aiTurn = { id: '' };
 // AI providers. All are CORS-checked: requests go straight from the browser with the user's key.
 // Once there is a server, this same module will be called through a proxy (keys will move to the server).
 export const PROVIDERS = [
@@ -119,7 +121,7 @@ async function once(p, key, model, system, messages, onDelta){
   if (p.kind === 'proxy') {
     // signed out works too: the server gives a few free tries a day, then asks to sign in (error code "signin")
     const token = await sessionToken();
-    const r = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) }, body: JSON.stringify({ model, messages: [{ role: 'system', content: system }, ...messages], ...(onDelta ? { stream: true } : {}) }) });
+    const r = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}), ...(aiTurn.id ? { 'X-OC-Turn': aiTurn.id } : {}) }, body: JSON.stringify({ model, messages: [{ role: 'system', content: system }, ...messages], ...(onDelta ? { stream: true } : {}) }) });
     if (token) readQuota(r);
     if (!r.ok) {
       let d = null; try { d = await r.clone().json(); } catch {}
