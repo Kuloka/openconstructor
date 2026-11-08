@@ -17,7 +17,7 @@ const ICONS = {
 const modal = document.createElement('div');
 modal.className = 'modal hidden'; modal.id = 'authModal';
 modal.innerHTML = `<div class="modal-card auth-card">
-  <div class="modal-head"><h2 id="authTitle">sign in</h2><button class="btn icon" data-close="authModal">×</button></div>
+  <div class="modal-head"><h2 id="authTitle">sign in</h2><button class="btn icon auth-x" data-close="authModal" aria-label="close" title="close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2.4 2.4l19.2 19.2M21.6 2.4L2.4 21.6"/></svg></button></div>
   <div class="auth-tabs"><button data-mode="signin" class="active">sign in</button><button data-mode="signup">create account</button></div>
   <div class="auth-off hidden" id="authOff">Accounts aren't connected to a server yet (a Supabase project is needed — see <b>SETUP.md</b>). You can keep using the editor without an account.</div>
   <div class="auth-oauth">
