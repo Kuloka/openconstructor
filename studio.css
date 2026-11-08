@@ -423,7 +423,13 @@ body.resizing iframe { pointer-events: none; }
   .app { height: 100dvh; grid-template-rows: 46px minmax(0, 1fr) calc(58px + env(safe-area-inset-bottom)); }
   .statusbar, .activitybar, .splitter, .wordmark, .tb-center, .tb-menu, #undo, #redo, #loginBtn, .account-chip em { display: none !important; }
   .titlebar { gap: 6px; padding: 0 8px; }
-  .tb-right { gap: 6px; min-width: 0; }
+  .tb-left { flex-shrink: 0; }
+  .tb-right { gap: 6px; min-width: 0; margin-left: auto; }
+  /* publish lives on the Page tab on phones; export becomes an arrow icon */
+  .titlebar #publish { display: none; }
+  .titlebar .account { margin-right: 0; padding-right: 0; border-right: 0; }
+  .titlebar #export { width: 38px; padding: 0; justify-content: center; font-size: 0; }
+  .titlebar #export::after { content: "↓"; font-size: 16px; line-height: 1; }
   .main { position: relative; }
   .main > .panel, .main > .workspace, .main > .m-preview { display: none !important; }
   body[data-m="chat"] .main > .chat-panel { display: flex !important; flex: 1; width: 100% !important; }
