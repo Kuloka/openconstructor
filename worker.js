@@ -490,15 +490,17 @@ const AI_MAX_TOKENS = 8000;
 // Open models on Cloudflare's GPUs through the AI binding: no API keys. Tried first, in this order
 // (both work on the Workers Free plan; ~10k neurons a day, then the keyed backends below answer).
 const WORKERS_AI_MODELS = ['@cf/openai/gpt-oss-120b', '@cf/meta/llama-3.3-70b-instruct-fp8-fast'];
+// output limit per Workers AI model: gpt-oss takes a whole page (8000), llama 3.3 stops at 4096
+const waiMax = (model, max) => Math.min(max, /gpt-oss/.test(model) ? AI_MAX_TOKENS : 4096);
 
 // Free-AI upstreams, tried in this order. Each one is used only if its secret is set
 // (`npx wrangler secret put <SECRET>`); when one is out of quota (429) or down (5xx), the next one answers.
 // Cloudflare Workers AI needs no key and goes first.
 const BACKENDS = [
   { id: 'openrouter', secret: 'OPENROUTER_API_KEY', url: 'https://openrouter.ai/api/v1/chat/completions', model: 'openrouter/free', extra: { } },
+  { id: 'gemini', secret: 'GEMINI_API_KEY', url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', model: 'gemini-2.5-flash', extra: { reasoning_effort: 'low' } },
   { id: 'mistral', secret: 'MISTRAL_API_KEY', url: 'https://api.mistral.ai/v1/chat/completions', model: 'mistral-medium-latest', extra: { } },
   { id: 'groq', secret: 'GROQ_API_KEY', url: 'https://api.groq.com/openai/v1/chat/completions', model: 'openai/gpt-oss-120b', extra: { reasoning_effort: 'low' } },
-  { id: 'gemini', secret: 'GEMINI_API_KEY', url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', model: 'gemini-2.5-flash', extra: { reasoning_effort: 'low' } },
 ];
 const freeBackends = env => [...(env.AI ? WORKERS_AI_MODELS.map(model => ({ id: 'workers-ai', model })) : []), ...BACKENDS.filter(b => env[b.secret])];
 const freeBackend = env => freeBackends(env)[0]?.id || null;
@@ -511,7 +513,7 @@ async function callUpstream(env, body){
     if (r.status >= 200 && r.status < 300) return r;
     last = r;
     console.error('ai: backend failed, trying next', b.id, r.status, String(r.text).slice(0, 200));
-    if (!(r.status === 429 || r.status >= 500 || r.status === 402 || r.status === 401 || r.status === 403)) break; // a real request error: don't retry elsewhere
+    if (!(r.status === 429 || r.status === 413 || r.status >= 500 || r.status === 402 || r.status === 401 || r.status === 403)) break; // a real request error: don't retry elsewhere (413: the next backend may take bigger requests)
   }
   return last || { status: 503, text: 'no backend', be: null };
 }
@@ -527,7 +529,7 @@ async function callWorkersAI(env, body, model){
   const be = 'workers-ai';
   // Workers AI binding: returns { response } — wrap it like an OpenAI completion
   try {
-    const out = await env.AI.run(model, { messages: body.messages, max_tokens: Math.min(body.max_tokens, 4096) });
+    const out = await env.AI.run(model, { messages: body.messages, max_tokens: waiMax(model, body.max_tokens) });
     const content = typeof out === 'string' ? out : out?.response ?? out?.choices?.[0]?.message?.content ?? '';
     return { status: 200, be, text: JSON.stringify({ choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: out?.finish_reason === 'length' ? 'length' : 'stop' }] }) };
   } catch (err) {
@@ -603,7 +605,7 @@ async function callUpstreamStream(env, body){
     let r;
     if (b.id === 'workers-ai') {
       try {
-        const out = await env.AI.run(b.model, { messages: body.messages, max_tokens: Math.min(body.max_tokens, 4096), stream: true });
+        const out = await env.AI.run(b.model, { messages: body.messages, max_tokens: waiMax(b.model, body.max_tokens), stream: true });
         if (out instanceof ReadableStream) return { status: 200, be: b.id, stream: out.pipeThrough(normalizeSSE()) };
         const content = typeof out === 'string' ? out : out?.response ?? out?.choices?.[0]?.message?.content ?? '';
         return { status: 200, be: b.id, stream: new Response(sseChunk(content, '', 'stop') + 'data: [DONE]\n\n').body };
@@ -619,7 +621,7 @@ async function callUpstreamStream(env, body){
     }
     last = r;
     console.error('ai stream: backend failed, trying next', b.id, r.status, String(r.text).slice(0, 200));
-    if (!(r.status === 429 || r.status >= 500 || r.status === 402 || r.status === 401 || r.status === 403)) break;
+    if (!(r.status === 429 || r.status === 413 || r.status >= 500 || r.status === 402 || r.status === 401 || r.status === 403)) break;
   }
   return last || { status: 503, text: 'no backend', be: null };
 }
