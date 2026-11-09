@@ -956,4 +956,13 @@ export default {
   "We sent a code to {0}. Enter it below, or click the link in the email. Not there? Check the spam folder.": "{0} adresine bir kod gönderdik. Aşağıya girin veya e-postadaki bağlantıya tıklayın. Gelmedi mi? Spam klasörüne bakın.",
   "This code is wrong or expired — check it, or send the email again.": "Bu kod yanlış veya süresi dolmuş — kontrol edin ya da e-postayı tekrar gönderin.",
   "Sent again to {0}. It can take a minute; check the spam folder too.": "{0} adresine tekrar gönderildi. Bir dakika sürebilir; spam klasörüne de bakın.",
+  '320+ ready components': '320+ hazır bileşen',
+  'HTML page': 'HTML sayfası',
+  'Static site': 'Statik site',
+  'Vite + React project': 'Vite + React projesi',
+  'Roblox Studio live sync': 'Roblox Studio canlı eşitleme',
+  'AI models tested': 'Yapay zekâ modelleri testi',
+  "What's new": 'Yenilikler',
+  'no-cost plan with GPT-OSS 120B (fast) and Qwen 3.8 27B (best design, ~1 page a minute)': 'ücretsiz plan: GPT-OSS 120B (hızlı) ve Qwen 3.8 27B (en iyi tasarım, dakikada ~1 sayfa)',
+  'Ask AI': 'Yapay zekâya sorun',
 };

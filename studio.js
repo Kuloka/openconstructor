@@ -651,9 +651,9 @@ function openCtx(x, y, entries){
   ctxEntries = entries;
   ctx.innerHTML = entries.map((en, i) => en === '-' ? '<hr>' : `<button role="menuitem" data-i="${i}"${en.danger ? ' class="danger"' : ''}><span>${en.label}</span>${en.key ? `<kbd>${en.key}</kbd>` : ''}</button>`).join('');
   ctx.classList.remove('hidden');
-  const r = ctx.getBoundingClientRect();
-  ctx.style.left = Math.min(x, innerWidth - r.width - 8) + 'px';
-  ctx.style.top = Math.min(y, innerHeight - r.height - 8) + 'px';
+  // keep it on screen; again on the next frame, once the labels are translated (they can get wider)
+  const place = () => { const r = ctx.getBoundingClientRect(); ctx.style.left = Math.max(8, Math.min(x, innerWidth - r.width - 8)) + 'px'; ctx.style.top = Math.max(8, Math.min(y, innerHeight - r.height - 8)) + 'px'; };
+  place(); requestAnimationFrame(place);
 }
 function closeCtx(){ ctx.classList.add('hidden'); }
 ctx.addEventListener('click', e => { const b = e.target.closest('[data-i]'); if (!b) return; closeCtx(); ctxEntries[+b.dataset.i].run(); });
@@ -705,7 +705,7 @@ canvas.addEventListener('contextmenu', e => {
     { label: 'fit to screen', key: 'Ctrl+0', run: fitZoom },
     { label: '★ add icon…', run: addIcon },
     { label: 'add custom code', run: () => edit(null) },
-    { label: 'open templates', run: openWelcome },
+    { label: 'open templates', run: () => openWelcome('wl-templates') },
     '-',
     { label: 'clear page', danger: true, run: clearPage },
   ]);
@@ -1015,10 +1015,10 @@ $('export').onclick = () => {
   track('export');
   const r = $('export').getBoundingClientRect();
   openCtx(r.right - 260, r.bottom + 6, [
-    { label: '⬇ HTML page', key: '.html', run: exportHTML },
-    { label: '📦 Static site (.zip)', key: '.zip', run: () => exportZip('static') },
-    { label: '📦 Project: Vite + React (.zip)', key: '.zip', run: () => exportZip('react') },
-    { label: '⟳ Sync to Roblox Studio', key: 'plugin', run: () => window.dispatchEvent(new CustomEvent('oc:roblox-sync')) },
+    { label: 'HTML page', key: '.html', run: exportHTML },
+    { label: 'Static site', key: '.zip', run: () => exportZip('static') },
+    { label: 'Vite + React project', key: '.zip', run: () => exportZip('react') },
+    { label: 'Roblox Studio live sync', key: 'plugin', run: () => window.dispatchEvent(new CustomEvent('oc:roblox-sync')) },
     '-',
     ...TARGETS.map(t => ({ label: t.label, key: t.ext, run: () => exportTo(t) })),
     '-',
@@ -1925,7 +1925,7 @@ export function loadTemplate(tpl){
 }
 export function clearPage(){ if (!items.length) return; checkpoint(); items = []; selected = null; render(); setState('page cleared · Ctrl+Z to undo'); }
 export function prefillPrompt(text){ window.dispatchEvent(new CustomEvent('oc:prompt', { detail: text })); if (!canSend()) { $('chatStatus').textContent = 'Connect an AI provider to start: ⚙ in the bottom-left.'; } }
-function openWelcome(){ window.dispatchEvent(new CustomEvent('oc:welcome')); }
+function openWelcome(section){ window.dispatchEvent(new CustomEvent('oc:welcome', { detail: typeof section === 'string' ? section : '' })); }
 $('homeBtn').addEventListener('click', openWelcome);
 document.querySelector('.tb-menu').addEventListener('click', e => {
   const cmd = e.target.closest('[data-cmd]')?.dataset.cmd;
@@ -1933,7 +1933,7 @@ document.querySelector('.tb-menu').addEventListener('click', e => {
   if (cmd === 'addCode') edit(null);
   if (cmd === 'clear') clearPage();
 });
-$('canvasEmpty').addEventListener('click', e => { const b = e.target.closest('[data-empty]'); if (!b) return; if (b.dataset.empty === 'welcome') openWelcome();
+$('canvasEmpty').addEventListener('click', e => { const b = e.target.closest('[data-empty]'); if (!b) return; if (b.dataset.empty === 'welcome') openWelcome('wl-templates');
   else if (b.dataset.empty === 'screenshot') pickScreenshot();
   else if (b.dataset.empty === 'library') { window.dispatchEvent(new CustomEvent('oc:show-view', { detail: 'library' })); const s = $('catalogSearch'); s.focus(); $('sidePanel').animate([{ boxShadow: 'inset 0 0 0 1px var(--accent)' }, { boxShadow: 'inset 0 0 0 1px transparent' }], { duration: 1200 }); }
   else { window.dispatchEvent(new CustomEvent('oc:open-chat')); prefillPrompt(t(b.dataset.empty)); } });

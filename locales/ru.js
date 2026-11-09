@@ -961,4 +961,13 @@ export default {
   "We sent a code to {0}. Enter it below, or click the link in the email. Not there? Check the spam folder.": "Мы отправили код на {0}. Введите его ниже или нажмите ссылку в письме. Не пришло? Проверьте папку «Спам».",
   "This code is wrong or expired — check it, or send the email again.": "Код неверный или устарел — проверьте его или отправьте письмо ещё раз.",
   "Sent again to {0}. It can take a minute; check the spam folder too.": "Отправили ещё раз на {0}. Письмо может идти до минуты; загляните и в «Спам».",
+  '320+ ready components': '320+ готовых компонентов',
+  'HTML page': 'HTML-страница',
+  'Static site': 'Статический сайт',
+  'Vite + React project': 'Проект Vite + React',
+  'Roblox Studio live sync': 'Синхронизация с Roblox Studio',
+  'AI models tested': 'Тест ИИ-моделей',
+  "What's new": 'Что нового',
+  'no-cost plan with GPT-OSS 120B (fast) and Qwen 3.8 27B (best design, ~1 page a minute)': 'бесплатный план: GPT-OSS 120B (быстро) и Qwen 3.8 27B (лучший дизайн, ~1 страница в минуту)',
+  'Ask AI': 'Спросите ИИ',
 };

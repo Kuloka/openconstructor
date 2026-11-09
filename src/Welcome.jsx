@@ -25,7 +25,7 @@ const EXAMPLES = [
 
 const STEPS = [
   { n: '01', title: 'Drop in blocks', text: 'Pick buttons, inputs, cards, sections and effects from the library. Place them anywhere on the page.', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/></svg> },
-  { n: '02', title: 'Ask the AI', text: 'Describe what you need — “build a landing page” or “make this button green”. The AI builds or edits the selected block.', icon: <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.9 5.8L20 10l-6.1 2.2L12 18l-1.9-5.8L4 10l6.1-2.2z"/><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9z" opacity=".6"/></svg> },
+  { n: '02', title: 'Ask AI', text: 'Describe what you need — “build a landing page” or “make this button green”. The AI builds or edits the selected block.', icon: <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.9 5.8L20 10l-6.1 2.2L12 18l-1.9-5.8L4 10l6.1-2.2z"/><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9z" opacity=".6"/></svg> },
   { n: '03', title: 'Ship the code', text: 'Export a single file of clean HTML and CSS that runs anywhere. No lock-in.', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m8 8-5 4 5 4M16 8l5 4-5 4M14 4l-4 16"/></svg> },
 ];
 
@@ -40,9 +40,9 @@ function Thumb({ t }){
   const box = useRef(null);
   const [scale, setScale] = useState(.2);
   useLayoutEffect(() => {
-    const ro = new ResizeObserver(([e]) => setScale(e.contentRect.width / t.page.w));
+    const ro = new ResizeObserver(([e]) => setScale(Math.max(e.contentRect.width / t.page.w, e.contentRect.height / t.page.h)));
     ro.observe(box.current); return () => ro.disconnect();
-  }, [t.page.w]);
+  }, [t.page.w, t.page.h]);
   return <div className="wl-thumb" ref={box}><iframe title={t.name} sandbox="" tabIndex={-1} srcDoc={tplDoc(t)} style={{ width: t.page.w, height: t.page.h, transform: `scale(${scale})` }} /></div>;
 }
 
@@ -57,7 +57,7 @@ function HeroDemo(){
       <div className="wl-demo-body">
         <aside className="wl-demo-lib">
           <small>components</small>
-          {DEMO_BLOCKS.map((n, i) => <span key={n} style={{ '--i': i }}><b />{n}</span>)}
+          {DEMO_BLOCKS.map((n, i) => <span key={n} data-no-i18n="" style={{ '--i': i }}><b />{n}</span>)}
         </aside>
         <div className="wl-demo-canvas">
           <div className="wl-demo-page"><Thumb t={t} /><div className="wl-demo-curtain" /><div className="wl-demo-sel" /></div>
@@ -86,7 +86,7 @@ export default function Welcome(){
   const scroller = useRef(null);
 
   useEffect(() => {
-    const reopen = () => { setClosing(false); setOpen(true); requestAnimationFrame(() => scroller.current?.scrollTo(0, 0)); };
+    const reopen = e => { setClosing(false); setOpen(true); const to = e?.detail; setTimeout(() => { const el = to && document.getElementById(to); if (el) el.scrollIntoView(); else scroller.current?.scrollTo(0, 0); }, 60); };
     window.addEventListener('oc:welcome', reopen);
     return () => window.removeEventListener('oc:welcome', reopen);
   }, []);

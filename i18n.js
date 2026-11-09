@@ -48,6 +48,7 @@ function lookup(s){
   for (const p of patterns) {
     const m = s.match(p.re);
     if (!m) continue;
+    if (typeof p.value === 'function' && !/^[\d\s.,]+$/.test(m[1])) continue; // plural forms are for numbers
     const args = [];
     p.order.forEach((n, i) => { args[n] = t(m[i + 1]); });
     return typeof p.value === 'function' ? p.value(...args) : p.value.replace(/\{(\d)\}/g, (_, n) => args[n] ?? '');

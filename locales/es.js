@@ -958,4 +958,13 @@ export default {
   "We sent a code to {0}. Enter it below, or click the link in the email. Not there? Check the spam folder.": "Enviamos un código a {0}. Escríbelo abajo o pulsa el enlace del correo. ¿No llega? Revisa la carpeta de spam.",
   "This code is wrong or expired — check it, or send the email again.": "El código es incorrecto o ha caducado — revísalo o envía el correo otra vez.",
   "Sent again to {0}. It can take a minute; check the spam folder too.": "Enviado otra vez a {0}. Puede tardar un minuto; revisa también el spam.",
+  '320+ ready components': '320+ componentes listos',
+  'HTML page': 'Página HTML',
+  'Static site': 'Sitio estático',
+  'Vite + React project': 'Proyecto Vite + React',
+  'Roblox Studio live sync': 'Sincronización con Roblox Studio',
+  'AI models tested': 'Modelos de IA probados',
+  "What's new": 'Novedades',
+  'no-cost plan with GPT-OSS 120B (fast) and Qwen 3.8 27B (best design, ~1 page a minute)': 'plan gratuito: GPT-OSS 120B (rápido) y Qwen 3.8 27B (mejor diseño, ~1 página por minuto)',
+  'Ask AI': 'Pregunta a la IA',
 };
