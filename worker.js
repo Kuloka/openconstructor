@@ -499,6 +499,8 @@ const waiMax = (model, max) => Math.min(max, /gpt-oss/.test(model) ? AI_MAX_TOKE
 const BACKENDS = [
   { id: 'openrouter', secret: 'OPENROUTER_API_KEY', url: 'https://openrouter.ai/api/v1/chat/completions', model: 'openrouter/free', extra: { } },
   { id: 'gemini', secret: 'GEMINI_API_KEY', url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', model: 'gemini-2.5-flash', extra: { reasoning_effort: 'low' } },
+  // Gemma on the same key: ~14k free requests a day. It takes no system message and at most 8192 output tokens.
+  { id: 'gemma', secret: 'GEMINI_API_KEY', url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', model: 'gemma-3-27b-it', noSystem: true, maxOut: 8192, extra: { } },
   { id: 'mistral', secret: 'MISTRAL_API_KEY', url: 'https://api.mistral.ai/v1/chat/completions', model: 'mistral-medium-latest', extra: { } },
   { id: 'groq', secret: 'GROQ_API_KEY', url: 'https://api.groq.com/openai/v1/chat/completions', model: 'openai/gpt-oss-120b', extra: { reasoning_effort: 'low' } },
 ];
@@ -517,11 +519,23 @@ async function callUpstream(env, body){
   }
   return last || { status: 503, text: 'no backend', be: null };
 }
+// System messages folded into the first user message, for models that take none
+function foldSystem(messages){
+  const sys = messages.filter(m => m.role === 'system').map(m => m.content).join('\n\n');
+  const rest = messages.filter(m => m.role !== 'system');
+  if (!sys) return rest;
+  const i = rest.findIndex(m => m.role === 'user');
+  if (i < 0) return [{ role: 'user', content: sys }, ...rest];
+  const u = rest[i];
+  const content = typeof u.content === 'string' ? sys + '\n\n' + u.content : [{ type: 'text', text: sys }, ...(u.content || [])];
+  return rest.map((m, j) => j === i ? { ...m, content } : m);
+}
+const upstreamBody = (b, body, stream) => JSON.stringify({ model: b.model, messages: b.noSystem ? foldSystem(body.messages) : body.messages, max_tokens: b.maxOut ? Math.min(body.max_tokens, b.maxOut) : body.max_tokens, ...(stream ? { stream: true } : {}), ...b.extra });
 async function callOpenAICompatible(env, b, body){
   const headers = { Authorization: `Bearer ${env[b.secret]}`, 'Content-Type': 'application/json' };
   if (b.id === 'openrouter') { headers['HTTP-Referer'] = 'https://openconstructor.pw'; headers['X-Title'] = 'openconstructor'; }
   try {
-    const r = await fetch(b.url, { method: 'POST', headers, body: JSON.stringify({ model: b.model, messages: body.messages, max_tokens: body.max_tokens, ...b.extra }) });
+    const r = await fetch(b.url, { method: 'POST', headers, body: upstreamBody(b, body, false) });
     return { status: r.status, text: await r.text(), be: b.id };
   } catch (err) { return { status: 502, text: String(err?.message || err), be: b.id }; }
 }
@@ -614,7 +628,7 @@ async function callUpstreamStream(env, body){
       const headers = { Authorization: `Bearer ${env[b.secret]}`, 'Content-Type': 'application/json' };
       if (b.id === 'openrouter') { headers['HTTP-Referer'] = 'https://openconstructor.pw'; headers['X-Title'] = 'openconstructor'; }
       try {
-        const res = await fetch(b.url, { method: 'POST', headers, body: JSON.stringify({ model: b.model, messages: body.messages, max_tokens: body.max_tokens, stream: true, ...b.extra }) });
+        const res = await fetch(b.url, { method: 'POST', headers, body: upstreamBody(b, body, true) });
         if (res.ok) return { status: 200, be: b.id, stream: /event-stream/i.test(res.headers.get('content-type') || '') ? res.body.pipeThrough(normalizeSSE()) : oneShotSSE(await res.text()) };
         r = { status: res.status, text: await res.text(), be: b.id };
       } catch (err) { r = { status: 502, text: String(err?.message || err), be: b.id }; }
