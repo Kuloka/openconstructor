@@ -70,7 +70,7 @@
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap">
 </head>
 <body>
 <h1 class="sr-only">openconstructor — free AI interface builder and Roblox UI builder: 320+ HTML &amp; CSS components, export to HTML, React, Vue, Svelte, Roblox Luau and LÖVE 2D</h1>
@@ -98,9 +98,9 @@
   <div class="main" id="main">
     <!-- Activity bar -->
     <nav class="activitybar" aria-label="Panels">
+      <button data-view="chat" title="AI chat (Ctrl+Shift+B)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg></button>
       <button data-view="library" title="Components (Ctrl+B)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M17.5 14v7M14 17.5h7"/></svg></button>
       <button data-view="layers" title="Layers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></svg></button>
-      <button data-toggle="chat" title="AI chat (Ctrl+Shift+B)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg></button>
       <span class="ab-spacer"></span>
       <button id="helpButton" title="Quick tour (?)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.6 2.6 0 0 1 5 .9c0 1.8-2.5 2.2-2.5 3.9M12 17h.01"/></svg></button>
       <button id="settingsButton" title="AI providers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg></button>
@@ -193,7 +193,7 @@
           <button data-panel-action="close" data-panel="chat" title="Hide (Ctrl+Shift+B)">×</button>
         </div>
       </div>
-      <div class="chat-messages" id="messages"><div class="message assistant welcome"><strong>What should we build?</strong><p>Describe a component or a whole page and I'll assemble it on the canvas. To change an element, select it or right-click it → “Edit with AI”.</p></div></div>
+      <div class="chat-messages" id="messages"><div class="message assistant welcome"><strong>What should we build?</strong><p>Describe a component or a whole page and I'll assemble it on the canvas. To change an element, select it or right-click it → “Edit with AI”.</p><div class="welcome-ideas"><button type="button" data-idea>A landing page for a coffee shop</button><button type="button" data-idea>A pricing section with three plans</button><button type="button" data-idea>A Roblox shop menu with 6 items</button></div></div></div>
       <div id="chatStatus" class="status"></div>
       <div id="react-composer"></div>
       <div class="composer-legacy"><textarea id="prompt" aria-label="Message to AI"></textarea><div class="composer-footer"><select id="model" class="model" aria-label="Model"><option value="openrouter/free">Auto</option></select><button class="send" id="send" aria-label="Send">↑</button></div></div>

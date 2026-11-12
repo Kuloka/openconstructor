@@ -17,6 +17,7 @@ const fixContrast = (code, full) => fixContrastIn(code, full, { light: isLightPa
 import { PROVIDERS, byId, listModels, chat, freeQuota, aiTurn } from './providers.js';
 import { signOut, user as authUser, openAuth } from './auth.js';
 import './donate.js';
+import { appDoc, withAppHead, APP_RULES, APP_EXAMPLES, appReference } from './apps.js';
 import './tour.js';
 
 const $ = id => document.getElementById(id);
@@ -69,6 +70,7 @@ function previewDoc(code, wide){
 }
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 function nodeDoc(item){
+  if (item.app) return appDoc(item.code, { full: item.full, w: page.w, pad: PAD, color: isLightPage() ? '#18181b' : '#eee', theme: page.themeCss || '' });
   const root = item.full ? `width:${page.w}px;padding:0` : `width:max-content;max-width:${page.w - 2 * PAD}px;padding:${PAD}px`;
   // <base target=_blank> + no allow-popups in the sandbox = links never navigate the canvas frame away
   return `<!doctype html><html><head>${CSP}<base target="_blank"><meta name="color-scheme" content="dark"><style>:root{color-scheme:dark}html,body{margin:0;background:transparent;color:${isLightPage() ? '#18181b' : '#eee'};font-family:system-ui;overflow:hidden}button{white-space:nowrap}#__root{display:inline-block;box-sizing:border-box;${root}}</style>${page.themeCss ? `<style id="__theme">${page.themeCss}</style>` : ''}</head><body><div id="__root">${item.code}</div></body></html>`;
@@ -128,18 +130,43 @@ function render(){
   items.forEach((item, i) => {
     const el = nodes.get(item.id) || createNode(item);
     const frame = el.querySelector('iframe');
-    const key = item.code + '|' + (item.full ? page.w : 0) + '|' + isLightPage();
-    if (el._key !== key) { el._key = key; frame.title = item.name; frame._loaded = false; frame.srcdoc = nodeDoc(item); }
+    const key = item.code + '|' + (item.full ? page.w : 0) + '|' + isLightPage() + '|' + !!item.app;
+    if (el._key !== key) { el._key = key; frame.title = item.name; frame._loaded = false; el.classList.remove('is-app-error'); frame.setAttribute('sandbox', item.app ? 'allow-scripts' : 'allow-same-origin'); frame.srcdoc = nodeDoc(item); }
     el.querySelector('.node-tag').textContent = item.name;
     if (item.scene) mount3D(el, item); else if (el._live) { el._live.dispose(); el._live = el._sceneKey = null; el.classList.remove('has-live'); }
     el.style.left = item.x + 'px'; el.style.top = item.y + 'px'; el.style.zIndex = i + 1;
     el.classList.toggle('selected', picked.has(item.id) || selected === item.id);
     el.classList.toggle('locked', !!item.locked);
     el.classList.toggle('full', !!item.full);
+    el.classList.toggle('is-app', !!item.app);
   });
   $('canvasEmpty').classList.toggle('hidden', items.length > 0);
   renderLayers();
   layout();
+}
+// App frames can't be measured from outside (opaque origin): they post their size and script errors
+addEventListener('message', e => {
+  const d = e.data; if (!d || d.ocApp !== 1 || !e.source) return;
+  for (const [id, el] of nodes) {
+    const frame = el.querySelector('iframe'); if (frame.contentWindow !== e.source) continue;
+    if (d.error) { el.classList.add('is-app-error'); el.querySelector('.node-tag').title = 'script error: ' + d.error; if (codeFocus !== undefined) return; // code mode is open: code.js shows the error and fixes it
+      setState(`${t('app')} “${items.find(x => x.id === id)?.name || 'app'}”: ${d.error} — ${t('ask the AI to fix it')}`, 'warn'); offerFix(id, d.error); return; }
+    frame._loaded = true;
+    const w = Math.min(Math.max(+d.w || 0, 48), 5000), h = Math.min(Math.max(+d.h || 0, 32), 5000);
+    if (!items.find(x => x.id === id)?.full) frame.style.width = w + 'px';
+    frame.style.height = h + 'px'; layout(); return;
+  }
+});
+// A script error in an app: the chat shows it with a one-click fix (once per version of the app)
+const fixOffered = new Set();
+function offerFix(id, error){
+  const it = items.find(x => x.id === id); if (!it || fixOffered.has(it.code)) return;
+  fixOffered.add(it.code);
+  message(`${t('The app has a script error:')} ${error}`, 'assistant');
+  const row = document.createElement('div'); row.className = 'msg-cta';
+  row.innerHTML = `<button class="btn primary" type="button">${escapeHTML(t('fix it'))}</button>`;
+  row.querySelector('button').onclick = () => { row.remove(); runAI(t('Fix the script error'), { targetId: id, ask: `Use action "update". Fix this script error in the app and return the complete corrected app: "${error}". Check that every element the script looks up exists in the markup and that every button still works.` }); };
+  $('messages').append(row); toBottom();
 }
 // 3D elements: the iframe shows the rendered picture (what exports and published pages get); on the
 // canvas a live, animated Three.js view sits on top of it. Three.js loads only when a 3D element exists.
@@ -422,12 +449,12 @@ function add(name, code, opts = {}){
   checkpoint();
   const full = !!opts.full;
   const pos = opts.pos || (full ? { x: 0, y: snap(contentBottom()) } : freeSpot());
-  const item = { id: crypto.randomUUID(), name, code, ...pos, ...(full ? { full: true } : {}), ...(opts.scene ? { scene: opts.scene } : {}) };
+  const item = { id: crypto.randomUUID(), name, code, ...pos, ...(full ? { full: true } : {}), ...(opts.scene ? { scene: opts.scene } : {}), ...(opts.app ? { app: true } : {}) };
   items.push(item); selected = item.id; render();
   requestAnimationFrame(() => { const ty = item.y * zoom + STAGE_PAD; if (ty < canvas.scrollTop || ty > canvas.scrollTop + canvas.clientHeight - 80) canvas.scrollTo({ top: ty - 80, behavior: 'smooth' }); });
 }
 function remove(id){ const i = items.findIndex(x => x.id === id); if (i < 0) return; checkpoint(); items.splice(i, 1); if (selected === id) selected = null; render(); }
-function duplicate(id){ const x = items.find(i => i.id === id); if (x) add(x.name, x.code, { full: x.full, scene: x.scene, pos: x.full ? undefined : { x: x.x + 24, y: x.y + 24 } }); }
+function duplicate(id){ const x = items.find(i => i.id === id); if (x) add(x.name, x.code, { full: x.full, scene: x.scene, app: x.app, pos: x.full ? undefined : { x: x.x + 24, y: x.y + 24 } }); }
 function toFront(id){ const i = items.findIndex(x => x.id === id); if (i < 0 || i === items.length - 1) return; checkpoint(); items.push(items.splice(i, 1)[0]); render(); }
 function toBack(id){ const i = items.findIndex(x => x.id === id); if (i <= 0) return; checkpoint(); items.unshift(items.splice(i, 1)[0]); render(); }
 // ✦ Make it better: a senior designer reviews the element and returns it improved; the reply lists the fixes
@@ -796,7 +823,7 @@ const MINE_ICON = '<path d="m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2
 let mine = store.get(MINE_KEY, []); if (!Array.isArray(mine)) mine = [];
 function saveMine(id){
   const it = items.find(x => x.id === id); if (!it) return;
-  const entry = { id: crypto.randomUUID(), name: it.name, code: it.code, full: !!it.full, ...(it.scene ? { scene: it.scene } : {}), at: Date.now() };
+  const entry = { id: crypto.randomUUID(), name: it.name, code: it.code, full: !!it.full, ...(it.scene ? { scene: it.scene } : {}), ...(it.app ? { app: true } : {}), at: Date.now() };
   if (JSON.stringify(entry).length > MINE_MAX) { setState('this element is too large to save — big pictures inside', 'warn'); return; }
   const next = [entry, ...mine];
   try { localStorage.setItem(MINE_KEY, JSON.stringify(next)); } catch { setState('no room left in this browser for more saved components', 'error'); return; }
@@ -1086,7 +1113,12 @@ function freeResponsiveCss(){
   const zooms = steps.map((hi, i) => { const lo = Math.max(PHONE + 1, steps[i + 1] ? steps[i + 1] + 1 : PHONE + 1); return `@media (max-width:${hi}px) and (min-width:${lo}px){.oc-page{zoom:${(lo / W).toFixed(4)}}}`; }).join('');
   return zooms + `@media (max-width:${PHONE}px){.oc-page{width:auto!important;height:auto!important;display:flex;flex-direction:column;gap:16px;padding:16px 0;box-sizing:border-box}.oc-b{position:static!important;order:var(--o);display:flex;justify-content:center;padding:0 12px!important;max-width:100%;box-sizing:border-box}.oc-b.oc-f{display:block;width:100%!important;padding:0!important}.oc-b>*{max-width:100%;box-sizing:border-box}.oc-b img{max-width:100%;height:auto}}`;
 }
-function buildHTML(){
+function hasApps(){
+  const screens = studio.screens?.count() > 1 ? studio.screens.forHTML() : null;
+  return screens ? screens.some(sc => sc.items.some(it => it.app)) : items.some(it => it.app);
+}
+function buildHTML(){ const html = buildPageHTML(); return hasApps() ? withAppHead(html) : html; }
+function buildPageHTML(){
   const screens = studio.screens?.count() > 1 ? studio.screens.forHTML() : null;
   if (screens) return buildScreensHTML(screens);
   if (isStack()) return buildStackHTML();
@@ -1128,11 +1160,12 @@ function openDevicePreview(){
   m.innerHTML = `<div class="modal-card preview-card"><div class="modal-head"><h2>preview · ${stack ? 'responsive' : 'fixed width'}</h2><button class="btn icon" data-close>×</button></div>
     ${stack ? '<p class="preview-note">Blocks reflow to fit each screen. Links open in a new tab; hover and toggles work.</p>'
       : `<div class="preview-banner"><span><b>This page has a fixed ${page.w}px layout</b>, so phones and tablets just shrink it — text gets tiny. Make it responsive: blocks will stack top to bottom and adapt to any screen.</span><button class="btn primary" data-make-stack>make responsive</button></div>`}
-    <div class="devices">${devices.map(d => `<figure class="device"><div class="device-screen"><iframe sandbox="allow-popups allow-popups-to-escape-sandbox" title="${d.name}"></iframe></div><figcaption>${d.name} · ${d.w}px</figcaption></figure>`).join('')}</div></div>`;
+    <div class="devices">${devices.map(d => `<figure class="device"><div class="device-screen"><iframe sandbox="allow-popups allow-popups-to-escape-sandbox${hasApps() ? ' allow-scripts' : ''}" title="${d.name}"></iframe></div><figcaption>${d.name} · ${d.w}px</figcaption></figure>`).join('')}</div></div>`;
   m.classList.remove('hidden');
   m.querySelector('[data-make-stack]')?.addEventListener('click', () => { setLayoutMode('stack'); requestAnimationFrame(() => requestAnimationFrame(openDevicePreview)); });
   // dark scrollbars, links open in a new tab, scripts stay off
-  const head = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:"><base target="_blank"><style>:root{color-scheme:dark}html{scrollbar-width:thin;scrollbar-color:#3a302d transparent}</style>`;
+  const apps = hasApps();
+  const head = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';${apps ? " script-src 'unsafe-inline' 'unsafe-eval';" : ''} img-src data: blob:; font-src data:"><base target="_blank"><style>:root{color-scheme:dark}html{scrollbar-width:thin;scrollbar-color:#3a302d transparent}</style>`;
   m.querySelectorAll('.device').forEach((fig, i) => {
     const d = devices[i], f = fig.querySelector('iframe'), screen = fig.querySelector('.device-screen');
     // a fixed-width page is laid out at its own width and scaled to the device, like a phone does with width=1440
@@ -1274,6 +1307,14 @@ const variantsBtn = Object.assign(document.createElement('button'), { type: 'but
 variantsBtn.setAttribute('aria-pressed', String(variantsOn));
 variantsBtn.onclick = () => { variantsOn = !variantsOn; store.set('oc-variants', variantsOn); variantsBtn.setAttribute('aria-pressed', String(variantsOn)); setState(variantsOn ? 'next request: 3 variants to choose from' : 'one answer per request', 'ok'); };
 picker.after(variantsBtn);
+// app: the AI builds a working mini-app (with JavaScript) instead of a static block
+let appOn = store.get('oc-app-mode', false);
+const appBtn = Object.assign(document.createElement('button'), { type: 'button', className: 'app-toggle', id: 'appToggle', innerHTML: '<span aria-hidden="true">&lt;/&gt;</span> app', title: t('Working mini-apps: calculators, quizzes, trackers, timers, small games') });
+const promptHint = () => { const pr = document.querySelector('#react-composer textarea'); if (!pr) return setTimeout(promptHint, 400); pr.dataset.hint ??= pr.placeholder || ''; pr.placeholder = appOn ? t('Describe an app: a calculator, quiz, tracker, timer, small game…') : pr.dataset.hint; };
+function setAppMode(on, quiet){ appOn = !!on; store.set('oc-app-mode', appOn); appBtn.setAttribute('aria-pressed', String(appOn)); document.body.classList.toggle('app-mode', appOn); promptHint(); if (!quiet) setState(appOn ? 'app mode: the AI builds working mini-apps' : 'page mode: the AI builds pages and blocks', 'ok'); }
+appBtn.onclick = () => setAppMode(!appOn);
+variantsBtn.after(appBtn);
+requestAnimationFrame(() => setAppMode(appOn, true));
 const trigger = picker.querySelector('.model-trigger'), menu = picker.querySelector('.model-menu'), mSearch = picker.querySelector('input');
 const chevron = '<svg class="model-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>';
 function renderPicker(){
@@ -1520,6 +1561,8 @@ function isRewriteOf(prev, next){
   let same = 0; for (const w of a) if (b.has(w)) same++;
   return same / a.size >= .6;
 }
+// Code mode (code.js): the app being worked on; requests change only it (null = make a new one). undefined = canvas mode
+let codeFocus;
 let lastAiId = store.get('oc-last-ai', null); // the element the AI built or changed last (kept across reloads)
 // Three variants side by side; resolves to the chosen index, 'all', or null (cancel)
 const variantModal = Object.assign(document.createElement('div'), { className: 'modal hidden', id: 'variantsModal' });
@@ -1600,7 +1643,7 @@ async function runAI(request, custom = {}){
   // What a change request applies to: the selection, else the page being worked on (the last element the AI
   // built or the only full-width section), so 'make the photos bigger' edits it instead of adding a new page
   const fulls = items.filter(x => x.full);
-  const target = custom.targetId ? items.find(x => x.id === custom.targetId) : custom.user ? null : items.find(x => x.id === selected) || items.find(x => x.id === lastAiId) || (fulls.length ? fulls[fulls.length - 1] : null);
+  const target = custom.targetId ? items.find(x => x.id === custom.targetId) : custom.user ? null : codeFocus !== undefined ? items.find(x => x.id === codeFocus) || null : items.find(x => x.id === selected) || items.find(x => x.id === lastAiId) || (fulls.length ? fulls[fulls.length - 1] : null);
   const implicit = target && target.id !== selected;
   const recent = custom.user ? '' : chatContext(); // turns before this one
   logChat('user', request);
@@ -1617,6 +1660,7 @@ async function runAI(request, custom = {}){
     const ref = presets.find(p => p.name === 'Neon square hero');
     return ref ? '\n\nStyle reference — one finished section in the expected cinematic quality. Do NOT copy its texts or layout one-to-one — write every text in the language of the request, keep the 3D object clear of the headline; match its polish (glow, CSS 3D object, huge tight type, spacing) across the WHOLE page, and use an art: hero image:\n```html\n' + ref.code + '\n```' : '';
   };
+  const appMode = !custom.user && (appOn || !!target?.app);
   const system = `You are openconstructor AI, you build interfaces. Answer in EXACTLY this format and nothing else:
 line 1 — a one-line JSON header WITHOUT the code: {"action":"add|update|reply","full":true|false,"name":"short element name","reply":"short reply to the user"}
 then, unless action is "reply", the HTML and CSS in ONE fenced block:
@@ -1631,7 +1675,7 @@ Rules:
 - Language: write "reply" in the language of the user's message; if unclear, in ${AI_LANG[lang]}. Texts on the page you build go in the language the user writes in (or the language they ask for).
 - Colors: text must always be clearly readable. Give the root element (and every section that changes the background) an explicit background AND an explicit text color — never rely on inherited color. Dark text on light backgrounds, light text on dark ones; never white or near-white text on a white or light background, or dark text on a dark one.
 - Forms (contact, sign-up, newsletter, order): use a real <form> with a submit button and give every field a short name attribute (name="email", name="message") — on a published page the messages reach the page's author.
-- Self-contained HTML and CSS only: one <style> plus markup. No JavaScript, external links or fonts. Icons as inline SVG.
+${appMode ? APP_RULES + '\n- No external links or fonts. Icons as inline SVG.' : '- Self-contained HTML and CSS only: one <style> plus markup. No JavaScript, external links or fonts. Icons as inline SVG.'}
 - Real photos make pages feel finished: for websites, landing pages, heroes, product/menu cards, galleries, team and testimonials use photos — <img src="photo:2-4 English words" alt="…"> sized by CSS with object-fit:cover, or background-image:url('photo:2-4 English words'). Append ?portrait or ?square for tall or square slots (photo:barista portrait?portrait). Describe what should be in the picture (photo:latte art cup, photo:cozy cafe interior). Never write http image URLs. Small UI components (buttons, inputs, toggles) need no photos.${custom.attachNote || ''}
 - Cinematic / 3D websites: when the user asks for a 3D, immersive, cinematic, futuristic, neon, luxury or "premium/award-winning" website, page or landing, build HTML (NOT scene3d) in this style:
   · near-black background (#03050a–#0a0a0f), light text; ONE neon accent (electric blue #4d8dff, violet, cyan or magenta) used for glow: box-shadow 0 0 20px/60px/140px in the accent, text-shadow, radial-gradient light pools behind objects;
@@ -1657,13 +1701,14 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
   // photos already in the selected element travel as short kept:N tokens, not megabytes of base64
   const kept = [];
   const slim = code => String(code).replace(/data:image\/[\w.+-]+;base64,[A-Za-z0-9+/=]+/g, d => 'kept:' + kept.push(d));
-  const user = custom.user || ((recent ? 'Conversation so far (for context):\n' + recent + '\n\n' : '') + 'Current element' + (implicit ? ' (not selected — the page built last)' : ' (selected)') + ': ' + JSON.stringify(target ? (target.scene ? { name: target.name, type: '3D scene', scene: target.scene } : { name: target.name, code: slim(target.code) }) : null) + '\nOther elements: ' + JSON.stringify(items.map(x => ({ name: x.name }))) + (target && !custom.ask ? '\nIf the request changes, fixes or restyles anything in the Current element, answer with action "update" and the COMPLETE updated element. Use "add" only for a clearly separate new block.' : '') + '\nRequest: ' + (custom.ask || request) + cineRef(custom.ask || request) + (custom.extra || ''));
+  const user = custom.user || ((recent ? 'Conversation so far (for context):\n' + recent + '\n\n' : '') + 'Current element' + (implicit ? ' (not selected — the page built last)' : ' (selected)') + ': ' + JSON.stringify(target ? (target.scene ? { name: target.name, type: '3D scene', scene: target.scene } : { name: target.name, code: slim(target.code) }) : null) + '\nOther elements: ' + JSON.stringify(items.map(x => ({ name: x.name }))) + (target && !custom.ask ? '\nIf the request changes, fixes or restyles anything in the Current element, answer with action "update" and the COMPLETE updated element. Use "add" only for a clearly separate new block.' : '') + '\nRequest: ' + (custom.ask || request) + cineRef(custom.ask || request) + (appMode && !target?.app ? appReference(custom.ask || request) : '') + (custom.extra || ''));
   // web: pages linked in the request are read up front; the model can ask for a search (action "search")
   let webNote = '', searches = 0;
   const webGet = async qs => { const r = await fetch('/api/web?' + qs); if (!r.ok) throw Error((await r.json().catch(() => ({})))?.error?.message || 'HTTP ' + r.status); return r.json(); };
   const pageNote = pg => `Page ${pg.url}${pg.title ? ' — ' + pg.title : ''}:\n${pg.text}`;
   const searchQuery = content => { const m = String(content).replace(/<think>[\s\S]*?<\/think>/gi, '').match(/^\s*\{[^{}]*"action"\s*:\s*"search"[^{}]*\}/); if (!m) return ''; try { return String(JSON.parse(m[0]).query || '').trim().slice(0, 200); } catch { return ''; } };
-  aiTurn.id = [...crypto.getRandomValues(new Uint8Array(12))].map(b => b.toString(16).padStart(2, '0')).join('');
+  // an automatic fix of the answer just given belongs to the same turn (the server counts up to 4 calls of one turn once)
+  if (!(custom.sameTurn && aiTurn.id)) aiTurn.id = [...crypto.getRandomValues(new Uint8Array(12))].map(b => b.toString(16).padStart(2, '0')).join('');
   try {
     const links = custom.user ? [] : [...new Set((request.match(/\bhttps?:\/\/[^\s<>"')]+/gi) || []).map(u => u.replace(/[.,;:!?]+$/, '')))].slice(0, 2);
     for (const link of links) {
@@ -1677,7 +1722,7 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
       let images = custom.images || [];
       for (let attempt = 0; ; attempt++) {
         let content;
-        const ask = (extra ? user + '\n\n' + extra : user) + webNote + (searches >= 2 ? '\n\nDo not search again — answer with what you have.' : '') + (attempt ? '\n\nIMPORTANT: your previous answer could not be read. Reply EXACTLY in the required format: the one-line JSON header, then ONE ```html block.' : '');
+        const ask = (extra ? user + '\n\n' + extra : user) + webNote + (searches >= 2 ? '\n\nDo not search again — answer with what you have.' : '') + (attempt ? '\n\nIMPORTANT: your previous answer could not be read. Reply EXACTLY in the required format: the one-line JSON header, then ONE ```html block.' : '') + (attempt && appMode ? ' Your previous answer came back empty or cut off. Do NOT write the code in your reasoning: think in two sentences at most, then write the answer straight away, compact enough to finish (close </script> and the ``` block).' : '');
         if (!quiet) stop.liveReset();
         try { content = await chat(p, key, m.id, system, ask, images, quiet ? null : (piece, why) => stop.live(piece, why)); }
         catch (err) {
@@ -1698,14 +1743,16 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
           if (typeof content !== 'string' || !content.trim()) throw Error('Empty model response');
           const r = parseScene(content) || parseAnswer(content);
           if (!r.scene && !(r.action === 'reply' || (!r.code && r.reply)) && (typeof r.code !== 'string' || !r.code.trim())) throw Error('Invalid code');
+          // an app whose script never closes was cut off by the answer limit: it would sit there doing nothing
+          if (appMode && /<script\b/i.test(r.code || '') && !/<\/script\s*>/i.test(r.code)) throw Error('The app was cut off before it was finished — ask for a simpler version or pick another model');
           return r;
-        } catch (err) { if (attempt >= 1) throw err; if (!quiet) stop.step('the answer came out garbled — asking again'); }
+        } catch (err) { if (attempt >= (appMode ? 2 : 1)) throw err; if (!quiet) stop.step('the answer came out garbled — asking again'); }
       }
     };
     let result, prepared = false;
     // A new cinematic / 3D SITE: the page is assembled from the hand-made cinematic sections (cine-template.js);
     // the model only writes the content as JSON — small free models can't reach that polish on their own.
-    const cineMode = !custom.user && !custom.ask && !custom.images?.length && (!target || implicit) && !!cineRef(request)
+    const cineMode = !appMode && !custom.user && !custom.ask && !custom.images?.length && (!target || implicit) && !!cineRef(request)
       && /сайт|site|page|страниц|лендинг|landing|портфолио|portfolio|главн/i.test(request);
     if (cineMode) {
       stop.step('writing the content for a cinematic 3D site');
@@ -1720,7 +1767,7 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
       if (!data) throw Error('The model answered in an unexpected format');
       artHue = Number.isFinite(+data.hue) ? +data.hue : 220;
       result = { action: 'add', full: true, name: String(data.brand || 'Cinematic site').slice(0, 60) + ' · 3D site', code: cinePage(data), reply: String(data.reply || '') };
-    } else if (variantsOn && !custom.user && !custom.ask && !custom.images?.length) {
+    } else if (variantsOn && !appMode && !custom.user && !custom.ask && !custom.images?.length) {
       stop.step('making 3 different variants');
       const hints = [
         'VARIANT 1 of 3 — a clean, minimal take: generous whitespace, restrained palette.',
@@ -1777,16 +1824,17 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
       if (cineRef(custom.ask || request)) result.code = result.code.replace(/(["'(]\s*)photo:([^"'()<>\n?]{1,80})(\?\w+)?/g, (_, q, what) => `${q}art:${what.trim()}, cinematic 3d render, dark background, volumetric neon light`);
       result.code = await resolveMedia(result.code, custom.attachments || [], qs => stop.step('finding photos: ' + qs.slice(0, 4).join(', ') + (qs.length > 4 ? '…' : '')), kept, qs => stop.step('drawing 3D art: ' + qs.map(q => q.slice(0, 40)).join(' · ')));
       artHue = 220;
-      result.code = await fixContrast(withBrand(result.code), full);
-      if (full) result.code = withMotion(result.code);
+      result.code = appMode ? withBrand(result.code) : await fixContrast(withBrand(result.code), full);
+      if (full && !appMode) result.code = withMotion(result.code);
     }
     if (result.action !== 'update' && target && !target.scene && !custom.place && isRewriteOf(target.code, result.code)) result.action = 'update';
     if (result.action === 'update' && target) {
       const item = items.find(x => x.id === target.id); if (!item) throw Error('The element was deleted during the request');
       checkpoint(); item.name = String(result.name || item.name).slice(0, 80); item.code = result.code;
+      if (appMode && /<script\b/i.test(result.code)) item.app = true;
       if (full) { item.full = true; item.x = 0; }
       selected = item.id; lastAiId = item.id; render();
-    } else { add(String(result.name || 'New element').slice(0, 80), result.code, { full, ...(custom.place || {}) }); lastAiId = selected; }
+    } else { add(String(result.name || 'New element').slice(0, 80), result.code, { full, ...(appMode && /<script\b/i.test(result.code) ? { app: true } : {}), ...(custom.place || {}) }); lastAiId = selected; }
     await stop.finish(result.action === 'update' && target ? 'updated on the canvas' : 'placed on the canvas'); setState('element ready', 'ok');
     message(String(result.reply || 'Done. The element is on the page.'), 'assistant'); logChat('assistant', result.reply || 'Done. The element is on the page.'); $('prompt').value = ''; window.dispatchEvent(new CustomEvent('oc:generated'));
     track('ai_ok');
@@ -1798,7 +1846,7 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
     track('ai_fail'); track(failReason(e));
     setState('ai error', 'error'); $('chatStatus').textContent = 'Error: ' + e.message; message('Could not apply the response. Try again or pick another model.', 'assistant');
   }
-  finally { $('send').disabled = false; }
+  finally { $('send').disabled = false; window.dispatchEvent(new CustomEvent('oc:ai-idle')); }
 }
 $('prompt').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('send').click(); } });
 
@@ -1865,7 +1913,7 @@ function cleanPage(pg){
 export const studio = {
   // for the Ctrl+K palette: every catalog component (mine first) with a way to add it
   catalog: () => [
-    ...mine.map(m => ({ name: m.name, category: MINE, add: () => add(m.name, m.code, { full: m.full, ...(m.scene ? { scene: m.scene } : {}) }) })),
+    ...mine.map(m => ({ name: m.name, category: MINE, add: () => add(m.name, m.code, { full: m.full, ...(m.scene ? { scene: m.scene } : {}), ...(m.app ? { app: true } : {}) }) })),
     ...presets.map(p => ({ name: p.name, category: p.category, add: () => add(p.name, p.code, { full: p.full }) })),
   ],
   addIcon: () => addIcon(),
@@ -1914,7 +1962,19 @@ export const studio = {
   say: (text, role = 'assistant') => message(text, role),
   menu: (x, y, entries) => openCtx(x, y, entries),
   ai: (request, custom) => runAI(request, custom),
+  busy: () => $('send').disabled,
+  setAppMode: (on, quiet) => setAppMode(on, quiet),
+  appMode: () => appOn,
+  setCodeFocus: id => { codeFocus = id; },
+  // a ready-made app from apps.js, placed on the canvas
+  addApp(id){
+    const ex = APP_EXAMPLES.find(x => x.id === id); if (!ex) return;
+    add(t(ex.name), ex.code, { app: true }); lastAiId = selected; setAppMode(true, true);
+    message(t('This app works: press ▶ play to use it. Select it and describe a change — the AI edits the app, logic included.'), 'assistant');
+  },
 };
+// dev builds only: tests and debugging reach the live editor (a dynamic import would load a second copy)
+if (import.meta.env?.DEV) window.__oc = { studio };
 export function loadTemplate(tpl){
   checkpoint();
   page = { ...page, ...tpl.page, ...(tpl.page?.bg ? { bgSpec: null } : {}) }; store.set('oc-page', page);
@@ -1933,6 +1993,8 @@ document.querySelector('.tb-menu').addEventListener('click', e => {
   if (cmd === 'addCode') edit(null);
   if (cmd === 'clear') clearPage();
 });
+// ideas under the chat greeting fill the input
+$('messages').addEventListener('click', e => { const b = e.target.closest('.welcome-ideas [data-idea]'); if (b) prefillPrompt(b.textContent.trim()); });
 $('canvasEmpty').addEventListener('click', e => { const b = e.target.closest('[data-empty]'); if (!b) return; if (b.dataset.empty === 'welcome') openWelcome('wl-templates');
   else if (b.dataset.empty === 'screenshot') pickScreenshot();
   else if (b.dataset.empty === 'library') { window.dispatchEvent(new CustomEvent('oc:show-view', { detail: 'library' })); const s = $('catalogSearch'); s.focus(); $('sidePanel').animate([{ boxShadow: 'inset 0 0 0 1px var(--accent)' }, { boxShadow: 'inset 0 0 0 1px transparent' }], { duration: 1200 }); }

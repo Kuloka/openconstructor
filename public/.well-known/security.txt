@@ -1,0 +1,5 @@
+# How to report a security problem in openconstructor
+Contact: https://github.com/Kuloka/openconstructor/security/advisories/new
+Expires: 2027-11-12T00:00:00.000Z
+Preferred-Languages: en, ru
+Canonical: https://openconstructor.pw/.well-known/security.txt

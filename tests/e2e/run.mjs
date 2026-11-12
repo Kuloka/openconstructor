@@ -203,3 +203,124 @@ scenario('cinematic 3D site: built from the template, AI writes content, art dra
   assert.deepEqual(globalThis.__artPosts.map(p => JSON.parse(p).prompt).sort(), ['amber neon cube over dark sand dunes, cinematic 3d render', 'glowing hall, cinematic 3d render']);
   assert.match(ed.posts[0], /CONTENT for a cinematic/);
 }, { signedIn: true, routes: [{ match: u => /\/api\/image$/.test(u), handle: rq => { globalThis.__artPosts.push(rq.postData); return { type: 'image/png', body: PNG1 }; } }] });
+
+// app mode: the AI is told to write a working app, the element runs its script in an isolated frame
+// (the frame reports its own size), and the exported page is marked so the published page runs scripts
+const COUNTER = '<style>.ct-app{width:300px;padding:20px;background:#111;color:#fff}</style>\n<div class="ct-app"><b class="ct-n">0</b><button class="ct-b">+1</button><div class="ct-pad" style="height:0"></div></div>\n<script>(()=>{const r=document.querySelector(\'.ct-app\');r.querySelector(\'.ct-pad\').style.height=\'317px\';r.querySelector(\'.ct-b\').onclick=()=>{const n=r.querySelector(\'.ct-n\');n.textContent=+n.textContent+1}})();</script>';
+scenario('apps: app mode builds a working mini-app that runs in an isolated frame', async (ed, o) => {
+  o.reply = () => block('Counter', COUNTER);
+  await ed.ev(`(document.getElementById('appToggle').click(), 1)`);
+  assert.equal(await ed.ev(`document.getElementById('appToggle').getAttribute('aria-pressed')`), 'true');
+  await ed.ask('a click counter'); await ed.idle();
+  const [it] = await ed.items();
+  assert.equal(it.app, true);
+  assert.match(ed.posts[0], /APP MODE/);
+  assert.match(ed.posts[0], /Reference app/);
+  assert.equal(await ed.ev(`document.querySelector('.node.is-app iframe').getAttribute('sandbox')`), 'allow-scripts');
+  // the script ran: it grew the app and the frame reported the new height
+  assert.ok(await ed.until(`document.querySelector('.node.is-app iframe').offsetHeight > 340`), 'app frame sized by its script');
+  const html = await ed.ev(`window.__oc.studio.html()`);
+  assert.match(html, /<meta name="oc-app" content="1">/);
+  assert.match(html, /ct-pad/);
+});
+
+// free reasoning models sometimes spend the whole answer thinking (empty answer) or get cut mid-script:
+// app mode asks again, up to twice, and never places a half-written app
+scenario('apps: an empty answer and a cut-off app are retried', async (ed, o) => {
+  let n = 0;
+  o.reply = () => ++n === 1 ? '' : n === 2 ? block('Counter', COUNTER.replace('</script>', '')) : block('Counter', COUNTER);
+  await ed.ev(`(document.getElementById('appToggle').click(), 1)`);
+  await ed.ask('a click counter'); await ed.idle();
+  const list = await ed.items();
+  assert.equal(n, 3);
+  assert.equal(list.length, 1);
+  assert.match(list[0].code, /<\/script>/);
+  assert.match(ed.posts[2], /Do NOT write the code in your reasoning/);
+});
+
+// a script error in a new app is shown in the chat with a one-click fix that sends the error to the AI
+scenario('apps: a script error offers a fix', async (ed, o) => {
+  let n = 0;
+  o.reply = () => ++n === 1 ? block('Counter', COUNTER.replace("r.querySelector('.ct-pad')", "r.querySelector('.nope')")) : block('Counter', COUNTER, { action: 'update' });
+  await ed.ev(`(document.getElementById('appToggle').click(), 1)`);
+  await ed.ask('a click counter'); await ed.idle();
+  assert.ok(await ed.until(`!!document.querySelector('.node.is-app-error') && !!document.querySelector('#messages .msg-cta button')`), 'error shown with a fix button');
+  await ed.ev(`(document.querySelector('#messages .msg-cta button').click(), 1)`); await sleep(500); await ed.idle();
+  assert.match(ed.posts[1], /Fix this script error/);
+  assert.ok(await ed.until(`!document.querySelector('.node.is-app-error')`), 'fixed app has no error');
+  assert.equal((await ed.items()).length, 1);
+});
+
+scenario('apps: the welcome screen opens a ready-made app on a new page', async ed => {
+  await ed.ev(`(window.dispatchEvent(new CustomEvent('oc:welcome', { detail: 'wl-apps' })), 1)`);
+  assert.ok(await ed.until(`document.querySelectorAll('.wl-app iframe').length === 4`), 'four live app cards');
+  await ed.ev(`([...document.querySelectorAll('.wl-app')].find(c => /quiz/i.test(c.textContent)).querySelector('.wl-btn.primary').click(), 1)`);
+  assert.ok(await ed.until(`JSON.parse(localStorage.getItem('form-canvas-v3') || '[]').some(x => x.app)`), 'app placed');
+  const [it] = await ed.items();
+  assert.match(it.code, /qz-app/);
+  assert.equal(await ed.ev(`document.getElementById('appToggle').getAttribute('aria-pressed')`), 'true');
+}, { connect: false });
+
+// openconstructor code: the chat moves into the workspace, a new app shows in the live preview,
+// the next request edits that app (not the page on the canvas), the preview width is adjustable
+scenario('apps: Code workspace — chat + resizable live preview, edits stay on the app', async (ed, o) => {
+  let n = 0;
+  o.reply = () => ++n === 1 ? block('Landing', '<section class="lp-x" style="width:100%;height:300px;background:#123">Page</section>', { full: true })
+    : n === 2 ? block('Counter', COUNTER) : block('Counter', COUNTER.replace('+1', '+10'), { action: 'update' });
+  await ed.ask('a landing page'); await ed.idle();
+  await ed.ev(`(document.querySelector('.tb-code').click(), 1)`); await sleep(400);
+  assert.equal(await ed.ev(`!!document.querySelector('#cwChat #chatPanel')`), true, 'chat moved into the workspace');
+  assert.equal(await ed.ev(`!document.getElementById('cwEmpty').classList.contains('hidden')`), true, 'empty state without an app');
+  await ed.ask('a click counter'); await ed.idle(); await sleep(300);
+  assert.match(await ed.ev(`document.getElementById('cwIframe').srcdoc`), /ct-app/);
+  await ed.ask('make the button add 10'); await ed.idle(); await sleep(300);
+  const list = await ed.items();
+  assert.equal(list.length, 2);
+  assert.match(list.find(x => x.app).code, /\+10/);
+  assert.match(list.find(x => !x.app).code, /lp-x/, 'the page on the canvas is untouched');
+  // the change is reported by file and language, with the number of lines
+  assert.equal(await ed.ev(`document.getElementById('cwDiff').textContent`), '+1−1');
+  assert.match(await ed.ev(`[...document.querySelectorAll('.cw-change')].pop().textContent`), /index\.htmlHTML\+1−1/);
+  await ed.ev(`(document.querySelector('[data-tab="code"]').click(), 1)`);
+  assert.match(await ed.ev(`document.getElementById('cwFiles').textContent`), /index\.html\d+style\.css\d+app\.js\d+/);
+  assert.match(await ed.ev(`document.getElementById('cwStats').textContent`), /HTML \d+ · CSS \d+ · JavaScript \d+ — \d+ lines/);
+  await ed.ev(`(document.querySelector('[data-tab="preview"]').click(), 1)`);
+  await ed.ev(`(document.querySelector('[data-dev="820"]').click(), 1)`);
+  assert.equal(await ed.ev(`document.getElementById('cwFrame').style.width`), '820px');
+  await ed.ev(`(document.querySelector('.cw-x').click(), 1)`); await sleep(300);
+  assert.equal(await ed.ev(`!!document.querySelector('#main #chatPanel')`), true, 'chat back in the editor');
+});
+
+// openconstructor code: an error in the live preview goes to the AI at once (with the failing line),
+// the fixed version replaces it and the error bar goes away
+scenario('apps: Code workspace — a script error is sent to the AI and fixed automatically', async (ed, o) => {
+  let n = 0;
+  o.reply = () => ++n === 1 ? block('Counter', COUNTER.replace("r.querySelector('.ct-pad')", "r.querySelector('.nope')")) : block('Counter', COUNTER, { action: 'update' });
+  await ed.ev(`(document.querySelector('.tb-code').click(), 1)`); await sleep(400);
+  await ed.ask('a click counter'); await ed.idle();
+  for (let i = 0; i < 60 && n < 2; i++) await sleep(200);
+  assert.equal(n, 2, 'fix request sent without a click');
+  assert.ok(await ed.until(`document.getElementById('cwErr').classList.contains('hidden')`, 10000), 'error bar gone after the fix');
+  assert.equal(n, 2);
+  assert.match(ed.posts[1], /has a bug while it runs/);
+  assert.match(ed.posts[1], /\.nope/, 'the failing line is sent along');
+  assert.equal((await ed.items()).length, 1);
+  assert.equal(await ed.ev(`[...document.querySelectorAll('#messages .msg-cta')].map(x => x.textContent).join('|')`), '', 'no duplicate offer from the canvas');
+});
+
+// a "silent" bug (NaN on screen) is caught too; auto-fix stops after two tries and leaves a manual button
+scenario('apps: Code workspace — NaN on screen is caught, auto-fix gives up after two tries', async (ed, o) => {
+  let n = 0;
+  const BAD = COUNTER.replace("r.querySelector('.ct-pad').style.height='317px';", "r.querySelector('.ct-n').textContent=String(parseFloat('x'))+' items';");
+  o.reply = () => ++n === 1 ? block('Counter', BAD) : block('Counter', BAD.replace('items', 'items ' + n), { action: 'update' });
+  await ed.ev(`(document.querySelector('.tb-code').click(), 1)`); await sleep(400);
+  await ed.ask('a click counter'); await ed.idle();
+  assert.ok(await ed.until(`!document.getElementById('cwFix').hidden && !document.getElementById('cwErr').classList.contains('hidden') && !document.querySelector('.message.thinking:not(.folded)')`, 20000), 'manual fix button after auto tries');
+  await sleep(800);
+  assert.equal(n, 3, 'one build + two automatic fixes');
+  assert.match(await ed.ev(`document.getElementById('cwErrText').textContent`), /NaN/);
+  // the bottom panel lists it under Problems, and the status bar counts it
+  assert.match(await ed.ev(`document.getElementById('cwProblems').textContent`), /NaN/);
+  assert.match(await ed.ev(`document.getElementById('cwStProb').textContent`), /^1/);
+  assert.match(ed.posts[1], /the screen shows \\"NaN\\"/);
+});

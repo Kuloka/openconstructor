@@ -1,0 +1,17 @@
+# Security headers for the static site (editor, welcome, SEO pages). Cloudflare applies this file to
+# every static asset; the worker sets its own headers on /p/* and /api/* (see worker.js, SECURITY).
+#
+# CSP notes — why it is not stricter:
+# - 'unsafe-inline' 'unsafe-eval' in script-src: canvas blocks and mini-apps run in <iframe srcdoc>, and
+#   srcdoc frames inherit this policy on top of their own (apps.js APP_CSP, studio.js nodeDoc). Without these
+#   the mini-apps stop working. The frames themselves are sandboxed without allow-same-origin.
+# - connect-src https: — the AI providers are called straight from the browser with the user's own key.
+# - style/font/img https: — previews show user pages with their own fonts and pictures.
+/*
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), magnetometer=(), gyroscope=(), accelerometer=()
+  Cross-Origin-Opener-Policy: same-origin-allow-popups
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https:; font-src 'self' data: https:; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src 'self' blob: data: https:; worker-src 'self' blob:; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self' https:; upgrade-insecure-requests

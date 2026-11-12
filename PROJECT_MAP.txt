@@ -1,0 +1,146 @@
+openconstructor — карта проекта
+==============================
+Зачем этот файл: чтобы ИИ-помощник (и люди) не перечитывали весь код в каждой сессии.
+Читать его ПЕРВЫМ, потом открывать только нужные места. Обновлять, когда меняется структура.
+Последнее обновление: 2026-11-12
+
+КАК УСТРОЕНО В ДВУХ СЛОВАХ
+--------------------------
+Браузерный редактор (Vite, ванильный JS + немного React) + Cloudflare Worker (worker.js) + Supabase.
+Страница = список элементов (items) на холсте. Элемент = { id, name, code (HTML+CSS), x, y,
+  full?: секция на всю ширину, scene?: 3D-сцена, app?: мини-приложение со скриптом, locked? }.
+Каждый элемент рисуется в своём <iframe srcdoc>. Обычные элементы: sandbox="allow-same-origin",
+  скрипты запрещены CSP. Приложения (app): sandbox="allow-scripts", без same-origin, без сети.
+Проект хранится в localStorage ('form-canvas-v3' = items, 'oc-page' = page, 'oc-name').
+Облако (projects.js) — зеркало для вошедших. Публикация (publish.js) кладёт готовый HTML в Supabase,
+  worker.js отдаёт его на /p/<slug> и на своих доменах.
+
+КОМАНДЫ
+-------
+npm run dev        — редактор на 127.0.0.1:5173 (/api проксируется на живой воркер, vite.config.js)
+npm test           — юнит-тесты (tests/unit/*.test.js), быстрые
+npm run test:e2e   — браузерные тесты (headless Chrome, ИИ подделан). ONLY=apps — только часть.
+npm run build      — сборка в dist/
+npm run deploy     — тесты + сборка + wrangler deploy (основной сайт)
+npm run deploy:domains — тот же worker.js для своих доменов пользователей
+
+ГЛАВНЫЕ ФАЙЛЫ (по важности)
+---------------------------
+studio.js (~2000 строк) — ядро редактора. Ориентиры внутри (искать по тексту):
+  "── State"            items, undo (checkpoint/pushHistory), persist() → событие oc:changed
+  "function nodeDoc"    документ iframe для элемента (app → apps.js appDoc)
+  "function render"     синхронизация items → DOM-узлы .node
+  "addEventListener('message'"  размеры и ошибки от iframe-приложений
+  "function add("       добавить элемент (opts: full, scene, app, pos)
+  "function buildHTML"  итоговый HTML страницы (экспорт/публикация); hasApps() → withAppHead
+  "function openDevicePreview"  просмотр телефон/планшет/компьютер
+  "function setPlaying" ▶ play: iframe получают мышь
+  "variantsBtn" / "appBtn"  переключатели ×3 и ⚡ app рядом с выбором модели
+  "async function runAI"  весь запрос к ИИ: системный промпт (const system), appMode, cineMode,
+                          варианты ×3, 3D, веб-поиск, вставка результата на холст
+  "export const studio" API для остальных модулей (items, page, html, update, load, ai, setAppMode, appMode,
+                        setCodeFocus, addApp…)
+  В dev-сборке window.__oc.studio и window.__ocCode — для тестов. НЕ импортировать '/studio.js' динамически:
+  dev-сервер добавляет ?t=… и получится вторая копия редактора.
+code.js + code.css — экран «openconstructor code» (кнопка «</> code» в верхнем меню, «Code» на стартовом
+  экране, адрес /#code). Раскладка как в VS Code: заголовок (имя приложения по центру, переключатель «код / код+превью /
+  превью» = data-tab code|split|preview), панель слева (activity bar), проводник (файлы приложения index.html/style.css/
+  app.js и список всех приложений проекта), редактор кода с вкладками и подсветкой, справа от него живой просмотр
+  (по умолчанию на всю ширину, есть 390/820/1280, поле ширины, ручки), внизу панель «Проблемы / Консоль» (ошибки и
+  console.log приложения — APP_LOG только в этом просмотре), справа чат редактора (#chatPanel переносится внутрь и
+  возвращается при закрытии), снизу строка состояния (ошибки, авто-починка, строки по языкам, Стр/Стлб).
+  Размеры панелей тянутся (data-sash), всё хранится в localStorage 'oc-code-ui2'. Ctrl+S в коде = «apply».
+  После каждой правки «+N −M» в заголовке и заметка по файлам в чате (track, postChange).
+  Стиль: терминальный, плоский акцент #ff5a36 (коралл, цвет спутника в лого; текст на нём белый), без эмодзи и фиолетовых градиентов. openCode({ prompt, appId }), closeCode().
+  Запросы к ИИ здесь меняют только приложение в фокусе: studio.setCodeFocus(id) → runAI берёт его как target
+  (null = сделать новое; undefined = обычный режим холста).
+apps.js — мини-приложения: APP_CSP, APP_SHIM (localStorage в изолированном окне), appDoc, appPreview,
+  withAppHead (метка <meta name="oc-app">), APP_RULES (правила для ИИ), APP_EXAMPLES (4 готовых приложения).
+worker.js (~1000) — сервер. Маршруты в конце файла ("async fetch"):
+  /p/<slug> страницы (PAGE_HEADERS, для приложений APP_HEADERS через headersFor), /api/ai (бесплатный ИИ,
+  лимиты ANON_DAILY=3 без входа, AI_DAILY с входом), /api/image, /api/photo, /api/web, /api/form/<slug>,
+  /api/sync (Roblox), /api/domain, /api/og, /api/shot, /api/brand.
+ai-parse.js — разбор ответа ИИ: строка JSON-заголовка + блок ```html (parseAnswer, parseScene).
+providers.js — провайдеры ИИ и вызов chat(); keyvault.js — ключи пользователя (только в браузере).
+chat-ui.js — сообщения чата, «думающий» блок со шагами; значок «думает» = лого, плоскости которого
+  по очереди «складываются» (LOGO_THINK, CSS .fold-think в studio.css).
+thinking-cursor.js — пока ИИ работает, а чат не на экране, у курсора мыши плашка с лого и словом из чата.
+layout.js — рейка слева + ОДНА панель: вид chat | library | layers (ключ localStorage 'oc-layout2').
+  Ctrl+B — скрыть/показать панель, Ctrl+Shift+B — чат. Событие oc:show-view / oc:open-chat переключают вид.
+ЛОГО «Сложенная C»: src/logo.svg — 5 плоскостей, fill currentColor, «сгибы» fill-opacity .72, средний квадрат коралловый #ff5a36.
+  Иконки сайта/приложения = белая буква на коралловой плашке #ff5a36: public/favicon.svg и PNG-иконки
+  (favicon-48/96, icon-192/512, apple-touch-icon, favicon.ico) — нарисованы скриптом PIL из тех же многоугольников.
+  og.png обновлён (1200×630, исходник — HTML-макет, рендер через headless Chrome). Пиксельный куб в cli/ui.mjs ещё старый.
+Поле ввода чата — React-компонент в src/main.jsx (#react-composer textarea), он кладёт текст в скрытый #prompt и жмёт #send.
+publish.js — окно публикации, адрес, свои домены; без входа просит аккаунт (askSignIn).
+projects.js — облачные проекты + карточка «страница только в этом браузере» (maybeNudge).
+local-projects.js — список проектов на этом устройстве, startNew().
+auth.js — вход (Supabase), openAuth('signup'|'signin'), событие oc:auth (detail = user).
+screens.js — несколько экранов в проекте; versions.js — история версий; inline-edit.js — правка текста двойным кликом.
+exporters.js — экспорт в React/Vue/Svelte/Tailwind/Roblox/LÖVE (скрипты вырезает!); export-zip.js — .zip.
+scene3d.js — 3D из JSON (Three.js); cine-template.js + presets-cine.js — «кинематографичные» сайты.
+contrast.js — чинит нечитаемый текст (не применяется к приложениям). track.js — счётчики воронки
+  (список событий в track.js И в supabase/events.sql — новые события требуют SQL).
+presets*.js — каталог из 300+ компонентов; categories.js — разделы каталога.
+src/Welcome.jsx + src/welcome.css — стартовый экран: hero.
+  Над заголовком крупное лого (.wl-mark): при загрузке плоскости буквы складываются по очереди.
+  Стиль стартового экрана: шрифт Geist (Google Fonts) для текста, JetBrains Mono только для мелких акцентов
+  (бейдж, надзаголовки, поле ввода, демо); эффекты React Bits сняты. Слой стилей «Product typography» в конце welcome.css, раздел Apps (живые приложения), шаги, шаблоны.
+src/templates.js — шаблоны страниц. i18n.js + locales/{ru,de,es,tr}.js — переводы: ключ = английский текст.
+public/ — статические SEO-страницы, галерея, плагин Roblox (public/roblox/).
+supabase/*.sql — схема БД (запускается вручную в Supabase SQL editor).
+
+СОБЫТИЯ МЕЖДУ МОДУЛЯМИ (window)
+-------------------------------
+oc:changed (items сохранены) · oc:generated (ИИ закончил) · oc:auth (вход/выход) · oc:prompt (вставить текст в чат)
+oc:welcome / oc:welcome-closed · oc:open-chat · oc:show-view · oc:screens · oc:before-replace / oc:replaced
+
+КАЧЕСТВО ПРИЛОЖЕНИЙ ОТ ИИ (apps.js + runAI)
+------------------------------------------
+APP_RULES — инструкция: каркас (state + render, события через data-act), правила кода, правила дизайна, формат.
+appReference(text) — к новому запросу прикладывается ближайший готовый пример как образец.
+В режиме приложений до 3 попыток: пустой ответ и оборванный <script> повторяются (getResult в runAI).
+Ошибка скрипта в приложении → метка на холсте + сообщение в чате с кнопкой «исправить» (offerFix в studio.js).
+APP_ERR (apps.js) сообщает текст ошибки + номер строки, а также «тихие» баги: NaN / undefined / [object Object] на экране.
+В экране Code (code.js) ошибки из просмотра идут ИИ сразу (авто-починка, кнопка «auto-fix», не больше 2 попыток подряд;
+  попытки возвращаются, если новая версия 4 с без ошибок). Починка идёт с sameTurn: тот же X-OC-Turn → сервер не списывает
+  ещё одну бесплатную генерацию (до 4 вызовов на ход). Пока Code открыт, offerFix на холсте молчит.
+  studio.busy() — идёт ли запрос к ИИ; событие oc:ai-idle — запрос закончился (успех или ошибка).
+Слушатель ошибок стоит в <head> документа приложения (APP_ERR), иначе ошибки при запуске не ловятся.
+eval разрешён ('unsafe-eval'): окно изолировано и без сети, а калькуляторы от ИИ часто им считают.
+
+ПРАВИЛА БЕЗОПАСНОСТИ (не ломать)
+--------------------------------
+- Пользовательский HTML живёт на нашем домене: только sandbox без allow-same-origin.
+- Опубликованные страницы: script-src 'none'; с меткой oc-app — скрипты, но connect-src 'none'.
+- Данные из облака/ремикса недоверенные: cleanItems() в studio.js.
+- Заголовки безопасности статики (редактор, главная, SEO) — public/_headers (HSTS, CSP, X-Frame-Options…).
+  CSP редактора НЕ может запретить inline/eval: фреймы srcdoc (блоки, мини-приложения) наследуют её.
+  Ответы воркера на основном домене получают HSTS + nosniff (worker.js, SECURITY/secure()).
+  Свои домены пользователей — без HSTS. Контакт для уязвимостей: public/.well-known/security.txt (Expires 2027-11-12).
+
+ПЕРЕВОДЫ
+--------
+Любой новый текст интерфейса → добавить ключ в locales/ru.js, de.js, es.js, tr.js.
+Тексты в DOM переводятся автоматически по ключу; в JS — через t('...').
+
+КОНСОЛЬНАЯ ВЕРСИЯ (cli/)
+-----------------------
+cli/bin.mjs — npm-пакет "openconstructor" (npx openconstructor), без зависимостей, Node 18+.
+  cli/ui.mjs — внешний вид: пиксельный куб-лого (LOGO, рисуется полублоками ▀▄, собирается анимацией при старте),
+  карточки результата и ошибки в рамках, пиксельная анимация «стройки» во время ответа ИИ. OC_NO_ANIM=1 — без анимаций.
+  Чат в терминале → приложение в папке: index.html (разметка между <!-- openconstructor:app --> метками), style.css, app.js.
+  Локальный сервер 127.0.0.1:4321+ отдаёт папку и вставляет в HTML REPORTER (только в ответ, не в файл):
+  live reload (SSE /__oc/live), ошибки и console.* → POST /__oc/log → терминал → авто-починка (2 попытки).
+  ИИ: бесплатный /api/ai на openconstructor.pw (X-OC-Turn) или свой ключ из env (GROQ/GEMINI/OPENROUTER/…; OC_MODEL).
+  История версий в .openconstructor/history, /undo. Тест: tests/unit/cli.test.js (поддельный ИИ).
+  Публикация в npm делается вручную: cd cli && npm publish.
+promo/ — материалы для соцсетей (roblox-export.gif: шаблон → холст → экспорт в Luau).
+
+ПЛАН «APPS» (мини-приложения)
+-----------------------------
+Этап 1 (сделан 2026-11-10): режим ⚡ app, запуск в изолированном окне, публикация со скриптами,
+  раздел на стартовом экране с 4 живыми примерами, экран Code (чат + регулируемый просмотр), e2e-тесты "apps:".
+Этап 2: экспорт в папку на компьютере (File System Access API в Chrome/Edge, иначе .zip);
+  экспорт в React и т.п. сейчас вырезает скрипты — для приложений нужен свой путь.
+Этап 3: хранение данных приложений (ответы, заявки) — нужен SQL в Supabase.

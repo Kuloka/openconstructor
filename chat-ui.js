@@ -63,12 +63,8 @@ $('messages').addEventListener('click', e => {
 // "thinking" → "composing" when the answer arrives, and the real code is typed into a small window
 // while it's placed. At the end it folds into "thought for 7s" (click to see the steps again).
 // Returns end(): end() removes it (error), end.compose(name, code), end.answer(), end.finish().
-// "Thinking" glyph: an 8-bit spark built from little blocks, frame by frame (soft warm orange)
-const GLYPH = (() => {
-  const P1 = [[0, 1], [1, 0], [0, -1], [-1, 0]], P2 = [[0, 2], [2, 0], [0, -2], [-2, 0]], X1 = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
-  const px = (cells, lit) => '<svg viewBox="0 0 24 24">' + cells.map(([x, y]) => `<rect x="${10.2 + x * 4.4}" y="${10.2 + y * 4.4}" width="3.6" height="3.6" rx=".6" fill="${(!x && !y) || lit ? '#f5b48f' : '#e8875c'}"/>`).join('') + '</svg>';
-  return [px([[0, 0]]), px([[0, 0], ...P1]), px([[0, 0], ...X1]), px([[0, 0], ...P1, ...P2]), px([[0, 0], ...P2, ...X1]), px([[0, 0], ...P1, ...P2, ...X1], 1)];
-})();
+// "Thinking" glyph: the logo (the folded C) with its planes folding in one after another (CSS: .fold-think)
+export const LOGO_THINK = '<svg class="fold-think" viewBox="4 4 40 40" aria-hidden="true"><polygon class="f1" points="17,6 42,6 31,17 17,17"/><polygon class="f2" points="6,17 17,6 17,17"/><rect class="f3" x="6" y="18.5" width="11" height="11"/><polygon class="f4" points="6,31 17,31 17,42"/><polygon class="f5" points="17,31 31,31 42,42 17,42"/></svg>';
 const MOODS = ['thinking', 'vibing', 'coding', 'sketching', 'tinkering', 'composing', 'assembling', 'brewing', 'crafting', 'polishing'];
 export function thinking({ ghost = false } = {}){
   const node = document.createElement('div');
@@ -106,10 +102,9 @@ export function thinking({ ghost = false } = {}){
   const plan = [[0, 'reading your request'], [700, 'thinking it through'], [3500, 'planning the layout'], [8000, 'choosing colors and type'], [14000, 'writing the code']];
   const timers = plan.map(([at, label]) => setTimeout(() => step(label), at));
   const clock = setInterval(() => { time.textContent = Math.floor((Date.now() - t0) / 1000) + 's'; }, 250);
-  // the glyph: the spark grows from one block and back, one frame every 400ms
-  const glyph = node.querySelector('.th-glyph'), frames = GLYPH.length * 2 - 2;
-  let gi = 0; glyph.innerHTML = GLYPH[reduceMotion() ? GLYPH.length - 1 : 0];
-  const spin = reduceMotion() ? 0 : setInterval(() => { gi = (gi + 1) % frames; glyph.innerHTML = GLYPH[gi < GLYPH.length ? gi : frames - gi]; }, 400);
+  // the glyph: the logo folding (pure CSS, stops itself under reduced motion)
+  node.querySelector('.th-glyph').innerHTML = LOGO_THINK;
+  const spin = 0;
   // the title keeps changing until the end: thinking → vibing → coding…
   let wi = 0, exploring = false;
   const words = reduceMotion() ? 0 : setInterval(() => { if (exploring) return; wi = (wi + 1) % MOODS.length; retype(title, MOODS[wi], { speed: 120, erase: 70 }); }, 2200);

@@ -6,6 +6,7 @@ import { supabase, openAuth } from './auth.js';
 import * as auth from './auth.js';
 import { studio } from './studio.js';
 import { t, lang } from './i18n.js';
+import { track } from './track.js';
 import './projects.css';
 
 const LINK = 'oc-cloud-id', LINK_OWNER = 'oc-cloud-owner';
@@ -303,5 +304,49 @@ function startRename(row, item){
   input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); finish(true); } if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); } });
   input.addEventListener('blur', () => finish(true));
 }
+
+/* ── "Only in this browser" nudge ────────────────────────────
+   Signed-out visitors keep their page in localStorage only. Once they have made something
+   (a second AI result, or a few elements on the page) a card says so and offers a free account;
+   right after signing up the page is saved to the cloud. Closing it hides it for this visit. */
+const NUDGE_OFF = 'oc-local-nudge-off';
+let nudgeEl = null, generated = 0, wantsCloud = false;
+const nudgeHidden = () => { try { return sessionStorage.getItem(NUDGE_OFF) === '1'; } catch { return false; } };
+function hideNudge(forever){
+  if (forever) { try { sessionStorage.setItem(NUDGE_OFF, '1'); } catch {} }
+  if (!nudgeEl) return;
+  const el = nudgeEl; nudgeEl = null;
+  el.classList.add('out'); setTimeout(() => el.remove(), 220);
+}
+function maybeNudge(){
+  if (nudgeEl || !supabase || me() || nudgeHidden() || !studio.items().length) return;
+  if (generated < 2 && studio.items().length < 3) return;
+  const box = document.querySelector('.toasts');
+  if (!box || !document.getElementById('authModal')?.classList.contains('hidden')) return;
+  track('signup_prompt');
+  nudgeEl = document.createElement('div');
+  nudgeEl.className = 'toast warn local-nudge';
+  nudgeEl.innerHTML = `<i aria-hidden="true"></i><span><b>${esc(t('This page is saved only in this browser.'))}</b> ${esc(t('Clearing the browser or switching devices loses it. A free account keeps it in the cloud and lets you publish it.'))}<span class="local-nudge-row"><button class="btn primary" type="button" data-nudge-save>${esc(t('save to cloud'))}</button></span></span><button type="button" data-nudge-x aria-label="${esc(t('close'))}">×</button>`;
+  nudgeEl.addEventListener('click', e => {
+    if (e.target.closest('[data-nudge-x]')) return hideNudge(true);
+    if (!e.target.closest('[data-nudge-save]')) return;
+    track('signup_click'); wantsCloud = true; hideNudge(false);
+    openAuth('signup');
+    const m = document.getElementById('authMsg');
+    if (m) { m.textContent = t('Your page will be saved to the cloud as soon as you are in — open it on any device, keep editing, publish by link.'); m.className = 'auth-msg'; }
+  });
+  box.append(nudgeEl);
+}
+window.addEventListener('oc:generated', () => { generated++; setTimeout(maybeNudge, 1500); });
+window.addEventListener('oc:changed', () => { if (studio.items().length >= 3) setTimeout(maybeNudge, 1500); });
+window.addEventListener('oc:auth', async e => {
+  if (!e.detail) return;
+  hideNudge(false);
+  if (!wantsCloud) return;
+  wantsCloud = false;
+  if (linkedId || !studio.items().length) return;
+  try { await createFromCurrent(); studio.status(t('current project saved to cloud'), 'ok'); }
+  catch (err) { studio.status(errText(err), 'error'); }
+});
 
 export const projects = { open, save: () => save({ force: true }), linkedId: () => linkedId, unlink: () => { link(null); lastSaved = ''; } };

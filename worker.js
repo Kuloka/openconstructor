@@ -17,6 +17,13 @@ const PAGE_HEADERS = {
   'Referrer-Policy': 'no-referrer',
   'X-Robots-Tag': 'noindex',
 };
+// Pages with mini-apps (editor marks them with <meta name="oc-app">, see apps.js): scripts run, still on an
+// opaque origin and with no network at all (connect-src 'none'), so they can't reach cookies or send data out.
+const APP_HEADERS = {
+  ...PAGE_HEADERS,
+  'Content-Security-Policy': `sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms; script-src 'unsafe-inline' 'unsafe-eval'; connect-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action ${HOME}/api/form/`,
+};
+const headersFor = html => /<meta name="oc-app"/.test(html) ? APP_HEADERS : PAGE_HEADERS;
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -25,7 +32,7 @@ function badge(slug){
   const box = 'all:initial;position:fixed;right:12px;bottom:12px;z-index:2147483647;display:flex;align-items:center;gap:10px;padding:6px 10px;border:1px solid #363636;border-radius:6px;background:#111111ee;box-shadow:0 6px 24px #0008;font:12px/1.4 ui-monospace,Consolas,monospace;color:#c4c4c4';
   const link = 'all:unset;cursor:pointer;color:#f2f2f2;font:inherit';
   const muted = 'all:unset;cursor:pointer;color:#8e8e8e;font:inherit;text-decoration:underline';
-  return `\n<div data-oc-badge style="${box}"><a href="${HOME}" target="_blank" rel="noopener" style="${link}">Made with <b style="all:unset;color:#e8875c;font-weight:600">openconstructor</b></a><a href="${esc(report)}" target="_blank" rel="noopener" style="${muted}">report</a></div>\n`;
+  return `\n<div data-oc-badge style="${box}"><a href="${HOME}" target="_blank" rel="noopener" style="${link}">Made with <b style="all:unset;color:#ff5a36;font-weight:600">openconstructor</b></a><a href="${esc(report)}" target="_blank" rel="noopener" style="${muted}">report</a></div>\n`;
 }
 
 // Social preview tags (each skipped when the page already declares its own)
@@ -68,8 +75,8 @@ function inject(html, slug, title, hash = ''){
 function notice(status, title, text, link = { href: HOME, label: 'open openconstructor' }){
   const body = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} · openconstructor</title>
 <style>:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:#0a0a0a;color:#f2f2f2;font:14px/1.6 "JetBrains Mono",Consolas,ui-monospace,monospace}
-main{max-width:440px;text-align:center}.code{font-size:56px;font-weight:700;color:#e8875c;letter-spacing:-.02em;margin:0}h1{font-size:15px;font-weight:600;margin:6px 0 4px;text-transform:uppercase;letter-spacing:.08em;color:#c4c4c4}p{color:#8e8e8e;margin:0 0 22px}
-a{display:inline-block;padding:8px 16px;border-radius:4px;background:#e8875c;color:#1f0f08;font-weight:600;text-decoration:none}a:hover{background:#f0a27c}</style></head>
+main{max-width:440px;text-align:center}.code{font-size:56px;font-weight:700;color:#ff5a36;letter-spacing:-.02em;margin:0}h1{font-size:15px;font-weight:600;margin:6px 0 4px;text-transform:uppercase;letter-spacing:.08em;color:#c4c4c4}p{color:#8e8e8e;margin:0 0 22px}
+a{display:inline-block;padding:8px 16px;border-radius:4px;background:#ff5a36;color:#ffffff;font-weight:600;text-decoration:none}a:hover{background:#ff7a5c}</style></head>
 <body><main><p class="code">${status}</p><h1>${esc(title)}</h1><p>${esc(text)}</p><a href="${esc(link.href)}">${esc(link.label)}</a></main></body></html>`;
   return new Response(body, { status, headers: { ...PAGE_HEADERS, 'Cache-Control': 'no-store' } });
 }
@@ -174,7 +181,7 @@ async function notifyAuthor(env, slug, data){
   const pageUrl = `${HOME}/p/${slug}`, title = page.title || slug;
   const html = `<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:560px;margin:0 auto;color:#18181b">
 <p style="margin:0 0 4px;color:#71717a;font-size:13px">New message from your page</p>
-<h2 style="margin:0 0 16px;font-size:20px"><a href="${pageUrl}" style="color:#e8875c;text-decoration:none">${esc(title)}</a></h2>
+<h2 style="margin:0 0 16px;font-size:20px"><a href="${pageUrl}" style="color:#ff5a36;text-decoration:none">${esc(title)}</a></h2>
 <table style="width:100%;border-collapse:collapse;font-size:14px">${rows.map(([k, v]) => `<tr><td style="padding:8px 12px 8px 0;color:#71717a;vertical-align:top;white-space:nowrap">${esc(k)}</td><td style="padding:8px 0;white-space:pre-wrap">${esc(v)}</td></tr>`).join('')}</table>
 <p style="margin:20px 0 0;color:#71717a;font-size:12px">All messages are in the editor: publish → your published pages → ✉. ${replyTo ? 'Reply to this e-mail to answer the sender.' : ''} To stop these e-mails, switch off ✉ e-mail for this page there.</p>
 <p style="margin:8px 0 0;color:#a1a1aa;font-size:12px">openconstructor · <a href="${HOME}" style="color:#a1a1aa">openconstructor.pw</a></p></div>`;
@@ -217,7 +224,7 @@ async function servePage(request, env, ctx, slug, screen = '', base = null){
     }
     if (row.paused) return notice(404, 'page is turned off', 'The author has turned this page off for now. Try again later.');
     const hash = await shotHash(env, slug).catch(() => '');
-    res = formsWork(new Response(inject(row.html, slug, row.title, hash), { status: 200, headers: { ...PAGE_HEADERS, 'Cache-Control': 'public, max-age=60' } }), slug);
+    res = formsWork(new Response(inject(row.html, slug, row.title, hash), { status: 200, headers: { ...headersFor(row.html), 'Cache-Control': 'public, max-age=60' } }), slug);
     ctx.waitUntil(cache.put(key, res.clone()));
   }
   res = await routeScreens(res, screen, base ?? `/p/${slug}`, base === '');
@@ -981,8 +988,24 @@ async function syncGet(request, env, ctx, code){
   return res;
 }
 
+// Every worker response on the main domain (/p/*, /api/*) is HTTPS-only and not MIME-sniffed.
+// Static files get the full set from public/_headers. Customers' own domains are left alone:
+// HSTS there is their decision.
+const SECURITY = { 'Strict-Transport-Security': 'max-age=31536000; includeSubDomains', 'X-Content-Type-Options': 'nosniff' };
+function secure(res){
+  const out = new Response(res.body, res);
+  for (const [k, v] of Object.entries(SECURITY)) if (!out.headers.has(k)) out.headers.set(k, v);
+  return out;
+}
+
 export default {
   async fetch(request, env, ctx){
+    const res = await route(request, env, ctx);
+    return isMainHost(new URL(request.url).hostname) ? secure(res) : res;
+  },
+};
+
+async function route(request, env, ctx){
     const url = new URL(request.url);
     if (url.protocol === 'http:' && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') { url.protocol = 'https:'; return Response.redirect(url.toString(), 301); }
     if (!isMainHost(url.hostname)) return customDomain(request, env, ctx, url);
@@ -1009,5 +1032,4 @@ export default {
     }
     if (url.pathname === '/p/' || url.pathname.startsWith('/p/')) return notice(404, 'page not found', 'There is no published page at this address.');
     return env.ASSETS.fetch(request);
-  },
-};
+}

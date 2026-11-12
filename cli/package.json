@@ -1,0 +1,32 @@
+{
+  "name": "openconstructor",
+  "version": "0.1.0",
+  "description": "openconstructor code in your terminal: describe an app, it is written to index.html + style.css + app.js and runs in your browser; errors go straight back to the AI.",
+  "type": "module",
+  "bin": {
+    "openconstructor": "bin.mjs"
+  },
+  "files": [
+    "bin.mjs",
+    "ui.mjs",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "ai",
+    "cli",
+    "app-builder",
+    "html",
+    "live-reload",
+    "openconstructor"
+  ],
+  "homepage": "https://openconstructor.pw",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Kuloka/openconstructor.git",
+    "directory": "cli"
+  },
+  "license": "MIT"
+}

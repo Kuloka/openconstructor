@@ -1,13 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import Aurora from './components/reactbits/Aurora';
-import BlurText from './components/reactbits/BlurText';
-import ShinyText from './components/reactbits/ShinyText';
-import GradientText from './components/reactbits/GradientText';
 import SpotlightCard from './components/reactbits/SpotlightCard';
 import logoSvg from './logo.svg?raw';
 import { templates } from './templates';
 import { t as tr, LANGS, lang, setLang } from '../i18n.js';
-import { loadTemplate, prefillPrompt } from '../studio.js';
+import { loadTemplate, prefillPrompt, studio } from '../studio.js';
+import { APP_EXAMPLES, appPreview } from '../apps.js';
+import { openCode } from '../code.js';
 import { startNew } from '../local-projects.js';
 import { openAuth, user as authUser } from '../auth.js';
 import { openDonate } from '../donate.js';
@@ -44,6 +42,49 @@ function Thumb({ t }){
     ro.observe(box.current); return () => ro.disconnect();
   }, [t.page.w, t.page.h]);
   return <div className="wl-thumb" ref={box}><iframe title={t.name} sandbox="" tabIndex={-1} srcDoc={tplDoc(t)} style={{ width: t.page.w, height: t.page.h, transform: `scale(${scale})` }} /></div>;
+}
+
+// Mini-apps: each card runs a real app (scripts on, opaque origin, no network)
+const APP_IDEAS = ['Expense tracker with categories', 'Flashcards for learning words', 'Workout timer with rounds', 'Snake game'];
+function AppCard({ app, onOpen, onBuild }){
+  return (
+    <div className="wl-app">
+      <div className="wl-app-stage">
+        <span className="wl-app-live"><i />live</span>
+        <iframe title={app.name} sandbox="allow-scripts" tabIndex={-1} srcDoc={appPreview(app.code)} loading="lazy" />
+      </div>
+      <div className="wl-app-info">
+        <h3>{tr(app.name)}</h3>
+        <div className="wl-app-btns">
+          <button className="wl-btn primary" onClick={onOpen}>Open in Code</button>
+          <button className="wl-btn ghost" onClick={onBuild} title={tr(app.prompt)}>Make with AI</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+function AppsSection({ close }){
+  const [idea, setIdea] = useState('');
+  const build = text => { const v = text.trim(); if (!v) return; track('template'); close(() => openCode({ prompt: v })); };
+  const open = id => { track('template'); close(() => startNew(tr(APP_EXAMPLES.find(a => a.id === id).name)).then(() => { studio.addApp(id); openCode(); })); };
+  return (
+    <section className="wl-section wl-apps" id="wl-apps">
+      <div className="wl-apps-glow" aria-hidden="true" />
+      <small className="wl-eyebrow">new · mini-apps</small>
+      <h2>Not just pages. <span className="wl-accent-text">Apps that work.</span></h2>
+      <p className="wl-section-sub">Describe a calculator, quiz, tracker or tiny game — the AI writes the logic, you click ▶ play and it works. Publish it by link, free.</p>
+      <form className="wl-prompt wl-apps-prompt" onSubmit={e => { e.preventDefault(); build(idea); }}>
+        <span className="wl-prompt-caret">›</span>
+        <input value={idea} onChange={e => setIdea(e.target.value)} placeholder="Describe an app… e.g. a budget tracker for a trip" aria-label="What app to build" />
+        <button type="submit" className="wl-btn primary" disabled={!idea.trim()}>Build app</button>
+      </form>
+      <div className="wl-chips">{APP_IDEAS.map(x => <button key={x} onClick={() => build(tr(x))}>{x}</button>)}</div>
+      <p className="wl-apps-try">↓ these are running right now — try them</p>
+      <div className="wl-apps-grid">
+        {APP_EXAMPLES.map(a => <AppCard key={a.id} app={a} onOpen={() => open(a.id)} onBuild={() => build(tr(a.prompt))} />)}
+      </div>
+    </section>
+  );
 }
 
 // Hero demo: a small editor window that plays the core loop on repeat — a request in the chat,
@@ -110,13 +151,10 @@ export default function Welcome(){
   if (!open) return null;
   return (
     <div className={`wl${closing ? ' wl-out' : ''}`} ref={scroller} role="dialog" aria-label="Welcome to openconstructor">
-      <div className="wl-aurora" aria-hidden="true">
-        <Aurora colorStops={['#6e3520', '#e8875c', '#3a1e12']} amplitude={1.1} blend={0.65} speed={0.35} height={0.5} glow={0.6} />
-      </div>
-
       <header className="wl-nav">
         <div className="wl-brand"><Logo size={22} /><span><i>open</i>constructor</span></div>
         <nav>
+          <button className="wl-nav-code" onClick={() => close(() => openCode())}>Code <em className="wl-new">new</em></button>
           <button onClick={() => go('wl-how')}>How it works</button>
           <button onClick={() => go('wl-templates')}>Templates</button>
           <a className="wl-gh" href="/gallery">Gallery</a>
@@ -128,10 +166,11 @@ export default function Welcome(){
       </header>
 
       <section className="wl-hero">
-        <div className="wl-badge"><span className="wl-dot" /><ShinyText text={tr("AI interface builder · public beta")} speed={3} color="#a1a1a1" shineColor="#ffc2a8" /></div>
+        <svg className="wl-mark" viewBox="4 4 40 40" aria-hidden="true"><polygon className="m1" points="17,6 42,6 31,17 17,17"/><polygon className="m2" points="6,17 17,6 17,17"/><rect className="m3" x="6" y="18.5" width="11" height="11"/><polygon className="m4" points="6,31 17,31 17,42"/><polygon className="m5" points="17,31 31,31 42,42 17,42"/></svg>
+        <div className="wl-badge"><span className="wl-dot" /><span>AI interface builder · public beta</span></div>
         <h1 className="wl-title">
-          <BlurText text={tr("Build interfaces")} animateBy="words" direction="top" delay={140} className="wl-title-line" />
-          <GradientText colors={['#e8875c', '#ffb08f', '#e8875c', '#b8633e']} animationSpeed={6} className="wl-title-grad">with words and blocks</GradientText>
+          <span className="wl-title-line">Build interfaces</span>
+          <span className="wl-title-line wl-accent-text">with words and blocks</span>
         </h1>
         <p className="wl-sub">A library of polished components, a free-form canvas and an AI assistant that lays out pages from a description. Export clean HTML and CSS.</p>
 
@@ -145,19 +184,21 @@ export default function Welcome(){
         </div>
 
         <div className="wl-actions">
-          <button className="wl-btn primary lg" onClick={() => go('wl-templates')}>Browse templates</button>
-          <button className="wl-btn ghost lg" onClick={() => close()}>Start from scratch →</button>
+          <button className="wl-btn ghost" onClick={() => go('wl-templates')}>Browse templates</button>
+          <button className="wl-link" onClick={() => close()}>Start from scratch →</button>
         </div>
       </section>
 
       <HeroDemo />
+
+      <AppsSection close={close} />
 
       <section className="wl-section" id="wl-how">
         <small className="wl-eyebrow">how it works</small>
         <h2>From idea to layout in three steps</h2>
         <div className="wl-steps">
           {STEPS.map(s => (
-            <SpotlightCard key={s.n} className="wl-card" spotlightColor="rgba(232,135,92,0.2)">
+            <SpotlightCard key={s.n} className="wl-card" spotlightColor="rgba(255, 90, 54,0.2)">
               <div className="wl-step-top"><span className="wl-step-ic">{s.icon}</span><span className="wl-step-n">{s.n}</span></div>
               <h3>{s.title}</h3>
               <p>{s.text}</p>
@@ -173,7 +214,7 @@ export default function Welcome(){
         <div className="wl-templates">
           {templates.map(t => (
             <button key={t.id} className="wl-tpl" onClick={() => close(() => startNew(t.name).then(() => loadTemplate(t)))}>
-              <SpotlightCard className="wl-card wl-tpl-card" spotlightColor="rgba(232,135,92,0.18)">
+              <SpotlightCard className="wl-card wl-tpl-card" spotlightColor="rgba(255, 90, 54,0.18)">
                 <Thumb t={t} />
                 <div className="wl-tpl-info"><h3>{t.name}</h3><p>{t.desc}</p></div>
                 <span className="wl-tpl-open">Open →</span>

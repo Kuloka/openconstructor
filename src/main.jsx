@@ -18,6 +18,8 @@ import '../theme.js';
 import '../screens.js';
 import '../roblox-sync.js';
 import '../mobile.js';
+import '../code.js';
+import '../thinking-cursor.js';
 import Welcome from './Welcome';
 import {langSelect} from '../i18n.js';
 

@@ -16,7 +16,7 @@
 .vh-list:focus-visible .vh-row.sel { outline: 1px solid var(--accent); outline-offset: -1px; }
 .vh-row { display: grid; gap: 1px; flex-shrink: 0; padding: 7px 9px; border: 1px solid transparent; border-radius: 4px; cursor: pointer; transition: background .12s, border-color .12s; }
 .vh-row:hover { background: var(--hover); }
-.vh-row.sel { border-color: #e8875c66; background: var(--accent-dim); }
+.vh-row.sel { border-color: #ff5a3666; background: var(--accent-dim); }
 .vh-when { color: var(--text); font-weight: 600; }
 .vh-row.manual .vh-when::after { content: "●"; margin-left: 6px; color: var(--accent); font-size: 8px; vertical-align: 2px; }
 .vh-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }

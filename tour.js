@@ -8,7 +8,7 @@ const STEPS = [
     title: '2 · The page', text: 'Everything you add lives here. Drag an element to move it. Drag empty space (or hold Space) to pan, Ctrl + scroll to zoom. Right-click an element for its code, AI edits and ⚗ Fusion — breed two elements: the purpose of one in the style of the other.' },
   { target: '.canvas-toolbar', place: 'bottom',
     title: '3 · Page settings', text: 'Switch between desktop, laptop, tablet and phone sizes. Pick a background or press ✎ to design your own: gradients, mesh, patterns.' },
-  { target: '#chatPanel', before: () => window.dispatchEvent(new CustomEvent('oc:open-chat')), place: 'left',
+  { target: '#chatPanel', before: () => window.dispatchEvent(new CustomEvent('oc:open-chat')), place: 'right',
     title: '4 · AI assistant', text: 'Describe what you want — “a pricing section with three plans” — and the AI builds it on the page. Select an element first to change only that one.' },
   { target: '#settingsButton', place: 'right',
     title: '5 · Connect an AI', text: 'The assistant needs a key from an AI provider. Google Gemini and Groq take about a minute to set up. Keys stay in your browser.' },
