@@ -15,7 +15,7 @@ const { c } = ui;
 const VERSION = '0.1.0';
 const SITE = process.env.OC_SITE || 'https://openconstructor.pw';
 
-/* ── Terminal look lives in ui.mjs: pixel cube logo, cards, the build animation ── */
+/* ── Terminal look lives in ui.mjs: pixel folded-C logo, cards, the build animation ── */
 const out = s => console.log(s);
 const DOT = '●', ARROW = '›';
 
@@ -251,7 +251,7 @@ function startServer(){
       if (!p.startsWith(dir + path.sep) || p.includes(`${path.sep}.openconstructor${path.sep}`)) { res.writeHead(403); return res.end(); }
       fs.readFile(p, (err, data) => {
         if (err) {
-          if (rel === '/index.html') { res.writeHead(200, { 'Content-Type': 'text/html' }); return res.end(`<!doctype html><meta charset="utf-8"><title>openconstructor code</title>${REPORTER}<body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0b0b;color:#8e8e8e;font:14px ui-monospace,monospace"><div><span style="color:#e8875c">&gt;_</span> describe the app in the terminal</div></body>`); }
+          if (rel === '/index.html') { res.writeHead(200, { 'Content-Type': 'text/html' }); return res.end(`<!doctype html><meta charset="utf-8"><title>openconstructor code</title>${REPORTER}<body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0b0b;color:#8e8e8e;font:14px ui-monospace,monospace"><div><span style="color:#ff5a36">&gt;_</span> describe the app in the terminal</div></body>`); }
           res.writeHead(404); return res.end('not found');
         }
         const type = TYPES[path.extname(p).toLowerCase()] || 'application/octet-stream';
