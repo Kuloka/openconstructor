@@ -135,7 +135,7 @@ cli/bin.mjs — npm-пакет "openconstructor" (npx openconstructor), без �
   ИИ: бесплатный /api/ai на openconstructor.pw (X-OC-Turn) или свой ключ из env (GROQ/GEMINI/OPENROUTER/…; OC_MODEL).
   История версий в .openconstructor/history, /undo. Тест: tests/unit/cli.test.js (поддельный ИИ).
   Публикация в npm делается вручную: cd cli && npm publish.
-promo/ — материалы для соцсетей (roblox-export.gif: шаблон → холст → экспорт в Luau).
+promo/ — материалы для соцсетей (roblox-export.gif: шаблон → холст → экспорт в Luau; html-export.gif: запрос в чат → ИИ собирает лендинг кофейни → Export → HTML page → файл открыт в браузере → карточка openconstructor.pw, 960×600, 15 с; html-export-result.html — тот самый выгруженный файл).
 
 ПЛАН «APPS» (мини-приложения)
 -----------------------------
