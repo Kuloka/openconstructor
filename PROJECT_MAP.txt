@@ -93,6 +93,14 @@ auth.js — вход (Supabase), openAuth('signup'|'signin'), событие oc:
 screens.js — несколько экранов в проекте; versions.js — история версий; inline-edit.js — правка текста двойным кликом.
 exporters.js — экспорт в React/Vue/Svelte/Tailwind/Roblox/LÖVE (скрипты вырезает!); export-zip.js — .zip.
 scene3d.js — 3D из JSON (Three.js); renderModel(query) — объекты для страниц по токену <img src="model:knot chrome #ff5a36">
+  ЖИВОЕ 3D (2026-11-13): model-kit.js — общий модуль объектов (parseModel, buildModel, renderModel = картинка,
+  mountModel = живой WebGL в <canvas>, следит за курсором, плавает; pointerFor; mountAll). scene3d.js реэкспортирует
+  parseModel/renderModel. resolveMedia превращает <img src="model:…"> в <canvas data-oc-model="…" width=640> с картинкой-
+  заглушкой в background:url('model:…'). На холсте фреймы без скриптов НЕ рисуют canvas, поэтому studio.js кладёт поверх
+  свой canvas .oc-live3d внутри .node (mountModelsIn/placeLive) и передаёт курсор. Экспорт: buildHTML добавляет
+  <script src="https://openconstructor.pw/oc3d.js">; worker headersFor разрешает script-src только этот файл.
+  public/oc3d.js собирается из model-runtime.js: npm run build:3d (vite.oc3d.config.js, входит в npm run build).
+  Металлы — studioEnv() (тёмный зеркальный хром). Буквы сохраняют регистр (одиночная буква → заглавная).
   (формы, материалы MeshPhysical: chrome/gold/glass/iridescent/pearl/plastic/clay/neon…, "letter R" — 3D-буквы шрифтом helvetiker),
   прозрачная картинка ~10 КБ за ~0.2 с; resolveMedia в studio.js (MODEL_MAX 8). e2e: "3D objects"; cine-template.js + presets-cine.js — «кинематографичные» сайты.
 contrast.js — чинит нечитаемый текст (не применяется к приложениям). track.js — счётчики воронки

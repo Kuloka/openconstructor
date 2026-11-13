@@ -86,13 +86,17 @@ scenario('swarm: a new page is planned, then every section is built by its own a
   assert.equal(await ed.ev(`document.querySelectorAll('.bs-draft').length`), 0);
 });
 
-scenario('3D objects: model: pictures are rendered in the browser', async (ed, o) => {
+scenario('3D objects: model: objects are live 3D with a rendered still picture', async (ed, o) => {
   o.reply = () => block('Shapes', '<div style="background:#111;color:#fff;padding:20px"><img src="model:torus chrome" alt="torus" width="200"><img src="model:diamond glass #8b5cf6" alt="gem" width="200"></div>');
   await ed.ask('two 3d shapes');
   assert.ok(await ed.until(`JSON.parse(localStorage.getItem('form-canvas-v3') || '[]').length > 0`, 15000));
   const [it] = await ed.items();
-  assert.equal((it.code.match(/src="data:image\/(webp|png)/g) || []).length, 2, 'both objects rendered');
+  assert.equal((it.code.match(/<canvas data-oc-model="(torus chrome|diamond glass #8b5cf6)"/g) || []).length, 2, 'both objects are live canvases');
+  assert.equal((it.code.match(/background:url\('data:image\/(webp|png)/g) || []).length, 2, 'both have a rendered still picture');
+  assert.match(it.code, /width:200px/);
   assert.ok(!/model:/.test(it.code));
+  // exported pages load the live-3D runtime
+  assert.match(await ed.ev(`import('/studio.js').then(m => m.studio.html())`), /<script src="https:\/\/openconstructor\.pw\/oc3d\.js" defer><\/script>/);
 });
 
 scenario('part edit: only the picked part changes, Ctrl+Z restores', async (ed, o) => {
@@ -389,4 +393,14 @@ scenario('slash commands: menu, toggles and prompt commands', async (ed, o) => {
   assert.match(ed.posts[0], /Request: calmer colours/);
   // the provider's own usage numbers replace the estimate: 1234 in + 56 out, no "~"
   assert.ok(await ed.until(`(document.querySelector('.tok-chip b')?.textContent || '') === '1.3k'`), 'exact token count shown');
+});
+
+// on the canvas the editor lays a live WebGL canvas over the element's <canvas data-oc-model> (frames run no scripts)
+scenario('3D: a live model is rendered over the element on the canvas', async (ed, o) => {
+  o.reply = () => block('Mirror D', '<style>.dd{width:600px;height:500px;display:grid;place-items:center;background:#0b0b0c}.dd .obj{width:360px}</style>\n<div class="dd"><img class="obj" src="model:letter D chrome" alt="D"></div>');
+  await ed.ask('3d letter D in mirror style that reacts to the cursor'); await ed.idle();
+  assert.ok(await ed.until(`!!document.querySelector('.node .oc-live3d')`, 15000), 'live overlay mounted');
+  const [w, h, vis] = await ed.ev(`(() => { const c = document.querySelector('.node .oc-live3d'); return [c.offsetWidth, c.offsetHeight, c.style.display]; })()`);
+  assert.ok(w > 300 && h > 300 && vis === 'block', `overlay sized like the object (${w}×${h}, ${vis})`);
+  assert.match((await ed.items())[0].code, /<canvas data-oc-model="letter D chrome"[^>]*class="obj"/);
 });

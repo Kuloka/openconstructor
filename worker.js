@@ -23,7 +23,13 @@ const APP_HEADERS = {
   ...PAGE_HEADERS,
   'Content-Security-Policy': `sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms; script-src 'unsafe-inline' 'unsafe-eval'; connect-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action ${HOME}/api/form/`,
 };
-const headersFor = html => /<meta name="oc-app"/.test(html) ? APP_HEADERS : PAGE_HEADERS;
+// Pages with live 3D objects load one script: our own oc3d.js (three.js inside, no network); inline scripts stay off
+// unless the page also has mini-apps
+const csp3d = app => `sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms; script-src ${HOME}/oc3d.js${app ? " 'unsafe-inline' 'unsafe-eval'" : ''}; connect-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action ${HOME}/api/form/`;
+const headersFor = html => {
+  const app = /<meta name="oc-app"/.test(html), live3d = /<script src="https:\/\/openconstructor\.pw\/oc3d\.js"/.test(html);
+  return live3d ? { ...PAGE_HEADERS, 'Content-Security-Policy': csp3d(app) } : app ? APP_HEADERS : PAGE_HEADERS;
+};
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 

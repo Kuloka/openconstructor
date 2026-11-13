@@ -21,7 +21,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "vite build",
+    "build": "vite build -c vite.oc3d.config.js && vite build",
+    "build:3d": "vite build -c vite.oc3d.config.js",
     "preview": "npm run build && wrangler dev",
     "deploy": "npm test && npm run build && wrangler deploy",
     "deploy:domains": "wrangler deploy -c wrangler.domains.jsonc",

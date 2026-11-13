@@ -1119,3 +1119,4 @@ body.chat-float .chat-panel.edged[data-edge="right"]:hover { --peek: -8px; }
 .ag-del { width: 28px; height: 28px; }
 :root[data-ui="light"] .ag-row { background: #0000000a; }
 :root[data-ui="light"] .ag-row input, :root[data-ui="light"] .ag-row select, :root[data-ui="light"] .ag-row textarea { background: #fff; }
+.oc-live3d { position: absolute; z-index: 1; pointer-events: none; }

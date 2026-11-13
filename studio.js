@@ -1139,7 +1139,14 @@ function hasApps(){
   const screens = studio.screens?.count() > 1 ? studio.screens.forHTML() : null;
   return screens ? screens.some(sc => sc.items.some(it => it.app)) : items.some(it => it.app);
 }
-function buildHTML(){ const html = buildPageHTML(); return hasApps() ? withAppHead(html) : html; }
+const OC3D = 'https://openconstructor.pw/oc3d.js';
+function buildHTML(){
+  let html = buildPageHTML();
+  if (hasApps()) html = withAppHead(html);
+  // live 3D objects: the runtime (three.js inside, no network) — without it they stay still pictures
+  if (/<canvas[^>]+data-oc-model=/.test(html)) html = html.replace(/<\/body>/i, `<script src="${OC3D}" defer></script></body>`);
+  return html;
+}
 function buildPageHTML(){
   const screens = studio.screens?.count() > 1 ? studio.screens.forHTML() : null;
   if (screens) return buildScreensHTML(screens);
@@ -1644,6 +1651,19 @@ async function drawArt(q){
 // Replace every photo:/attachment:/art: token. Repeats of one query get different photos (i = 0, 1, 2…).
 // kept:N = an image the element already had (sent to the model as a short token).
 async function resolveMedia(code, attachments = [], onPhotos, kept = [], onArt, onModels){
+  // <img src="model:…"> becomes a LIVE 3D object: <canvas data-oc-model="…"> rendered in real time (model-kit.js,
+  // oc3d.js on published pages); its still picture is the canvas background until WebGL starts or where scripts are off
+  let lives = 0;
+  code = code.replace(/<img\b([^>]*?)\bsrc=(["'])model:([^"'<>]{1,120})\2([^>]*?)\/?>/gi, (all, a, _q, q, b) => {
+    if (++lives > MODEL_MAX) return all;
+    const attrs = (a + ' ' + b), attr = n => attrs.match(new RegExp(`\\b${n}=(["'])([^"']*)\\1`, 'i'))?.[2] || '';
+    const query = q.trim().replace(/\b(interactive|live|cursor|hover|tilt|mouse|follow)\b/gi, '').replace(/\s+/g, ' ').trim();
+    // width="200" / height="…" on the picture become CSS sizes (the canvas itself is 640×640 pixels)
+    const px = n => /^\d{1,4}$/.test(attr(n)) ? `${n}:${attr(n)}px;` : '';
+    const style = (px('width') + px('height') + attr('style')).replace(/;?\s*$/, '');
+    const cls = attr('class'), id = attr('id');
+    return `<canvas data-oc-model="${escapeHTML(query)}" width="640" height="640"${id ? ` id="${id}"` : ''}${cls ? ` class="${cls}"` : ''} role="img" aria-label="${escapeHTML(attr('alt') || query)}" style="${style ? style + ';' : ''}background:url('model:${query}') center/contain no-repeat;max-width:100%;height:auto"></canvas>`;
+  });
   const found = [...code.matchAll(MEDIA_RE)];
   if (!found.length) return code;
   const seen = new Map(), jobs = [], arts = [], models = [];
@@ -1653,7 +1673,7 @@ async function resolveMedia(code, attachments = [], onPhotos, kept = [], onArt, 
       if (arts.includes(q) || arts.length < ART_MAX) { if (!arts.includes(q)) arts.push(q); m.art = q; }
       continue; // over the limit: the neon placeholder
     }
-    if (m[1] === 'model') { const q = m[2].trim().slice(0, 120).toLowerCase(); if (models.includes(q) || models.length < MODEL_MAX) { if (!models.includes(q)) models.push(q); m.model = q; } continue; }
+    if (m[1] === 'model') { const q = m[2].trim().slice(0, 120); if (models.includes(q) || models.length < MODEL_MAX) { if (!models.includes(q)) models.push(q); m.model = q; } continue; }
     if (m[1] !== 'photo') continue;
     let [q, o = 'landscape'] = m[2].trim().split('?');
     q = q.trim().toLowerCase(); if (!['landscape', 'portrait', 'square'].includes(o)) o = 'landscape';
@@ -1683,6 +1703,51 @@ async function resolveMedia(code, attachments = [], onPhotos, kept = [], onArt, 
   });
 }
 
+
+// Live 3D objects on the canvas. Element frames run no scripts, and a document without scripts doesn't even paint
+// its <canvas> (it shows the fallback), so the editor lays its own canvas over each <canvas data-oc-model>, inside
+// the element (it moves and zooms with it), renders the object there and forwards the cursor
+let modelKit = null;
+const loadKit = () => (modelKit ||= import('./model-kit.js'));
+const liveModels = new Set();
+function placeLive(m){
+  const f = m.frame, doc = f.contentDocument, src = m.src;
+  if (!doc || !src.isConnected || !f.isConnected) { m.dispose(); m.canvas.remove(); liveModels.delete(m); return false; }
+  const k = f.offsetWidth / (doc.documentElement.clientWidth || f.offsetWidth), r = src.getBoundingClientRect();
+  const st = m.canvas.style, x = f.offsetLeft + r.left * k, y = f.offsetTop + r.top * k;
+  st.left = x + 'px'; st.top = y + 'px'; st.width = r.width * k + 'px'; st.height = r.height * k + 'px';
+  st.display = r.width && r.height && getComputedStyle(src).visibility !== 'hidden' ? 'block' : 'none';
+  return true;
+}
+function mountModelsIn(frame){
+  for (const m of [...liveModels]) if (m.frame === frame) placeLive(m); // drops the ones of a replaced document
+  const list = frame.contentDocument?.querySelectorAll('canvas[data-oc-model]');
+  if (!list?.length) return;
+  loadKit().then(k => list.forEach(src => {
+    if (src._oc || !src.isConnected || liveModels.size >= 14) return;
+    const c = document.createElement('canvas'); c.className = 'oc-live3d'; c.setAttribute('aria-hidden', 'true');
+    frame.parentElement.append(c);
+    placeLive({ frame, src, canvas: c, dispose(){} }); // sized before WebGL starts
+    try {
+      const m = k.mountModel(c, src.dataset.ocModel); Object.assign(m, { frame, src });
+      src._oc = m; liveModels.add(m); placeLive(m);
+      src.style.backgroundImage = 'none'; // the still picture stays only where the live object can't run
+    } catch { c.remove(); }
+  })).catch(() => {});
+}
+document.addEventListener('load', e => { if (e.target?.tagName === 'IFRAME' && e.target.closest?.('.node')) mountModelsIn(e.target); }, true);
+setTimeout(() => document.querySelectorAll('.node iframe').forEach(mountModelsIn), 1200);
+// keep each object on its spot when the element is edited or resized
+setInterval(() => { for (const m of [...liveModels]) placeLive(m); }, 500);
+let modelRaf = 0, modelXY = null;
+addEventListener('pointermove', e => {
+  modelXY = [e.clientX, e.clientY];
+  if (modelRaf || !liveModels.size) return;
+  modelRaf = requestAnimationFrame(() => {
+    modelRaf = 0;
+    loadKit().then(k => { for (const m of liveModels) m.setPointer(...k.pointerFor(m.canvas.getBoundingClientRect(), modelXY[0], modelXY[1])); });
+  });
+}, { passive: true });
 
 /* ── Attachments from the chat box (+): images and text files go along with the next request ── */
 let pendingAttachments = [];
@@ -1951,7 +2016,7 @@ ${appMode ? APP_RULES + '\n- No external links or fonts. Icons as inline SVG.' :
   · in this style do NOT use photo: (stock photos break the mood) — case-study and product cards get dark cards with coloured radial-gradient light pools, model: objects or the art: picture instead;
   · lots of space (section padding 110px+), few words per block, everything respects prefers-reduced-motion.
 - Motion (EVERY website, landing or full page, any style): it must feel alive like an award-winning site — sections and cards rise in on scroll, pictures zoom from .88 to 1 as they enter, one big statement whose words light up one after another while scrolling, a logo wall as an endless marquee with mask fades, hover lift + soft glow on cards and buttons, a slow float on the hero visual. Pure CSS: scroll effects inside @supports (animation-timeline:view()){…} with animation-timeline:view() and animation-range:entry 0% cover 30%; everything wrapped so prefers-reduced-motion turns it off. The header and the hero are visible at once (no scroll reveal on them).
-- 3D objects on pages: NEVER build spheres, tori, pyramids, gems, blobs or cubes out of divs and CSS transforms — they come out flat and broken. Put a real rendered object instead: <img src="model:SHAPE MATERIAL COLOR" alt="…"> (transparent PNG, square; size it with CSS, e.g. width:min(420px,40vw)). SHAPE: cube, sphere, torus, ring, knot, pyramid, cone, cylinder, capsule, diamond, icosahedron, dodecahedron, blob, star, heart, helix, coin, shapes (a little composition), or "letter X" / "text AB" for a 3D logo mark of 1–4 Latin characters or digits (model:letter R chrome). MATERIAL: chrome, gold, metal, glass, iridescent, pearl, plastic, matte, clay, velvet, neon. COLOR: a #hex or a colour word (model:knot plastic #ff5a36, model:diamond glass #8b5cf6, model:torus chrome, model:blob iridescent). Use them for heroes, feature cards (one per card, same material across a set), product showcases and decorative accents; give them a slow float (@keyframes up/down 6–8s), a soft drop-shadow or a radial-gradient light pool behind. Up to 8 per page.
+- 3D objects on pages: NEVER build spheres, tori, pyramids, gems, blobs or cubes out of divs and CSS transforms — they come out flat and broken. Put a real rendered object instead: <img src="model:SHAPE MATERIAL COLOR" alt="…"> (transparent PNG, square; size it with CSS, e.g. width:min(420px,40vw)). SHAPE: cube, sphere, torus, ring, knot, pyramid, cone, cylinder, capsule, diamond, icosahedron, dodecahedron, blob, star, heart, helix, coin, shapes (a little composition), or "letter X" / "text AB" for a 3D logo mark of 1–4 Latin characters or digits (model:letter R chrome). MATERIAL: chrome, gold, metal, glass, iridescent, pearl, plastic, matte, clay, velvet, neon. COLOR: a #hex or a colour word (model:knot plastic #ff5a36, model:diamond glass #8b5cf6, model:torus chrome, model:blob iridescent). Every model: object is a LIVE real-time 3D model on the page (WebGL): it already turns smoothly toward the cursor and floats by itself — so when the user asks for a 3D model, a 3D letter or logo, or a 3D object that reacts to the cursor, THIS is how to do it: never fake it with a flat picture, CSS 3D or your own tilt/rotate/perspective/hover transforms on it (they fight its own motion; a plain size, position and a light pool behind are right). Letters keep their case: write the letter exactly as the user wrote it (model:letter D chrome). "Mirror" = chrome. Use them for heroes, feature cards (one per card, same material across a set), product showcases and decorative accents; give them a slow float (@keyframes up/down 6–8s), a soft drop-shadow or a radial-gradient light pool behind. Up to 8 per page.
 - 3D: when the user asks for a 3D model, 3D asset, 3D object or 3D scene AS THE ELEMENT ITSELF (or the Current element is a 3D scene), you CAN do it: use action "scene3d" and, instead of the html block, ONE \`\`\`json block with the scene. Shape:
 {"size":[520,400],"background":null,"environment":"studio|sunset|night","autoRotate":20,"floor":{"shadow":true},"camera":{"position":[3,2,4],"target":[0,0.6,0],"fov":40},"objects":[{"name":"seat","shape":"box","size":[1,0.12,1],"rounded":0.04,"position":[0,0.5,0],"rotation":[0,0,0],"color":"#c2410c","metalness":0,"roughness":0.6,"children":[]}]}
 shapes: box (size [w,h,d], rounded), sphere (radius), cylinder (radius or radiusTop/radiusBottom, height, sides), cone (radius, height), torus (radius, tube, arc°), capsule (radius, length), plane (size [w,h]), icosahedron/dodecahedron/octahedron/tetrahedron (radius, detail), ring (inner, outer), lathe (points [[r,y],…] profile — vases, cups, bottles), extrude (points [[x,y],…] outline + depth, bevel — swords, stars, logos), group (children only).
