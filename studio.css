@@ -1120,3 +1120,8 @@ body.chat-float .chat-panel.edged[data-edge="right"]:hover { --peek: -8px; }
 :root[data-ui="light"] .ag-row { background: #0000000a; }
 :root[data-ui="light"] .ag-row input, :root[data-ui="light"] .ag-row select, :root[data-ui="light"] .ag-row textarea { background: #fff; }
 .oc-live3d { position: absolute; z-index: 1; pointer-events: none; }
+/* each writer outlines the element it is writing, in its own colour */
+.bs-sel { border-color: var(--c, #f2f2f2); background: color-mix(in srgb, var(--c, #f2f2f2) 6%, transparent); box-shadow: 0 0 0 calc(4px * var(--inv, 1)) color-mix(in srgb, var(--c, #f2f2f2) 12%, transparent); transition: transform .28s cubic-bezier(.2,.8,.2,1), width .28s, height .28s, opacity .2s; }
+.bs-sel b { background: var(--c, #f2f2f2); color: #0a0a0a; }
+.bs-cur { transition: transform .32s cubic-bezier(.2,.8,.2,1), opacity .3s; }
+.bs-cur span { color: #0a0a0a; }

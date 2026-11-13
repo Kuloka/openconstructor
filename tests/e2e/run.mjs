@@ -48,7 +48,7 @@ scenario('streaming: reasoning shows live and the element lands', async (ed, o) 
   assert.match(await ed.ev(`[...document.querySelectorAll('.th-reason')].pop()?.textContent || ''`), /Thinking about it/);
 });
 
-scenario('live build: the page grows on the canvas with one AI cursor per section, then the draft goes away', async (ed, o) => {
+scenario('live build: the page appears as it is written, the AI cursor outlines each element it writes, then the draft goes away', async (ed, o) => {
   o.reply = () => block('Cafe', '<style>.lp{background:#f6f1ea;color:#111}</style><div class="lp"><header class="lp-header"><b>Brew</b></header><section class="lp-hero"><h1>Coffee</h1><p>Small-batch roasts.</p></section><section class="lp-menu"><h2>Menu</h2></section><footer class="lp-footer">© Brew</footer></div>', { full: true });
   await ed.ev(`(window.__bs = [], new MutationObserver(() => { const s = document.querySelector('#board .bs-draft'); if (s) window.__bs.push([s.querySelectorAll('.bs-cur.on').length, [...s.querySelectorAll('.bs-cur span')].map(x => x.textContent).join(',')]); }).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true }), 1)`);
   await ed.ask('a landing page for a coffee shop');
@@ -56,7 +56,12 @@ scenario('live build: the page grows on the canvas with one AI cursor per sectio
   await ed.idle(); await sleep(1200);
   const seen = await ed.ev('window.__bs');
   assert.ok(seen.length, 'the draft was on the board');
-  assert.ok(seen.some(([n, names]) => n >= 4 && /header/.test(names) && /hero/.test(names) && /menu/.test(names) && /footer/.test(names)), 'a cursor per section: ' + JSON.stringify(seen.at(-1)));
+  // one real writer, no staged extras; it went through the elements it wrote, in order
+  assert.ok(seen.every(([n]) => n <= 1), 'one cursor for one answer: ' + JSON.stringify(seen.find(([n]) => n > 1)));
+  const labels = seen.map(([, l]) => l).filter(Boolean);
+  assert.ok(!labels.some(l => /thinking|waiting/.test(l)), 'no staged states');
+  const i1 = labels.findIndex(l => /^(h1|p|b)$|hero/.test(l)), i2 = labels.findIndex(l => /footer/.test(l));
+  assert.ok(i1 >= 0 && i2 > i1, 'the cursor followed the writing: ' + JSON.stringify([...new Set(labels)]));
   assert.equal(await ed.ev(`document.querySelectorAll('.bs-draft').length`), 0, 'the draft is gone');
   assert.equal((await ed.items())[0]?.name, 'Cafe');
 });
@@ -403,4 +408,27 @@ scenario('3D: a live model is rendered over the element on the canvas', async (e
   const [w, h, vis] = await ed.ev(`(() => { const c = document.querySelector('.node .oc-live3d'); return [c.offsetWidth, c.offsetHeight, c.style.display]; })()`);
   assert.ok(w > 300 && h > 300 && vis === 'block', `overlay sized like the object (${w}×${h}, ${vis})`);
   assert.match((await ed.items())[0].code, /<canvas data-oc-model="letter D chrome"[^>]*class="obj"/);
+});
+
+// editing an element with a live 3D object: the AI sees it as <img src="model:…"> (its own form), not as the canvas
+scenario('3D: an edit sends the live object back to the AI as model:', async (ed, o) => {
+  o.reply = () => block('Glass D', '<style>.gd{display:grid;place-items:center;width:600px;height:500px;background:#111}.gd .obj{width:360px}</style>\n<div class="gd"><img class="obj" src="model:letter D glass" alt="D"></div>');
+  await ed.ask('3d letter D glass'); await ed.idle();
+  assert.ok(await ed.until(`JSON.parse(localStorage.getItem('form-canvas-v3') || '[]').length > 0`, 15000));
+  const before = ed.posts.length;
+  o.reply = () => '{"action":"reply","reply":"ok"}\nok';
+  await ed.ask('remove the background'); await ed.idle();
+  assert.ok(await ed.until(`true`) && ed.posts.length > before, 'the edit was sent');
+  const sent = ed.posts.slice(before).join('\n').replace(/\\/g, '');
+  assert.match(sent, /<img src="model:letter D glass" class="obj"/);
+  assert.ok(!/data-oc-model/.test(sent), 'no canvas markup sent');
+  assert.ok(!/kept:\d/.test(sent), 'the still picture is not sent');
+});
+
+// a 3D object the AI gave no width must not collapse on the canvas (frames without scripts give <canvas> no size)
+scenario('3D: a live model without a width keeps its size on the canvas', async (ed, o) => {
+  o.reply = () => block('3D letter D', '<div class="d3"><img src="model:letter D chrome" alt="D"></div>');
+  await ed.ask('3d letter D'); await ed.idle();
+  assert.ok(await ed.until(`(document.querySelector('.node .oc-live3d')?.offsetWidth || 0) > 300`, 15000), 'the live object is visible');
+  assert.ok(await ed.ev(`document.querySelector('.node').offsetWidth > 300`), 'the element is not an empty box');
 });

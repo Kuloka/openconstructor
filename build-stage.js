@@ -1,26 +1,23 @@
-// Live build right on the canvas: while the AI streams the page, a draft node sits on the board where the
-// result will land (or over the element being edited) and the page grows in it section by section.
-// Every section gets its own AI cursor (up to 20), named after the section; the cursor of the section
-// being written follows the line the model is writing right now, the others keep polishing their blocks.
-// Unchanged nodes are kept between updates (morph), so finished sections don't flicker or replay.
-// Agent names and section labels are never translated (data-no-i18n): they name things, like teammates.
+// Live build right on the canvas: while the AI streams its answer, a draft node sits on the board where the
+// result will land (or over the element being edited) and the page appears in it exactly as it is written.
+// Nothing is staged: no skeleton, no wandering. Every update is diffed against the page so far (morph);
+// the element the stream just wrote is where the AI cursor goes, the selection box outlines it with its real
+// tag and class, and new elements fade in. With a swarm every agent streams its own section: its cursor appears
+// when it starts writing, follows its own newest element and leaves with a ✓ when the section is done.
+// Agent names and labels are never translated (data-no-i18n).
 //
-// createStage({ board, doc, width, initial, place, target, reveal, grow }) → { feed(text, done), replay(code), close() }
+// createStage({ board, doc, width, initial, place, target, reveal, grow, model }) → { swarm, part, feed, replay, close }
 //   doc()          empty frame document with #__root        place(full) → { x, y, rootCss } on the board
 //   initial        code of the element being edited          target      its node (hidden while the draft covers it)
 //   reveal(y, h)   scroll the canvas to a board area          grow(bottom) the board must reach this y (0 = done)
+//   model(query)   → Promise of a picture of a 3D object, so model: objects show up while they are written
 
 const COLORS = ['#f2f2f2', '#4d8dff', '#2fbf71', '#f5b301', '#c254ff', '#00b8d9', '#ff3d8b', '#8bc34a', '#ff8a00', '#5c6bc0'];
 const MAX_AGENTS = 20;
-const NAMES = ['header', 'nav', 'hero', 'features', 'feature', 'pricing', 'plans', 'about', 'team', 'testimonials', 'reviews', 'faq', 'cta', 'footer', 'gallery', 'menu', 'contact', 'stats', 'logos', 'services', 'work', 'cases', 'products', 'showcase', 'steps', 'blog', 'newsletter', 'form', 'statement', 'calculator', 'card', 'banner'];
 const ARROW = c => `<svg width="18" height="20" viewBox="0 0 18 20" aria-hidden="true"><path d="M2 1.5v15.2l4.1-3.9 2.7 6 3-1.3-2.7-5.9h5.6z" fill="${c}" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
-// before the first line of code: a skeleton page the cursors already work on
-const SKELETON = '<div class="__sk"><div class="__sk-header"><i style="width:120px"></i><i style="width:260px;margin-left:auto"></i></div><div class="__sk-hero"><div><i style="width:80%;height:56px"></i><i style="width:60%;height:56px"></i><i style="width:90%"></i><i style="width:70%"></i><i class="__sk-btn"></i></div><i class="__sk-pic"></i></div><div class="__sk-features"><i class="__sk-card"></i><i class="__sk-card"></i><i class="__sk-card"></i></div></div>';
-const SK_CSS = `.__sk{padding:0 64px;color:#888}.__sk i{display:block;height:16px;margin:0 0 16px;border-radius:8px;background:linear-gradient(100deg,#8883 20%,#ffffff55 50%,#8883 80%) 0 0/200% 100%;animation:oc-sh 1.4s linear infinite}.__sk-header{display:flex;gap:20px;padding:28px 0;border-bottom:1px solid #8882}.__sk-hero{display:grid;grid-template-columns:1.1fr 1fr;gap:56px;padding:90px 0}.__sk-btn{width:180px;height:48px!important;border-radius:99px!important;margin-top:30px!important}.__sk-pic{height:380px!important;border-radius:18px!important}.__sk-features{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;padding-bottom:90px}.__sk-card{height:190px!important;border-radius:16px!important}`;
-const SLOT_SKELETON = '<div class="__sk" style="padding:64px"><i style="width:30%;height:40px"></i><i style="width:55%"></i><div class="__sk-features" style="padding:24px 0 0"><i class="__sk-card" style="height:140px!important"></i><i class="__sk-card" style="height:140px!important"></i><i class="__sk-card" style="height:140px!important"></i></div></div>';
 const GIF = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
-// the frame never shows broken-image icons for photos and 3D models that aren't made yet: a shimmer instead
-const STAGE_CSS = `img[data-ph]{font-size:0;color:transparent;background:linear-gradient(100deg,#8881 20%,#ffffff33 50%,#8881 80%) 0 0/200% 100%;animation:oc-sh 1.2s linear infinite}@keyframes oc-sh{to{background-position:-200% 0}}*{animation-timeline:auto!important}` + SK_CSS;
+// photos not downloaded yet shimmer instead of showing a broken-image icon; scroll-driven effects show their end state
+const STAGE_CSS = `img[data-ph]{font-size:0;color:transparent;background:linear-gradient(100deg,#8881 20%,#ffffff33 50%,#8881 80%) 0 0/200% 100%;animation:oc-sh 1.2s linear infinite}img[data-ph]{min-height:40px}img[data-model]{aspect-ratio:1;object-fit:contain;border-radius:18px}img[data-model][src^="data:image/gif"]{min-width:120px}img[data-model]:not([src^="data:image/gif"]){background:none;animation:none}@keyframes oc-sh{to{background-position:-200% 0}}*{animation-timeline:auto!important}`;
 
 // the code part of a streamed answer, cut so the browser never sees half a tag or a running script
 export function partialCode(text){
@@ -32,38 +29,48 @@ export function partialCode(text){
   s = s.replace(/<[^<>]*$/, '');                                   // a tag still being written
   s = s.replace(/<script\b[\s\S]*?(<\/script\s*>|$)/gi, '');        // scripts never run on the stage
   s = s.replace(/<style\b[^>]*>(?![\s\S]*<\/style>)[\s\S]*$/i, '');   // half-written CSS would flash unstyled blocks
-  s = s.replace(/\ssrc=(["'])(?:photo|art|kept|model):/gi, ` data-ph src=$1${GIF}#`); // media not made yet: a blank pixel + shimmer
+  // 3D objects keep their query (the stage draws them as soon as they are written); other media: a blank pixel + shimmer
+  s = s.replace(/\ssrc=(["'])model:([^"']*)\1/gi, (m, q, v) => ` data-ph data-model="${v.replace(/"/g, '')}" src=${q}${GIF}${q}`);
+  s = s.replace(/\ssrc=(["'])(?:photo|art|kept|model):/gi, ` data-ph src=$1${GIF}#`);
   return s;
 }
 
-// keep equal nodes, patch the rest: the DOM only changes where the stream added something
-// Old and new children are paired by kind (tag + class), not by position: the saved page has extra
-// blocks the editor added (motion styles, fixes), and an edit may insert or drop a section.
+// Keep equal nodes, patch the rest — the DOM only changes where the stream added something — and report
+// where that was: log.last = the element written last (in document order), log.fresh = elements just added.
+// Old and new children are paired by kind (tag + class), not by position: the saved page has extra blocks
+// the editor added, and an edit may insert or drop a section.
 const same = (o, n) => o.nodeType === n.nodeType && (o.nodeType !== 1 || (o.tagName === n.tagName && (o.getAttribute('class') || '') === (n.getAttribute('class') || '')));
-function morph(dst, src, keep = false){
+const lastElement = el => { let e = el; while (e.lastElementChild && !/^(STYLE|SVG|svg)$/.test(e.lastElementChild.tagName)) e = e.lastElementChild; return e; };
+function morph(dst, src, keep = false, log = {}){
   const a = [...dst.childNodes], b = [...src.childNodes];
   let j = 0;
   for (const n of b) {
-    // the next old node of the same kind (a few ahead at most); the old ones skipped over are gone in the new version
     let k = -1;
     for (let q = j; q < Math.min(a.length, j + 6); q++) if (same(a[q], n)) { k = q; break; }
-    if (k < 0) { const c = n.cloneNode(true); a[j] ? dst.insertBefore(c, a[j]) : dst.append(c); continue; }
+    if (k < 0) {
+      const c = n.cloneNode(true); a[j] ? dst.insertBefore(c, a[j]) : dst.append(c);
+      if (c.nodeType === 1 && c.tagName !== 'STYLE') { log.fresh?.push(c); log.last = lastElement(c); }
+      else if (c.nodeType === 3 && c.nodeValue.trim()) log.last = dst;
+      continue;
+    }
     for (; j < k; j++) a[j].remove();
     const o = a[j++];
     if (o.isEqualNode(n)) continue;
-    if (o.nodeType === 3) { o.nodeValue = n.nodeValue; continue; }
+    if (o.nodeType === 3) { o.nodeValue = n.nodeValue; if (n.nodeValue.trim()) log.last = dst; continue; }
     if (o.nodeType === 1 && o.tagName !== 'STYLE') {
+      // a 3D object already drawn keeps its picture (the stream still says "blank pixel")
+      const drawn = o.dataset?.model && o._drawn;
       for (const at of [...o.attributes]) if (!n.hasAttribute(at.name)) o.removeAttribute(at.name);
-      for (const at of [...n.attributes]) if (o.getAttribute(at.name) !== at.value) o.setAttribute(at.name, at.value);
-      morph(o, n, keep); continue;
+      for (const at of [...n.attributes]) if (o.getAttribute(at.name) !== at.value && !(drawn && at.name === 'src')) { o.setAttribute(at.name, at.value); log.last = o; }
+      morph(o, n, keep, log); continue;
     }
     dst.replaceChild(n.cloneNode(true), o);
   }
-  // an edit in progress keeps the rest of the old page below the part already rewritten
   if (!keep) for (; j < a.length; j++) a[j].remove();
+  return log;
 }
 
-// the page's sections: children of the first wrapper that has more than one block
+// the page's top-level blocks (for the seams between them): children of the first wrapper with more than one block
 function sections(root){
   let el = root;
   for (let d = 0; d < 4; d++) {
@@ -74,125 +81,111 @@ function sections(root){
   }
   return el === root ? [] : [el];
 }
-const label = (el, i) => {
-  if (el.dataset?.kind) return el.dataset.kind;
-  const words = [el.tagName.toLowerCase(), el.id, ...el.classList].join(' ').toLowerCase().split(/[\s_-]+/);
-  const hit = NAMES.find(n => words.includes(n));
-  if (hit) return hit;
-  const h = el.querySelector('h1,h2,h3')?.textContent.trim();
-  return h ? h.slice(0, 18) + (h.length > 18 ? '…' : '') : 'block ' + (i + 1);
-};
-const TEXT = 'h1,h2,h3,h4,p,li,a,button,span,blockquote,label,td,input';
-const visible = x => { const r = x.getBoundingClientRect(); return r.height > 2 && r.width > 2; };
-const lastText = el => { const all = [...el.querySelectorAll(TEXT)].filter(x => (x.textContent.trim() || x.tagName === 'INPUT') && visible(x)); return all[all.length - 1] || null; };
-const pick = list => list[Math.floor(Math.random() * list.length)];
+// what to outline for the element just written: itself when it is a visible thing, else its nearest visible block
+const BLOCK = 'h1,h2,h3,h4,h5,p,li,a,button,img,canvas,svg,input,textarea,select,label,blockquote,figure,span,td,th';
+function subject(el, root){
+  const seen = x => { const r = x.getBoundingClientRect(); return r.width > 6 && r.height > 6; };
+  if (el && el !== root && !seen(el)) { let p = el.previousElementSibling; while (p && !seen(p)) p = p.previousElementSibling; if (p) el = lastVisible(p) || p; }
+  for (let e = el; e && e !== root; e = e.parentElement) {
+    const r = e.getBoundingClientRect();
+    if (r.width > 6 && r.height > 6 && (e.matches(BLOCK) || r.height < 400)) return e;
+  }
+  return null;
+}
+function lastVisible(el){ const all = [...el.querySelectorAll('*')].reverse(); return all.find(x => { const r = x.getBoundingClientRect(); return r.width > 6 && r.height > 6 && x.matches(BLOCK); }) || null; }
+const tagOf = el => el.tagName.toLowerCase() + (el.dataset?.model ? ' · 3D' : el.classList[0] ? '.' + el.classList[0] : '');
 
-export function createStage({ board, doc, width = 1280, initial = '', place, target = null, reveal = () => {}, grow = () => {} } = {}){
+export function createStage({ board, doc, width = 1280, initial = '', place, target = null, reveal = () => {}, grow = () => {}, model = null } = {}){
   if (!board || !place) return null;
   const keep = !!initial;
   let spot = place(true);
   const draft = document.createElement('div'); draft.className = 'bs-draft'; draft.setAttribute('aria-hidden', 'true'); draft.dataset.noI18n = '';
-  draft.innerHTML = `<iframe sandbox="allow-same-origin" tabindex="-1" style="width:${width}px;height:${target?.offsetHeight || 640}px"></iframe><div class="bs-layer"><svg class="bs-links" aria-hidden="true"></svg><div class="bs-sel"><b></b></div></div>`;
-  const frame = draft.firstChild, layer = draft.lastChild, links = layer.firstChild, sel = layer.children[1], selTag = sel.firstChild;
+  draft.innerHTML = `<iframe sandbox="allow-same-origin" tabindex="-1" style="width:${width}px;height:${target?.offsetHeight || 120}px"></iframe><div class="bs-layer"><svg class="bs-links" aria-hidden="true"></svg></div>`;
+  const frame = draft.firstChild, layer = draft.lastChild, links = layer.firstChild;
   const at = s => { draft.style.left = s.x + 'px'; draft.style.top = s.y + 'px'; };
   at(spot); board.append(draft);
   if (target) target.style.visibility = 'hidden';
   frame.srcdoc = doc();
   reveal(spot.y, 400);
 
-  const agents = []; // agent i works on section i
+  // One agent = one real writer: a cursor and its own selection box. Single answers have agent 0;
+  // a swarm has one per section. An agent exists only once it has written something.
+  const agents = [];
   const agent = i => {
     if (agents[i]) return agents[i];
     const c = COLORS[i % COLORS.length];
-    const el = document.createElement('div'); el.className = 'bs-cur'; el.style.setProperty('--c', c);
-    el.innerHTML = ARROW(c) + '<span></span>';
-    // a new agent flies in from the one before it
+    const cur = document.createElement('div'); cur.className = 'bs-cur'; cur.style.setProperty('--c', c); cur.innerHTML = ARROW(c) + '<span></span>';
+    const box = document.createElement('div'); box.className = 'bs-sel'; box.style.setProperty('--c', c); box.innerHTML = '<b></b>';
     const from = agents[i - 1]?.pos || { x: width / 2, y: 0 };
-    el.style.transform = `translate(${from.x}px,${from.y}px) scale(var(--inv,1))`;
-    layer.append(el);
-    return (agents[i] = { el, i, pos: from, at: 0, on: null });
+    cur.style.transform = `translate(${from.x}px,${from.y}px) scale(var(--inv,1))`;
+    layer.append(box, cur);
+    return (agents[i] = { cur, box, i, c, pos: from, el: null, done: false });
   };
-  const move = (a, x, y) => { a.pos = { x, y }; a.el.style.transform = `translate(${Math.round(x)}px,${Math.round(y)}px) scale(var(--inv,1))`; a.el.classList.add('on'); };
+  const show = (a, el, note = '') => {
+    if (!el?.isConnected) return;
+    const r = el.getBoundingClientRect();
+    a.el = el;
+    Object.assign(a.box.style, { transform: `translate(${r.left - 3}px,${r.top - 3}px)`, width: r.width + 6 + 'px', height: r.height + 6 + 'px' });
+    a.box.firstChild.textContent = tagOf(el) + ' · ' + Math.round(r.width) + '×' + Math.round(r.height);
+    a.box.classList.add('on');
+    // the cursor at the end of what was just written: the bottom-right of a short thing, the last line of a long one
+    const x = r.left + Math.min(r.width, 360) - 2, y = r.top + Math.min(r.height, 44) - 6;
+    a.pos = { x, y };
+    a.cur.style.transform = `translate(${Math.round(x)}px,${Math.round(y)}px) scale(var(--inv,1))`;
+    a.cur.lastChild.textContent = note || tagOf(el);
+    a.cur.classList.add('on', 'active');
+  };
+  const finish = a => { if (!a || a.done) return; a.done = true; a.cur.classList.remove('active'); a.cur.lastChild.textContent += ' ✓'; a.box.classList.remove('on'); setTimeout(() => a.cur.classList.remove('on'), 1100); };
 
-  let ready = false, pending = initial ? partialCode('```html\n' + initial) : SKELETON, last = '', timer = 0, closed = false;
-  let fed = false, final = false, focus = -1, snaps = [], revealAt = 0;
-  // swarm: one agent per section, all writing at once — parts[i] = { kind, text, state: 'wait'|'write'|'done', at }
+  let ready = false, pending = initial ? partialCode('```html\n' + initial) : '', last = '', timer = 0, closed = false;
+  let fed = false, final = false, revealAt = 0;
   let parts = null, swarmCss = '';
+  const pics = new Map(); // 3D query → picture (or the promise of it)
   frame.onload = () => {
     const d = frame.contentDocument; if (!d) return;
     const s = d.createElement('style'); s.textContent = STAGE_CSS; d.head.append(s);
     if (spot.rootCss) d.getElementById('__root')?.setAttribute('style', spot.rootCss);
     ready = true; paint(true);
   };
-  // the cursors keep working between stream chunks (and while the model is still thinking)
-  const pulse = setInterval(() => { if (ready && !closed) aim(false); }, 900);
 
-  function aim(stream){
-    const d = frame.contentDocument, root = d?.getElementById('__root'); if (!root) return;
-    const h = Math.max(root.scrollHeight, root.getBoundingClientRect().height, 120);
-    frame.style.height = h + 'px'; grow(spot.y + h);
-    const list = sections(root); if (!list.length) return;
-    // the section being written: the last one that changed (a new page grows at the bottom, an edit anywhere)
-    const html = list.map(x => x.outerHTML);
-    if (parts) { let t = -1; parts.forEach((p, i) => { if (p.state === 'write' && p.at > t) { t = p.at; focus = i; } }); }
-    else if (stream && fed) { for (let i = html.length - 1; i >= 0; i--) if (html[i] !== snaps[i]) { focus = i; break; } }
-    else if (!fed && Math.random() < .5) focus = Math.floor(Math.random() * list.length);
-    if (focus < 0 || focus >= list.length) focus = keep ? 0 : list.length - 1;
-    snaps = html;
-    const now = list[focus], r = now.getBoundingClientRect();
-    Object.assign(sel.style, { transform: `translate(${r.left}px,${r.top}px)`, width: r.width + 'px', height: r.height + 'px' }); sel.classList.add('on');
-    selTag.textContent = `${label(now, focus)} · ${fed ? Math.round(r.width) + '×' + Math.round(r.height) : parts ? 'waiting' : 'thinking'}`;
-    // the canvas follows the section being written (with a swarm every agent writes at once: the view stays put)
-    if (fed && stream && !parts && Date.now() - revealAt > 700) { revealAt = Date.now(); reveal(spot.y + r.top, r.height); }
-    const n = Math.min(list.length, MAX_AGENTS);
-    for (let i = 0; i < n; i++) {
-      const a = agent(i), s = list[i];
-      const st = parts?.[i]?.state;
-      a.el.lastChild.textContent = label(s, i) + (st === 'wait' ? ' · waiting' : st === 'done' ? ' ✓' : '');
-      a.el.classList.toggle('active', parts ? st === 'write' : i === focus);
-      if (parts ? st === 'write' : i === focus && fed) {
-        // the writer: at the end of the newest line
-        const t = lastText(s), q = (t || s).getBoundingClientRect();
-        move(a, q.left + Math.min(q.width, 320), q.top + Math.min(q.height, 40) - 4);
-      } else if (!stream || !a.on?.isConnected || Date.now() - a.at > 1400 + i * 97) {
-        // the others look their block over: a heading, a button, a card, a picture
-        a.at = Date.now();
-        const pool = [...s.querySelectorAll('h1,h2,h3,p,button,a,img,li,[class*=card],input')].filter(visible);
-        a.on = pool.length ? pick(pool) : s;
-        const q = a.on.getBoundingClientRect();
-        move(a, q.left + q.width * (.3 + Math.random() * .5), q.top + q.height * (.4 + Math.random() * .4));
-      }
+  // new elements fade in where they are written; a 3D object is drawn the moment its tag is complete
+  function settle(log, d){
+    for (const el of log.fresh) { try { el.animate([{ opacity: 0, transform: 'translateY(6px)', filter: 'blur(3px)' }, { opacity: 1, transform: 'none', filter: 'none' }], { duration: 420, easing: 'cubic-bezier(.2,.8,.2,1)' }); } catch {} }
+    if (!model) return;
+    for (const img of d.querySelectorAll('img[data-model]')) {
+      if (img._drawn) continue;
+      const q = img.dataset.model;
+      if (typeof pics.get(q) === 'string') { img.src = pics.get(q); img._drawn = true; continue; }
+      if (!pics.has(q)) pics.set(q, model(q).then(url => { pics.set(q, url); paint(true); }, () => pics.delete(q)));
     }
-    for (let i = n; i < agents.length; i++) agents[i]?.el.classList.remove('on');
-    drawLinks(list, n);
   }
-  // How the agents join the page: a seam between neighbouring sections (lit once both are built, with a dock
-  // node on each side) and a tether from every agent's cursor to the anchor of the section it works on
-  function drawLinks(list, n){
-    const w = width, H = parseFloat(frame.style.height) || 0;
-    links.setAttribute('viewBox', `0 0 ${w} ${H}`); links.style.height = H + 'px';
-    const state = i => parts ? parts[i]?.state : fed ? (i < list.length - 1 || final ? 'done' : 'write') : 'wait';
-    let svg = '';
-    for (let i = 0; i < list.length - 1; i++) {
-      const y = list[i].getBoundingClientRect().bottom, both = state(i) === 'done' && state(i + 1) === 'done';
-      svg += `<line class="seam${both ? ' joined' : ''}" x1="0" y1="${y}" x2="${w}" y2="${y}"/><circle class="dock${both ? ' joined' : ''}" cx="18" cy="${y}" r="5"/><circle class="dock${both ? ' joined' : ''}" cx="${w - 18}" cy="${y}" r="5"/>`;
-    }
-    for (let i = 0; i < n; i++) {
-      const a = agents[i]; if (!a?.pos) continue;
-      const r = list[i].getBoundingClientRect(), ax = r.left + 18, ay = r.top + 18, { x, y } = a.pos;
-      const mx = (x + ax) / 2;
-      svg += `<path class="tether${state(i) === 'write' ? ' live' : ''}" style="--c:${COLORS[i % COLORS.length]}" d="M${ax} ${ay} C ${mx} ${ay}, ${mx} ${y}, ${x} ${y}"/><circle class="anchor" style="--c:${COLORS[i % COLORS.length]}" cx="${ax}" cy="${ay}" r="4"/>`;
-    }
-    links.innerHTML = svg;
+  function measure(){
+    const d = frame.contentDocument, root = d?.getElementById('__root'); if (!root) return null;
+    const h = Math.max(root.scrollHeight, root.getBoundingClientRect().height, fed ? 60 : 0);
+    frame.style.height = h + 'px'; grow(spot.y + h);
+    return root;
   }
   function paint(force){
     timer = 0; if (closed || !ready || (!force && pending === last)) return;
     last = pending;
     const d = frame.contentDocument, root = d?.getElementById('__root'); if (!root) return;
-    if (parts && !final) { paintParts(d, root); aim(true); return; }
+    if (parts && !final) { paintParts(d, root); return; }
+    if (!pending) return;
     const tp = d.createElement('template'); tp.innerHTML = pending;
-    try { morph(root, tp.content, keep && fed && !final); } catch { root.innerHTML = pending; }
-    aim(true);
+    let log = { fresh: [], last: null };
+    try { log = morph(root, tp.content, keep && fed && !final, log); } catch { root.innerHTML = pending; }
+    settle(log, d);
+    measure();
+    if (!fed) return;
+    if (parts) { drawLinks(root); return; } // the swarm's finished page: its agents already signed their sections
+    const a = agent(0), el = log.last && subject(log.last, root);
+    if (el) {
+      show(a, el);
+      const r = el.getBoundingClientRect();
+      if (Date.now() - revealAt > 700) { revealAt = Date.now(); reveal(spot.y + r.top, r.height); }
+    } else if (a.el) show(a, a.el);
+    if (final) finish(a);
+    drawLinks(root);
   }
   // every agent's stream goes into its own slot, so a half-written section never swallows the next one
   function paintParts(d, root){
@@ -201,21 +194,59 @@ export function createStage({ board, doc, width = 1280, initial = '', place, tar
       root.innerHTML = `<style>${swarmCss}</style><div class="pg" data-swarm>${parts.map((p, i) => `<div data-part="${i}" data-kind="${p.kind.replace(/[<>"&]/g, '')}"></div>`).join('')}</div>`;
       pg = root.querySelector('.pg');
     }
+    const logs = [];
     parts.forEach((p, i) => {
       const slot = pg.children[i]; if (!slot || slot._v === p.text + p.state) return;
       slot._v = p.text + p.state;
       const code = p.text ? partialCode(p.text) : '';
-      const tp = d.createElement('template'); tp.innerHTML = code.trim() ? code : SLOT_SKELETON;
-      try { morph(slot, tp.content); } catch { slot.innerHTML = tp.innerHTML; }
+      if (!code.trim()) return;
+      const tp = d.createElement('template'); tp.innerHTML = code;
+      let log = { fresh: [], last: null };
+      try { log = morph(slot, tp.content, false, log); } catch { slot.innerHTML = code; }
+      logs.push([i, log, slot]);
     });
+    for (const [, log] of logs) settle(log, d);
+    measure();
+    for (const [i, log, slot] of logs) {
+      if (i >= MAX_AGENTS) continue;
+      const a = agent(i), el = log.last && subject(log.last, slot);
+      if (el) show(a, el, parts[i].kind + ' · ' + tagOf(el)); else if (a.el) show(a, a.el, parts[i].kind);
+      if (parts[i].state === 'done') finish(a);
+    }
+    // agents keep their spot when other sections above them grow
+    for (const a of agents) if (a && !a.done && a.el && !logs.some(([i]) => i === a.i)) show(a, a.el, parts[a.i]?.kind + ' · ' + tagOf(a.el));
+    drawLinks(pg);
+  }
+  // How the blocks join: a seam between neighbouring blocks that are both finished (a dock on each side),
+  // and a tether from every writing agent to the block it writes
+  function drawLinks(root){
+    const w = width, H = parseFloat(frame.style.height) || 0;
+    links.setAttribute('viewBox', `0 0 ${w} ${H}`); links.style.height = H + 'px';
+    const list = parts ? [...root.children].filter(x => x.childElementCount) : sections(root).filter(x => x.getBoundingClientRect().width > w * 0.7);
+    const doneAt = i => parts ? parts[+list[i].dataset.part]?.state === 'done' : final || i < list.length - 1;
+    let svg = '';
+    for (let i = 0; i < list.length - 1; i++) {
+      if (!doneAt(i) || !doneAt(i + 1)) continue;
+      const y = list[i].getBoundingClientRect().bottom;
+      svg += `<line class="seam joined" x1="0" y1="${y}" x2="${w}" y2="${y}"/><circle class="dock joined" cx="18" cy="${y}" r="5"/><circle class="dock joined" cx="${w - 18}" cy="${y}" r="5"/>`;
+    }
+    if (parts) for (const a of agents) {
+      if (!a || a.done || !a.el?.isConnected) continue;
+      const slot = root.children[a.i]; if (!slot) continue;
+      const r = slot.getBoundingClientRect(), ax = r.left + 18, ay = r.top + 18, { x, y } = a.pos, mx = (x + ax) / 2;
+      svg += `<path class="tether live" style="--c:${a.c}" d="M${ax} ${ay} C ${mx} ${ay}, ${mx} ${y}, ${x} ${y}"/><circle class="anchor" style="--c:${a.c}" cx="${ax}" cy="${ay}" r="4"/>`;
+    }
+    links.innerHTML = svg;
   }
   const api = {
-    // the plan is ready: one slot and one agent per section, each waiting for its stream
+    // the plan is ready: one slot per section; each agent shows up when its stream starts
     swarm(css, kinds){ if (closed) return; swarmCss = css || ''; parts = kinds.map(kind => ({ kind: String(kind || 'section').slice(0, 24), text: '', state: 'wait', at: 0 })); fed = true; last = ''; pending = '\u0000swarm'; if (!timer) timer = setTimeout(paint, 60); },
     part(i, text, done = false){
       if (closed || !parts?.[i]) return;
       Object.assign(parts[i], { text, state: done ? 'done' : 'write', at: Date.now() });
-      pending = '\u0000swarm' + parts.map(p => p.text.length + p.state).join(); if (!timer) timer = setTimeout(paint, 160);
+      pending = '\u0000swarm' + parts.map(p => p.text.length + p.state).join();
+      // a finished section is shown at once (its agent signs it off), a growing one at most every 140 ms
+      if (done) { clearTimeout(timer); paint(); } else if (!timer) timer = setTimeout(paint, 140);
     },
     feed(text, done = false){
       if (closed) return;
@@ -228,8 +259,8 @@ export function createStage({ board, doc, width = 1280, initial = '', place, tar
       // an edit waits for its CSS: without it the old page would lose its look for a moment
       if (keep && !done && /<style\b/i.test(text) && !/<\/style>/i.test(text)) return;
       if (!code.trim()) return;
-      if (!fed) { fed = true; focus = -1; snaps = []; }
-      final = done; pending = code; if (!timer) timer = setTimeout(paint, 180);
+      fed = true;
+      final = done; pending = code; if (!timer) timer = setTimeout(paint, 140);
     },
     // no stream (variants, cinematic pages, providers without streaming): play the finished code in ~2.4s
     async replay(code, ms = 2400){
@@ -243,7 +274,8 @@ export function createStage({ board, doc, width = 1280, initial = '', place, tar
       await new Promise(r => setTimeout(r, 400));
     },
     close(){
-      if (closed) return; closed = true; clearTimeout(timer); clearInterval(pulse);
+      if (closed) return; closed = true; clearTimeout(timer);
+      agents.forEach(finish);
       // the real element is placed under the draft; the draft fades out once it has had a moment to load
       draft.classList.add('done');
       setTimeout(() => {

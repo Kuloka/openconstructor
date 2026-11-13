@@ -17,8 +17,9 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
+import { textGeometry } from './model-kit.js';
 
-const SHAPES = ['box', 'sphere', 'cylinder', 'cone', 'torus', 'capsule', 'plane', 'icosahedron', 'dodecahedron', 'octahedron', 'tetrahedron', 'ring', 'lathe', 'extrude', 'group'];
+const SHAPES = ['text', 'box', 'sphere', 'cylinder', 'cone', 'torus', 'capsule', 'plane', 'icosahedron', 'dodecahedron', 'octahedron', 'tetrahedron', 'ring', 'lathe', 'extrude', 'group'];
 const MAX_OBJECTS = 400, MAX_DEPTH = 8;
 const num = (v, d, a = -1e4, b = 1e4) => { const n = +v; return Number.isFinite(n) ? Math.min(b, Math.max(a, n)) : d; };
 const vec = (v, d) => Array.isArray(v) ? [0, 1, 2].map(i => num(v[i], d[i], -1e3, 1e3)) : typeof v === 'number' ? [v, v, v].map(x => num(x, 1, 0.001, 1e3)) : d;
@@ -41,6 +42,7 @@ export function normalize(raw = {}){
       radiusTop: o.radiusTop == null ? null : num(o.radiusTop, 0.5, 0, 1e3), radiusBottom: o.radiusBottom == null ? null : num(o.radiusBottom, 0.5, 0, 1e3),
       tube: num(o.tube, 0.15, 0.001, 1e3), arc: num(o.arc, 360, 1, 360), sides: Math.round(num(o.sides, 32, 3, 96)), detail: Math.round(num(o.detail, 0, 0, 4)),
       inner: num(o.inner, 0.3, 0, 1e3), outer: num(o.outer, 0.5, 0.001, 1e3), length: num(o.length, 1, 0, 1e3),
+      text: typeof o.text === 'string' ? o.text.slice(0, 24) : 'A',
       depth: num(o.depth, 0.2, 0.001, 1e3), bevel: num(o.bevel, 0, 0, 10), rounded: num(o.rounded, 0, 0, 10), points: pts(o.points),
       color: color(o.color, '#d4d4d8'), metalness: num(o.metalness, 0.1, 0, 1), roughness: num(o.roughness, 0.6, 0, 1),
       emissive: color(o.emissive, '#000000'), emissiveIntensity: num(o.emissiveIntensity, 1, 0, 20), opacity: num(o.opacity, 1, 0.05, 1), flat: !!o.flat,
@@ -68,6 +70,8 @@ export function normalize(raw = {}){
 function geometry(o){
   const seg = o.flat ? Math.min(o.sides, 8) : o.sides;
   switch (o.shape) {
+    // letters, numbers, words and logos in 3D: a real font outline, extruded with a rounded bevel (never boxes + tori)
+    case 'text': return textGeometry(o.text, { size: o.size[1] !== 1 ? o.size[1] : o.height !== 1 ? o.height : 1, depth: o.depth, bevel: o.bevel });
     case 'box': return o.rounded > 0 ? new RoundedBoxGeometry(...o.size, 4, Math.min(o.rounded, Math.min(...o.size) / 2)) : new THREE.BoxGeometry(...o.size);
     case 'sphere': return new THREE.SphereGeometry(o.radius, o.flat ? 8 : 48, o.flat ? 6 : 32);
     case 'cylinder': return new THREE.CylinderGeometry(o.radiusTop ?? o.radius, o.radiusBottom ?? o.radius, o.height, seg);

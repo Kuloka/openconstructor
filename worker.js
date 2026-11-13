@@ -543,7 +543,7 @@ function foldSystem(messages){
   const content = typeof u.content === 'string' ? sys + '\n\n' + u.content : [{ type: 'text', text: sys }, ...(u.content || [])];
   return rest.map((m, j) => j === i ? { ...m, content } : m);
 }
-const upstreamBody = (b, body, stream) => JSON.stringify({ model: b.model, messages: b.noSystem ? foldSystem(body.messages) : body.messages, max_tokens: b.maxOut ? Math.min(body.max_tokens, b.maxOut) : body.max_tokens, ...(stream ? { stream: true, ...(b.usage ? { stream_options: { include_usage: true } } : {}) } : {}), ...b.extra });
+const upstreamBody = (b, body, stream, usage = true) => JSON.stringify({ model: b.model, messages: b.noSystem ? foldSystem(body.messages) : body.messages, max_tokens: b.maxOut ? Math.min(body.max_tokens, b.maxOut) : body.max_tokens, ...(stream ? { stream: true, ...(b.usage && usage ? { stream_options: { include_usage: true } } : {}) } : {}), ...b.extra });
 async function callOpenAICompatible(env, b, body){
   const headers = { Authorization: `Bearer ${env[b.secret]}`, 'Content-Type': 'application/json' };
   if (b.id === 'openrouter') { headers['HTTP-Referer'] = 'https://openconstructor.pw'; headers['X-Title'] = 'openconstructor'; }
@@ -642,7 +642,9 @@ async function callUpstreamStream(env, body){
       const headers = { Authorization: `Bearer ${env[b.secret]}`, 'Content-Type': 'application/json' };
       if (b.id === 'openrouter') { headers['HTTP-Referer'] = 'https://openconstructor.pw'; headers['X-Title'] = 'openconstructor'; }
       try {
-        const res = await fetch(b.url, { method: 'POST', headers, body: upstreamBody(b, body, true) });
+        let res = await fetch(b.url, { method: 'POST', headers, body: upstreamBody(b, body, true) });
+        // a backend that rejects stream_options still answers, just without token counts
+        if ((res.status === 400 || res.status === 422) && b.usage) res = await fetch(b.url, { method: 'POST', headers, body: upstreamBody(b, body, true, false) });
         if (res.ok) return { status: 200, be: b.id, stream: /event-stream/i.test(res.headers.get('content-type') || '') ? res.body.pipeThrough(normalizeSSE()) : oneShotSSE(await res.text()) };
         r = { status: res.status, text: await res.text(), be: b.id };
       } catch (err) { r = { status: 502, text: String(err?.message || err), be: b.id }; }
@@ -669,12 +671,12 @@ async function aiChat(request, env){
   // Signed in: the user's JWT goes to PostgREST, auth.uid() is the user whose quota is counted.
   // Signed out: a few generations a day per visitor, so people can try it before making an account.
   // Calls that belong to one message (a web search and then the answer, a retry of a garbled answer)
-  // carry the same X-OC-Turn id and count once: up to 10 calls per id within 10 minutes (a page built by
+  // carry the same X-OC-Turn id and count once: up to 16 calls per id (a planner + 9 agents + their retries) within 10 minutes (a page built by
   // parallel section agents is a planner call plus one call per section).
   const turn = /^[0-9a-f]{16,40}$/.test(request.headers.get('X-OC-Turn') || '') ? 'turn:' + request.headers.get('X-OC-Turn') : '';
   const seen = turn && env.SYNC ? +(await env.SYNC.get(turn)) || 0 : 0;
   let quota = {};
-  if (seen > 0 && seen < 10) await env.SYNC.put(turn, String(seen + 1), { expirationTtl: 600 });
+  if (seen > 0 && seen < 16) await env.SYNC.put(turn, String(seen + 1), { expirationTtl: 600 });
   else {
     const t = token ? await takeQuota(env, token) : await anonQuota(request, env);
     if (t.error) return t.error;
