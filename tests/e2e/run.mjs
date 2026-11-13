@@ -48,6 +48,53 @@ scenario('streaming: reasoning shows live and the element lands', async (ed, o) 
   assert.match(await ed.ev(`[...document.querySelectorAll('.th-reason')].pop()?.textContent || ''`), /Thinking about it/);
 });
 
+scenario('live build: the page grows on the canvas with one AI cursor per section, then the draft goes away', async (ed, o) => {
+  o.reply = () => block('Cafe', '<style>.lp{background:#f6f1ea;color:#111}</style><div class="lp"><header class="lp-header"><b>Brew</b></header><section class="lp-hero"><h1>Coffee</h1><p>Small-batch roasts.</p></section><section class="lp-menu"><h2>Menu</h2></section><footer class="lp-footer">© Brew</footer></div>', { full: true });
+  await ed.ev(`(window.__bs = [], new MutationObserver(() => { const s = document.querySelector('#board .bs-draft'); if (s) window.__bs.push([s.querySelectorAll('.bs-cur.on').length, [...s.querySelectorAll('.bs-cur span')].map(x => x.textContent).join(',')]); }).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true }), 1)`);
+  await ed.ask('a landing page for a coffee shop');
+  assert.ok(await ed.until(`JSON.parse(localStorage.getItem('form-canvas-v3') || '[]').length > 0`, 15000), 'the page was placed');
+  await ed.idle(); await sleep(1200);
+  const seen = await ed.ev('window.__bs');
+  assert.ok(seen.length, 'the draft was on the board');
+  assert.ok(seen.some(([n, names]) => n >= 4 && /header/.test(names) && /hero/.test(names) && /menu/.test(names) && /footer/.test(names)), 'a cursor per section: ' + JSON.stringify(seen.at(-1)));
+  assert.equal(await ed.ev(`document.querySelectorAll('.bs-draft').length`), 0, 'the draft is gone');
+  assert.equal((await ed.items())[0]?.name, 'Cafe');
+});
+
+scenario('swarm: a new page is planned, then every section is built by its own agent at once', async (ed, o) => {
+  const plan = { name: 'Brew', reply: 'ok', css: '.pg{--bg:#f6f1ea;--surface:#fff;--text:#1d1a16;background:var(--bg);color:var(--text)}.pg .wrap{max-width:1160px;margin:0 auto;padding:0 28px}', sections: ['header', 'hero', 'menu', 'contact', 'footer'].map(kind => ({ kind, brief: 'the ' + kind })) };
+  const asks = [];
+  o.reply = body => {
+    const b = JSON.parse(body), all = JSON.stringify(b.messages);
+    if (/lead designer of a team/.test(all)) return JSON.stringify(plan);
+    const n = +(all.match(/YOUR PART: section (\d+)/) || [])[1];
+    asks.push(n);
+    const kind = plan.sections[n - 1].kind, tag = kind === 'header' ? 'header' : kind === 'footer' ? 'footer' : 'section';
+    return '```html\n<style>.s' + n + '{padding:40px 0;background:var(--surface)}</style><' + tag + ' class="s' + n + '"><div class="wrap"><h2>' + kind + ' part</h2><p>Text of ' + kind + '</p></div></' + tag + '>\n```';
+  };
+  await ed.ev(`(window.__sw = [], new MutationObserver(() => { const s = document.querySelector('#board .bs-draft'); if (s) window.__sw.push([...s.querySelectorAll('.bs-cur span')].map(x => x.textContent).join(',')); }).observe(document.body, { childList: true, subtree: true, characterData: true }), 1)`);
+  await ed.ask('a landing page for a coffee shop');
+  assert.ok(await ed.until(`JSON.parse(localStorage.getItem('form-canvas-v3') || '[]').length > 0`, 20000), 'the page was placed');
+  await ed.idle(); await sleep(1200);
+  assert.deepEqual([...asks].sort(), [1, 2, 3, 4, 5], 'one call per section');
+  const [it] = await ed.items();
+  assert.equal(it.name, 'Brew');
+  for (const k of ['header part', 'hero part', 'menu part', 'contact part', 'footer part']) assert.ok(it.code.includes(k), k);
+  assert.ok(it.code.indexOf('header part') < it.code.indexOf('footer part'), 'sections stay in plan order');
+  const seen = await ed.ev('window.__sw');
+  assert.ok(seen.some(x => ['header', 'hero', 'menu', 'contact', 'footer'].every(k => x.includes(k))), 'a cursor per agent: ' + seen.at(-1));
+  assert.equal(await ed.ev(`document.querySelectorAll('.bs-draft').length`), 0);
+});
+
+scenario('3D objects: model: pictures are rendered in the browser', async (ed, o) => {
+  o.reply = () => block('Shapes', '<div style="background:#111;color:#fff;padding:20px"><img src="model:torus chrome" alt="torus" width="200"><img src="model:diamond glass #8b5cf6" alt="gem" width="200"></div>');
+  await ed.ask('two 3d shapes');
+  assert.ok(await ed.until(`JSON.parse(localStorage.getItem('form-canvas-v3') || '[]').length > 0`, 15000));
+  const [it] = await ed.items();
+  assert.equal((it.code.match(/src="data:image\/(webp|png)/g) || []).length, 2, 'both objects rendered');
+  assert.ok(!/model:/.test(it.code));
+});
+
 scenario('part edit: only the picked part changes, Ctrl+Z restores', async (ed, o) => {
   o.reply = () => '```html\n<style>.ocx-big{font-size:40px}</style><span class="ocx-big">CHANGED</span>\n```';
   await ed.ev(`(document.querySelector('[data-add]').click(), 1)`); await sleep(800);
@@ -265,7 +312,7 @@ scenario('apps: the welcome screen opens a ready-made app on a new page', async 
 // the next request edits that app (not the page on the canvas), the preview width is adjustable
 scenario('apps: Code workspace — chat + resizable live preview, edits stay on the app', async (ed, o) => {
   let n = 0;
-  o.reply = () => ++n === 1 ? block('Landing', '<section class="lp-x" style="width:100%;height:300px;background:#123">Page</section>', { full: true })
+  o.reply = body => /lead designer of a team/.test(body) ? 'no plan' : ++n === 1 ? block('Landing', '<section class="lp-x" style="width:100%;height:300px;background:#123">Page</section>', { full: true })
     : n === 2 ? block('Counter', COUNTER) : block('Counter', COUNTER.replace('+1', '+10'), { action: 'update' });
   await ed.ask('a landing page'); await ed.idle();
   await ed.ev(`(document.querySelector('.tb-code').click(), 1)`); await sleep(400);
@@ -323,4 +370,23 @@ scenario('apps: Code workspace — NaN on screen is caught, auto-fix gives up af
   assert.match(await ed.ev(`document.getElementById('cwProblems').textContent`), /NaN/);
   assert.match(await ed.ev(`document.getElementById('cwStProb').textContent`), /^1/);
   assert.match(ed.posts[1], /the screen shows \\"NaN\\"/);
+});
+
+// / commands in the message box: the menu opens on "/", Enter on /app switches app mode (a chip shows it),
+// and "/polish …" sends the request with the command's expert instruction attached
+scenario('slash commands: menu, toggles and prompt commands', async (ed, o) => {
+  o.reply = () => '{"action":"reply"}\nok';
+  const type = v => ed.ev(`(() => { const ta = document.querySelector('#react-composer textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(ta, ${JSON.stringify(v)}); ta.dispatchEvent(new Event('input', { bubbles: true })); ta.focus(); return 1; })()`);
+  await type('/ap');
+  assert.ok(await ed.until(`document.querySelectorAll('.slash-item').length === 1`), 'menu filtered to /app');
+  await ed.ev(`(document.querySelector('#react-composer textarea').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })), 1)`);
+  assert.ok(await ed.until(`document.getElementById('appToggle').getAttribute('aria-pressed') === 'true'`), 'app mode on');
+  assert.ok(await ed.until(`!!document.querySelector('.mode-chip.mode-app')`), 'app chip shown');
+  await ed.ev(`(document.querySelector('.mode-chip.mode-app').click(), 1)`);
+  assert.equal(await ed.ev(`document.getElementById('appToggle').getAttribute('aria-pressed')`), 'false');
+  await ed.ask('/polish calmer colours'); await ed.idle();
+  assert.match(ed.posts[0], /Command \/polish: Design pass/);
+  assert.match(ed.posts[0], /Request: calmer colours/);
+  // the provider's own usage numbers replace the estimate: 1234 in + 56 out, no "~"
+  assert.ok(await ed.until(`(document.querySelector('.tok-chip b')?.textContent || '') === '1.3k'`), 'exact token count shown');
 });

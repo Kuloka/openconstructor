@@ -3,6 +3,7 @@
 import { t } from './i18n.js';
 import { MD_RE, md } from './markdown.js';
 import logoSvg from './src/logo.svg?raw';
+import { createStage } from './build-stage.js';
 
 const $ = id => document.getElementById(id);
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -66,7 +67,7 @@ $('messages').addEventListener('click', e => {
 // "Thinking" glyph: the logo (the folded C) with its planes folding in one after another (CSS: .fold-think)
 export const LOGO_THINK = '<svg class="fold-think" viewBox="4 4 40 40" aria-hidden="true"><polygon class="f1" points="17,6 42,6 31,17 17,17"/><polygon class="f2" points="6,17 17,6 17,17"/><rect class="f3" x="6" y="18.5" width="11" height="11"/><polygon class="f4" points="6,31 17,31 17,42"/><polygon class="f5" points="17,31 31,31 42,42 17,42"/></svg>';
 const MOODS = ['thinking', 'vibing', 'coding', 'sketching', 'tinkering', 'composing', 'assembling', 'brewing', 'crafting', 'polishing'];
-export function thinking({ ghost = false } = {}){
+export function thinking({ ghost = false, stage = null } = {}){
   const node = document.createElement('div');
   node.className = 'message assistant thinking';
   node.innerHTML = `<button class="th-head" type="button" aria-expanded="true"><span class="oc-logo thinking-logo" aria-hidden="true">${logoSvg}</span><span class="th-glyph" aria-hidden="true"></span><span class="th-title"></span><span class="th-time">0s</span></button><ol class="th-steps"></ol><div class="th-reason" hidden></div><div class="th-live" hidden></div><pre class="th-code" hidden><code></code></pre>`;
@@ -77,14 +78,21 @@ export function thinking({ ghost = false } = {}){
   // a shimmering placeholder over the canvas: something is being built there
   let ghostEl = null;
   const cv = $('canvas')?.getBoundingClientRect();
-  if (ghost && cv && cv.width > 200 && !reduceMotion()) {
+  if (ghost && !stage && cv && cv.width > 200 && !reduceMotion()) {
     ghostEl = document.createElement('div'); ghostEl.className = 'th-ghost'; ghostEl.setAttribute('aria-hidden', 'true');
     ghostEl.innerHTML = '<i class="g1"></i><i class="g2"></i><i class="g3"></i><span class="g-row"><i></i><i></i><i></i></span>';
     ghostEl.style.left = cv.left + cv.width / 2 + 'px'; ghostEl.style.top = cv.top + cv.height / 2 + 'px';
     document.body.append(ghostEl);
     $('canvasEmpty')?.style.setProperty('visibility', 'hidden');
   }
-  const dropGhost = () => { const g = ghostEl; ghostEl = null; if (!g) return; $('canvasEmpty')?.style.removeProperty('visibility'); g.classList.add('out'); setTimeout(() => g.remove(), 260); };
+  // the live build over the canvas (build-stage.js): opens with the first code, closes with the ghost
+  let stageEl = null;
+  const openStage = () => { if (!stageEl && stage && !reduceMotion() && !document.body.classList.contains('mobile')) stageEl = createStage(stage); return stageEl; };
+  // the stage opens at once: the cursors start working while the model is still thinking
+  if (ghost && openStage()) $('canvasEmpty')?.style.setProperty('visibility', 'hidden');
+  const dropGhost = () => {
+    stageEl?.close(); stageEl = null; $('canvasEmpty')?.style.removeProperty('visibility');
+    const g = ghostEl; ghostEl = null; if (!g) return; g.classList.add('out'); setTimeout(() => g.remove(), 260); };
   // steps run one after another so each label finishes typing before the next starts
   const step = label => (queue = queue.then(() => {
     if (over) return;
@@ -122,7 +130,12 @@ export function thinking({ ghost = false } = {}){
       if (liveMode !== 'reply') { liveMode = 'reply'; dropGhost(); step('writing the answer'); }
       const l = node.querySelector('.th-live'); l.hidden = false; l.textContent = txt.replace(/^\s*\{[^}]*\}\s*/, '').slice(-700);
     } else if (/```|<[a-z]/i.test(txt)) {
-      if (liveMode !== 'code') { liveMode = 'code'; ghostEl?.classList.add('build'); step('writing the code'); }
+      if (liveMode !== 'code') {
+        liveMode = 'code'; step('writing the code');
+        if (openStage()) { const g = ghostEl; ghostEl = null; g?.remove(); $('canvasEmpty')?.style.setProperty('visibility', 'hidden'); }
+        else ghostEl?.classList.add('build');
+      }
+      stageEl?.feed(txt);
       const pre = node.querySelector('.th-code'); pre.hidden = false;
       const at = txt.indexOf('```');
       pre.firstChild.textContent = codeLines(at >= 0 ? txt.slice(txt.indexOf('\n', at) + 1) : txt).slice(-8).join('\n');
@@ -142,8 +155,12 @@ export function thinking({ ghost = false } = {}){
     ghostEl?.classList.add('build');
     setState('composing…', 'busy');
     step(`composing “${String(name || 'element').slice(0, 40)}”`);
+    // the stage shows the finished code: played section by section when nothing was streamed
+    if (!streamed && openStage()) { const g = ghostEl; ghostEl = null; g?.remove(); }
+    const built = stageEl ? (streamed ? (stageEl.feed('```html\n' + code, true), new Promise(r => setTimeout(r, 500))) : stageEl.replay(code)) : null;
     return (queue = queue.then(async () => {
-      if (over || streamed) return; // already shown live
+      if (built) await built;
+      if (over || streamed || built) return; // already shown live
       const pre = node.querySelector('.th-code'), out = pre.firstChild;
       pre.hidden = false;
       // for display only: one tag / CSS declaration per line, so compact code still "writes" line by line
@@ -159,6 +176,10 @@ export function thinking({ ghost = false } = {}){
     }));
   };
   end.step = label => { stopWaiting(); return step(label); };
+  // hide the live build (e.g. while the user picks one of 3 variants); compose opens it again
+  end.stageOff = () => { stageEl?.close(); stageEl = null; };
+  // the live build itself, for code that streams into it directly (parallel section agents); compose then only settles it
+  end.stage = () => { stopWaiting(); streamed = true; if (openStage()) { const g = ghostEl; ghostEl = null; g?.remove(); } return stageEl; };
   // a web lookup: the title says "exploring internet" until it's done
   end.web = async (label, job) => {
     exploring = true; retype(title, 'exploring internet', { speed: 45, erase: 25 }); step(label);

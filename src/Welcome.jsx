@@ -10,6 +10,7 @@ import { startNew } from '../local-projects.js';
 import { openAuth, user as authUser } from '../auth.js';
 import { openDonate } from '../donate.js';
 import { track } from '../track.js';
+import { PROVIDERS } from '../providers.js';
 import './welcome.css';
 
 const Logo = ({ size = 28 }) => <span className="wl-logo" style={{ width: size, height: size }} dangerouslySetInnerHTML={{ __html: logoSvg }} />;
@@ -119,6 +120,92 @@ function HeroDemo(){
   );
 }
 
+// Hero visual: the openconstructor mark in 3D (public/hero-mark.webp, rendered once by scene3d.js) with the
+// AI models it works with circling it on three tilted orbits; each logo carries a little cloud of dots.
+const LOGO_FILES = import.meta.glob('./logos/*.svg', { query: '?raw', import: 'default', eager: true });
+const ORBIT_LOGOS = ['openai', 'claude-color', 'gemini-color', 'meta-color', 'mistral-color', 'deepseek-color', 'qwen-color', 'xai', 'kimi-color', 'nvidia-color', 'cohere-color', 'zai', 'minimax-color', 'groq', 'openrouter', 'perplexity-color', 'dotsstudio', 'gemma-color', 'huggingface-color', 'stepfun-color'];
+// hover card: who makes it, the model family, and which services in openconstructor serve it (provider ids)
+const ORBIT_INFO = {
+  openai: ['OpenAI', 'GPT · GPT-OSS', ['openai', 'openrouter', 'groq', 'cerebras']], 'claude-color': ['Anthropic', 'Claude', ['anthropic', 'openrouter']],
+  'gemini-color': ['Google', 'Gemini', ['gemini', 'openrouter']], 'meta-color': ['Meta', 'Llama', ['groq', 'openrouter', 'together', 'cerebras', 'huggingface']],
+  'mistral-color': ['Mistral AI', 'Mistral · Codestral', ['mistral', 'openrouter']], 'deepseek-color': ['DeepSeek', 'DeepSeek V3 · R1', ['deepseek', 'openrouter', 'together', 'siliconflow', 'huggingface']],
+  'qwen-color': ['Alibaba', 'Qwen', ['groq', 'openrouter', 'siliconflow', 'together', 'huggingface']], xai: ['xAI', 'Grok', ['xai', 'openrouter']],
+  'kimi-color': ['Moonshot AI', 'Kimi', ['groq', 'openrouter', 'together']], 'nvidia-color': ['NVIDIA', 'Nemotron', ['openrouter', 'huggingface']],
+  'cohere-color': ['Cohere', 'Command', ['cohere', 'openrouter']], zai: ['Z.ai', 'GLM', ['zai', 'openrouter', 'siliconflow']],
+  'minimax-color': ['MiniMax', 'MiniMax', ['openrouter']], groq: ['Groq', 'open models on LPU chips', ['groq']],
+  openrouter: ['OpenRouter', '300+ models in one key', ['openrouter']], 'perplexity-color': ['Perplexity', 'Sonar', ['openrouter']],
+  dotsstudio: ['Dots Studio', 'Dots3-Note', ['openrouter']], 'gemma-color': ['Google', 'Gemma', ['gemini', 'openrouter', 'huggingface']],
+  'huggingface-color': ['Hugging Face', 'thousands of open models', ['huggingface']], 'stepfun-color': ['StepFun', 'Step', ['openrouter']],
+};
+const RINGS = [[.27, .13, .00012], [.39, .19, -.00008], [.5, .25, .00005]]; // rx, ry (share of the width), speed (rad/ms)
+const TILT = -11 * Math.PI / 180;
+function dotCloud(seed){
+  let x = seed * 9301 + 49297; const rnd = () => ((x = (x * 9301 + 49297) % 233280) / 233280);
+  return Array.from({ length: 14 + Math.floor(rnd() * 12) }, () => { const a = rnd() * Math.PI * 2, r = 16 + rnd() * 34; return `<circle cx="${(60 + Math.cos(a) * r).toFixed(1)}" cy="${(60 + Math.sin(a) * r * .8).toFixed(1)}" r="${(0.7 + rnd() * 1.9).toFixed(1)}" fill-opacity="${(0.25 + rnd() * 0.6).toFixed(2)}"/>`; }).join('')
+    ;
+}
+// gradient ids made unique: the same logos sit (hidden) in the editor's model menu, and url(#id) would find those
+const orbLogo = name => !name ? '' : (LOGO_FILES[`./logos/${name}.svg`] || '').replace(/id="([^"]+)"/g, 'id="orb-$1"').replace(/url\(#/g, 'url(#orb-').replace(/href="#/g, 'href="#orb-');
+function OrbitHero(){
+  const ref = useRef(null);
+  useEffect(() => {
+    const box = ref.current; if (!box) return;
+    const nodes = [...box.querySelectorAll('.wl-orb-node')];
+    const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let raf = 0, visible = true;
+    const place = t => {
+      const W = box.clientWidth, H = box.clientHeight, cx = W / 2, cy = H / 2;
+      nodes.forEach((n, i) => {
+        const [rx, ry, sp] = RINGS[i % 3], a = i * 2.39996 + (still ? 0 : (times[i] ?? t) * sp);
+        const ex = Math.cos(a) * rx * W, ey = Math.sin(a) * ry * W;
+        const x = cx + ex * Math.cos(TILT) - ey * Math.sin(TILT), y = cy + ex * Math.sin(TILT) + ey * Math.cos(TILT);
+        const depth = (Math.sin(a) + 1) / 2; // 0 = far side (behind the mark), 1 = near side
+        n.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-50%) scale(${(0.72 + depth * 0.38).toFixed(3)})`;
+        n.style.opacity = (0.35 + depth * 0.65).toFixed(2);
+        n.style.zIndex = depth > 0.5 ? 3 : 1;
+      });
+    };
+    // every logo keeps its own clock: the one under the pointer stops, the others keep circling
+    const times = nodes.map(() => 0); let last = 0;
+    const loop = t => { const dt = Math.min(50, t - (last || t)); last = t; nodes.forEach((n, i) => { if (!n.classList.contains('hot')) times[i] += dt; }); place(0); raf = visible && !still ? requestAnimationFrame(loop) : 0; };
+    const card = box.querySelector('.wl-orb-card');
+    nodes.forEach(n => {
+      n.addEventListener('pointerenter', () => {
+        n.classList.add('hot');
+        const [vendor, model, via] = ORBIT_INFO[n.dataset.logo] || ['', '', []];
+        const list = via.map(id => PROVIDERS.find(p => p.id === id)).filter(Boolean);
+        card.innerHTML = `<div class="wl-orb-card-top">${n.querySelector('.wl-orb-logo').outerHTML}<span>${vendor}</span></div><b>${model}</b><div class="wl-orb-card-row"><span>${tr('Available via')}</span><span class="wl-orb-via">${list.map(p => `<i title="${p.name}">${orbLogo(p.logo)}</i>`).join('')}</span></div><div class="wl-orb-card-row"><span>${tr('Providers')}</span><span>${list.map(p => p.name.replace(/ \(.*\)$/, '')).join(', ')}</span></div>`;
+        const r = n.getBoundingClientRect(), b = box.getBoundingClientRect();
+        const x = Math.min(b.width - 270, Math.max(0, r.left - b.left + r.width / 2 - 130)), y = r.top - b.top + 22;
+        card.style.transform = `translate(${x}px, ${y - card.offsetHeight > 0 ? y - card.offsetHeight : r.bottom - b.top - 22}px)`;
+        card.classList.add('on');
+      });
+      n.addEventListener('pointerleave', () => { n.classList.remove('hot'); card.classList.remove('on'); });
+    });
+    const io = new IntersectionObserver(([e]) => { visible = e.isIntersecting; if (visible && !raf && !still) raf = requestAnimationFrame(loop); });
+    io.observe(box); place(0); if (!still) raf = requestAnimationFrame(loop);
+    addEventListener('resize', () => place(performance.now()));
+    return () => { cancelAnimationFrame(raf); io.disconnect(); };
+  }, []);
+  return (
+    <div className="wl-orbit" ref={ref} aria-hidden="true" data-no-i18n="">
+      <svg className="wl-orbit-rings" viewBox="-50 -50 100 100" preserveAspectRatio="none">
+        {RINGS.map(([rx, ry], i) => <ellipse key={i} cx="0" cy="0" rx={rx * 100} ry={ry * 100} transform={`rotate(${TILT * 180 / Math.PI})`} />)}
+        <ellipse cx="0" cy="0" rx="62" ry="31" transform={`rotate(${TILT * 180 / Math.PI})`} />
+      </svg>
+      <div className="wl-orbit-glow" />
+      <img className="wl-orbit-mark" src="/hero-mark.webp" alt="" width="900" height="900" />
+      {ORBIT_LOGOS.map((name, i) => (
+        <div key={name} className="wl-orb-node" data-logo={name}>
+          <svg className="wl-orb-dots" viewBox="0 0 120 120" dangerouslySetInnerHTML={{ __html: dotCloud(i + 1) }} />
+          <span className="wl-orb-logo" dangerouslySetInnerHTML={{ __html: orbLogo(name) }} />
+        </div>
+      ))}
+      <div className="wl-orb-card" />
+    </div>
+  );
+}
+
 export default function Welcome(){
   const shouldShow = () => location.hash === '#welcome' || !localStorage.getItem('oc-welcomed');
   const [open, setOpen] = useState(() => { try { return shouldShow(); } catch { return true; } });
@@ -165,8 +252,9 @@ export default function Welcome(){
         <button className="wl-btn primary" onClick={() => close()}>Open editor</button>
       </header>
 
-      <section className="wl-hero">
-        <svg className="wl-mark" viewBox="4 4 40 40" aria-hidden="true"><polygon className="m1" points="17,6 42,6 31,17 17,17"/><polygon className="m2" points="6,17 17,6 17,17"/><rect className="m3" x="6" y="18.5" width="11" height="11"/><polygon className="m4" points="6,31 17,31 17,42"/><polygon className="m5" points="17,31 31,31 42,42 17,42"/></svg>
+      <section className="wl-hero wl-hero-orbit">
+        <OrbitHero />
+        <div className="wl-hero-copy">
         <div className="wl-badge"><span className="wl-dot" /><span>AI interface builder · public beta</span></div>
         <h1 className="wl-title">
           <span className="wl-title-line">Build interfaces</span>
@@ -187,6 +275,7 @@ export default function Welcome(){
           <button className="wl-btn ghost" onClick={() => go('wl-templates')}>Browse templates</button>
           <button className="wl-link" onClick={() => close()}>Start from scratch →</button>
         </div>
+        </div>
       </section>
 
       <HeroDemo />
@@ -198,7 +287,7 @@ export default function Welcome(){
         <h2>From idea to layout in three steps</h2>
         <div className="wl-steps">
           {STEPS.map(s => (
-            <SpotlightCard key={s.n} className="wl-card" spotlightColor="rgba(255, 90, 54,0.2)">
+            <SpotlightCard key={s.n} className="wl-card" spotlightColor="rgba(255, 255, 255,0.2)">
               <div className="wl-step-top"><span className="wl-step-ic">{s.icon}</span><span className="wl-step-n">{s.n}</span></div>
               <h3>{s.title}</h3>
               <p>{s.text}</p>
@@ -214,7 +303,7 @@ export default function Welcome(){
         <div className="wl-templates">
           {templates.map(t => (
             <button key={t.id} className="wl-tpl" onClick={() => close(() => startNew(t.name).then(() => loadTemplate(t)))}>
-              <SpotlightCard className="wl-card wl-tpl-card" spotlightColor="rgba(255, 90, 54,0.18)">
+              <SpotlightCard className="wl-card wl-tpl-card" spotlightColor="rgba(255, 255, 255,0.18)">
                 <Thumb t={t} />
                 <div className="wl-tpl-info"><h3>{t.name}</h3><p>{t.desc}</p></div>
                 <span className="wl-tpl-open">Open →</span>

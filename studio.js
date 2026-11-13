@@ -14,7 +14,7 @@ import { MD_RE, md } from './markdown.js';
 import { initChatUI, toBottom, typeText, retype, message, thinking } from './chat-ui.js';
 import { fixContrast as fixContrastIn } from './contrast.js';
 const fixContrast = (code, full) => fixContrastIn(code, full, { light: isLightPage(), w: page.w, h: page.h, nodeDoc });
-import { PROVIDERS, byId, listModels, chat, freeQuota, aiTurn } from './providers.js';
+import { PROVIDERS, byId, listModels, chat, freeQuota, aiTurn, tokensTurn } from './providers.js';
 import { signOut, user as authUser, openAuth } from './auth.js';
 import './donate.js';
 import { appDoc, withAppHead, APP_RULES, APP_EXAMPLES, appReference } from './apps.js';
@@ -73,7 +73,9 @@ function nodeDoc(item){
   if (item.app) return appDoc(item.code, { full: item.full, w: page.w, pad: PAD, color: isLightPage() ? '#18181b' : '#eee', theme: page.themeCss || '' });
   const root = item.full ? `width:${page.w}px;padding:0` : `width:max-content;max-width:${page.w - 2 * PAD}px;padding:${PAD}px`;
   // <base target=_blank> + no allow-popups in the sandbox = links never navigate the canvas frame away
-  return `<!doctype html><html><head>${CSP}<base target="_blank"><meta name="color-scheme" content="dark"><style>:root{color-scheme:dark}html,body{margin:0;background:transparent;color:${isLightPage() ? '#18181b' : '#eee'};font-family:system-ui;overflow:hidden}button{white-space:nowrap}#__root{display:inline-block;box-sizing:border-box;${root}}</style>${page.themeCss ? `<style id="__theme">${page.themeCss}</style>` : ''}</head><body><div id="__root">${item.code}</div></body></html>`;
+  // scroll-driven effects (animation-timeline:view()) never scroll inside a canvas frame as tall as the page:
+  // they would freeze half-way (faded, shifted headings), so on the canvas they show their final state
+  return `<!doctype html><html><head>${CSP}<base target="_blank"><meta name="color-scheme" content="dark"><style>*{animation-timeline:auto!important}:root{color-scheme:dark}html,body{margin:0;background:transparent;color:${isLightPage() ? '#18181b' : '#eee'};font-family:system-ui;overflow:hidden}button{white-space:nowrap}#__root{display:inline-block;box-sizing:border-box;${root}}</style>${page.themeCss ? `<style id="__theme">${page.themeCss}</style>` : ''}</head><body><div id="__root">${item.code}</div></body></html>`;
 }
 
 // Animated components (typewriter, expanding bars…) change size while they play, so the frame
@@ -188,7 +190,7 @@ async function downloadGLB(id){
   setState('saved: ' + a.download + ' — opens in Blender, Unity, Godot, Roblox Studio (3D Importer)…', 'ok');
 }
 const siteMode = () => items.length > 0 && items.every(i => i.full && !i.scene);
-function pageHeightNow(){ const b = contentBottom(); if (siteMode() && b > 0) return b; return b > page.h ? b + 48 : page.h; }
+function pageHeightNow(){ const b = Math.max(contentBottom(), draftBottom); if (siteMode() && b > 0) return b; return b > page.h ? b + 48 : page.h; }
 function contentBottom(){ let h = 0; for (const el of nodes.values()) h = Math.max(h, el.offsetTop + el.offsetHeight); return h; }
 /* ── Stack layout: blocks flow top to bottom (order = vertical position), components are centered.
    The same order drives a responsive export, so the page adapts to phones and tablets. ── */
@@ -444,6 +446,26 @@ function freeSpot(w = 280, h = 140){
   const maxX = Math.max(48, page.w - w - 48);
   for (let y = 48; y < 6000; y += 32) for (let x = 48; x <= maxX; x += 32) if (!hit(x, y)) return { x: snap(x), y: snap(y) };
   return { x: 48, y: 48 };
+}
+// Live build (build-stage.js): the draft of the element being built sits on the board itself — at the end of the
+// page for a new page, at a free spot for a small component, over the element being edited for a change
+let draftBottom = 0;
+const rootCss = full => full ? `width:${page.w}px;padding:0` : `width:max-content;max-width:${page.w - 2 * PAD}px;padding:${PAD}px`;
+function liveStage(target){
+  if (codeFocus !== undefined) return null; // the Code screen covers the canvas
+  const edit = target && !target.scene && !target.app ? target : null;
+  return {
+    board, width: page.w,
+    doc: () => nodeDoc({ full: true, code: '' }),
+    initial: edit ? edit.code : '', target: edit ? nodes.get(edit.id) : null,
+    place: full => edit ? { x: edit.x, y: edit.y, rootCss: rootCss(!!edit.full) } : full ? { x: 0, y: snap(contentBottom()), rootCss: rootCss(true) } : { ...freeSpot(), rootCss: rootCss(false) },
+    reveal: (y, h) => {
+      const top = y * zoom + STAGE_PAD, bottom = top + Math.min(h, 360) * zoom;
+      // keep the part being written in view: its top, or its bottom when it's taller than the view
+      if (top < canvas.scrollTop + 40 || bottom > canvas.scrollTop + canvas.clientHeight - 40) canvas.scrollTo({ top: Math.max(0, top - 120, bottom - canvas.clientHeight + 120), behavior: 'smooth' });
+    },
+    grow: b => { if (b !== draftBottom) { draftBottom = b; layout(); } },
+  };
 }
 function add(name, code, opts = {}){
   checkpoint();
@@ -863,7 +885,7 @@ $('library').addEventListener('pointerout', e => {
 function renderLibrary(){
   if (!presets.length) { $('library').innerHTML = '<div class="catalog-empty">loading components…</div>'; return; }
   const query = $('catalogSearch').value.trim().toLocaleLowerCase();
-  const indexed = presets.map((p, i) => ({ ...p, index: i }));
+  const indexed = presets.map((p, i) => ({ ...p, index: i })).filter(p => !p.hidden);
   const known = new Set(CATEGORIES.map(c => c.id));
   const cats = [...CATEGORIES, ...[...new Set(indexed.map(p => p.category))].filter(c => !known.has(c)).map(id => ({ id }))];
   const html = cats.map(c => {
@@ -1231,7 +1253,7 @@ function setState(text, kind = ''){
 const logoFiles = import.meta.glob('./src/logos/*.svg', { query: '?raw', import: 'default', eager: true });
 const logo = name => logoFiles[`./src/logos/${name}.svg`] || '';
 // Pick the model logo from its name (Llama → Meta, Qwen → Qwen…), otherwise use the provider logo
-const VENDOR_LOGOS = [[/llama|meta-/i, 'meta-color'], [/gemma/i, 'gemma-color'], [/gemini|google/i, 'gemini-color'], [/qwen|qwq/i, 'qwen-color'], [/mistral|mixtral|codestral|devstral|magistral|ministral|pixtral/i, 'mistral-color'], [/deepseek/i, 'deepseek-color'], [/claude/i, 'claude-color'], [/gpt|^o\d|openai|chatgpt/i, 'openai'], [/grok|x-ai/i, 'xai'], [/kimi|moonshot/i, 'kimi-color'], [/nemotron|nvidia/i, 'nvidia-color'], [/glm|z-ai|zhipu/i, 'zai'], [/minimax/i, 'minimax-color'], [/phi-|microsoft/i, 'microsoft-color'], [/cohere|command|north/i, 'cohere-color'], [/hermes|nous/i, 'nousresearch'], [/liquid|lfm/i, 'liquid'], [/arcee/i, 'arcee-color']];
+const VENDOR_LOGOS = [[/llama|meta-/i, 'meta-color'], [/gemma/i, 'gemma-color'], [/gemini|google/i, 'gemini-color'], [/qwen|qwq/i, 'qwen-color'], [/mistral|mixtral|codestral|devstral|magistral|ministral|pixtral/i, 'mistral-color'], [/deepseek/i, 'deepseek-color'], [/claude/i, 'claude-color'], [/gpt|^o\d|openai|chatgpt/i, 'openai'], [/grok|x-ai/i, 'xai'], [/kimi|moonshot/i, 'kimi-color'], [/nemotron|nvidia/i, 'nvidia-color'], [/glm|z-ai|zhipu/i, 'zai'], [/minimax/i, 'minimax-color'], [/phi-|microsoft/i, 'microsoft-color'], [/cohere|command|north/i, 'cohere-color'], [/hermes|nous/i, 'nousresearch'], [/liquid|lfm/i, 'liquid'], [/arcee/i, 'arcee-color'], [/dots/i, 'dotsstudio'], [/ernie|baidu|wenxin/i, 'baidu-color'], [/bytedance|seed-|doubao/i, 'bytedance-color'], [/stepfun|step-/i, 'stepfun-color'], [/perplexity|sonar/i, 'perplexity-color'], [/amazon|nova-/i, 'nova-color'], [/ibm|granite/i, 'ibm'], [/inflection/i, 'inflection'], [/reka/i, 'reka'], [/upstage|solar/i, 'upstage-color'], [/aion/i, 'aionlabs-color'], [/kwaipilot|kat-/i, 'kwaipilot-color'], [/longcat|meituan/i, 'longcat-color'], [/morph/i, 'morph-color'], [/allenai|olmo|molmo/i, 'ai2-color'], [/tencent|hunyuan/i, 'tencent-color'], [/alibaba|tongyi/i, 'alibaba-color'], [/inception|mercury/i, 'inception'], [/ai21|jamba/i, 'ai21'], [/hugging/i, 'huggingface-color'], [/moonshot/i, 'moonshot']];
 function modelLogo(m){
   if (m.pid === 'oc') return `<span class="model-logo">${logoSvg}</span>`;
   const hit = VENDOR_LOGOS.find(([re]) => re.test(`${m.id} ${m.name} ${m.vendor || ''}`));
@@ -1241,6 +1263,8 @@ function modelLogo(m){
 const providerLogo = p => `<span class="model-logo">${p.kind === 'proxy' ? logoSvg : logo(p.logo)}</span>`;
 const fmtUsd = v => '$' + (v >= 10 ? Math.round(v) : v >= 1 ? +v.toFixed(2) : +v.toFixed(3));
 const fmtPrice = pr => `${fmtUsd(pr[0])} · ${fmtUsd(pr[1])}`;
+// "free" means $0 to use: OpenRouter's :free models (price 0), the free AI, and the models of no-cost tiers
+const isFree = (m, p) => p.kind === 'proxy' || (p.id === 'openrouter' ? !m.paid && (/:free$/.test(m.id) || m.id === 'openrouter/free') : !m.paid && !!p.free && !m.price);
 const fmtCtx = n => !n ? '' : n >= 1e6 ? (n / 1e6).toFixed(n % 1e6 ? 1 : 0) + 'M' : Math.round(n / 1e3) + 'K';
 
 // Keys are remembered on this device by default, encrypted (keyvault.js), and shared by every tab.
@@ -1248,6 +1272,10 @@ const fmtCtx = n => !n ? '' : n >= 1e6 ? (n / 1e6).toFixed(n % 1e6 ? 1 : 0) + 'M
 let remember = store.get('oc-keys-remember', true);
 let keys = {};
 const SESSION_KEYS = 'oc-keys-session';
+// switched off in the "AI keys" dialog: the key stays saved, the service's models leave the list until it's switched on
+const keysOff = new Set(store.get('oc-keys-off', []));
+const saveOff = () => store.set('oc-keys-off', [...keysOff]);
+const active = pid => !!keys[pid] && !keysOff.has(pid);
 function saveKeys(){
   store.set('oc-keys-remember', remember);
   if (remember) {
@@ -1286,7 +1314,7 @@ function current(){
   return { pid, id: rest.join('::'), name: rest.join('::'), key: currentModel };
 }
 // the free proxy needs no key (it asks to sign in when used); others need their key
-const usable = pid => byId(pid)?.kind === 'proxy' || !!keys[pid];
+const usable = pid => byId(pid)?.kind === 'proxy' || active(pid);
 export const canSend = () => usable(current().pid);
 let quota = null; // { used, limit } for the free AI
 const quotaText = () => !authUser ? ' · 3 free tries a day' : quota ? ` · ${quota.used}/${quota.limit} today` : ' · 20 free a day';
@@ -1315,6 +1343,108 @@ function setAppMode(on, quiet){ appOn = !!on; store.set('oc-app-mode', appOn); a
 appBtn.onclick = () => setAppMode(!appOn);
 variantsBtn.after(appBtn);
 requestAnimationFrame(() => setAppMode(appOn, true));
+// Both buttons stay hidden in the DOM (tests and the Code screen click them); the message box drives them with / commands
+const modesChanged = () => window.dispatchEvent(new CustomEvent('oc:modes'));
+variantsBtn.addEventListener('click', modesChanged); appBtn.addEventListener('click', modesChanged);
+
+// ── Agent team: how many agents build a new page at once, plus the user's own agents (each with its own role and model)
+const AGENTS_MIN = 3, AGENTS_MAX = 20, FREE_AGENTS = 9; // the free AI allows 10 calls per request: a planner + 9 agents
+let agentsN = Math.max(AGENTS_MIN, Math.min(AGENTS_MAX, +store.get('oc-agents-n', 7) || 7));
+let myAgents = (Array.isArray(store.get('oc-my-agents', [])) ? store.get('oc-my-agents', []) : []).slice(0, 8);
+const saveAgents = () => { store.set('oc-agents-n', agentsN); store.set('oc-my-agents', myAgents); modesChanged(); };
+const agentLimit = () => byId(current().pid)?.kind === 'proxy' ? Math.min(agentsN, FREE_AGENTS) : agentsN;
+const AGENT_IDEAS = [
+  { name: 'Pricing', role: 'Builds a pricing section: 3 clear plans with real prices, the middle one highlighted, a short FAQ line under it.' },
+  { name: 'Reviews', role: 'Builds a testimonials section: 6 short, specific customer reviews with names, roles and avatars.' },
+  { name: '3D showcase', role: 'Builds a showcase section around one big real 3D object (model: picture) with three short facts next to it.' },
+  { name: 'FAQ', role: 'Builds an FAQ section: 6 sharp questions a real customer would ask, with honest short answers, as an accordion.' },
+];
+const agentSlug = s => String(s || '').toLowerCase().replace(/[^a-z0-9а-яё]+/gi, '-').replace(/^-|-$/g, '').slice(0, 20) || 'agent';
+function agentsModal(){
+  let m = $('agentsModal');
+  if (!m) {
+    m = document.createElement('div'); m.className = 'modal hidden'; m.id = 'agentsModal'; document.body.append(m);
+    m.addEventListener('click', e => {
+      if (e.target === m || e.target.closest('[data-close]')) return m.classList.add('hidden');
+      const row = e.target.closest('[data-agent]'), i = row ? +row.dataset.agent : -1;
+      if (e.target.closest('[data-agent-del]')) { myAgents.splice(i, 1); saveAgents(); return paintAgents(); }
+      if (e.target.closest('[data-agent-on]')) { myAgents[i].on = !myAgents[i].on; saveAgents(); return paintAgents(); }
+      const idea = e.target.closest('[data-idea]');
+      if (idea || e.target.closest('[data-agent-add]')) {
+        if (myAgents.length >= 8) return;
+        const base = idea ? AGENT_IDEAS[+idea.dataset.idea] : { name: 'My agent', role: '' };
+        myAgents.push({ id: Math.random().toString(36).slice(2, 9), name: t(base.name), role: base.role, model: '', on: true }); saveAgents(); paintAgents();
+        requestAnimationFrame(() => m.querySelector(`[data-agent="${myAgents.length - 1}"] ${idea ? 'select' : 'input'}`)?.focus());
+      }
+    });
+    m.addEventListener('input', e => {
+      if (e.target.id === 'agentsN') { agentsN = +e.target.value; e.target.style.setProperty('--p', (agentsN - AGENTS_MIN) / (AGENTS_MAX - AGENTS_MIN) * 100 + '%'); const nb = m.querySelector('.ag-n'); nb.textContent = agentsN; nb.classList.remove('tick'); void nb.offsetWidth; nb.classList.add('tick'); saveAgents(); paintCount(); return; }
+      const row = e.target.closest('[data-agent]'); if (!row) return;
+      const a = myAgents[+row.dataset.agent], f = e.target.dataset.f;
+      if (a && f) { a[f] = e.target.value.slice(0, f === 'role' ? 400 : 40); saveAgents(); }
+    });
+  }
+  return m;
+}
+const usableModels = () => allModels().filter(x => x.id !== 'openrouter/free' && usable(x.pid));
+function paintCount(){
+  const m = $('agentsModal'), note = m?.querySelector('.ag-free'); if (!note) return;
+  note.hidden = !(byId(current().pid)?.kind === 'proxy' && agentsN > FREE_AGENTS);
+}
+function paintAgents(){
+  const m = agentsModal(), models = usableModels();
+  const opt = a => `<option value="">${escapeHTML(t('same model as the chat'))}</option>` + models.map(x => `<option value="${escapeHTML(x.key)}"${x.key === a.model ? ' selected' : ''}>${escapeHTML((byId(x.pid)?.name || x.pid) + ' · ' + (x.name || x.id))}</option>`).join('');
+  m.innerHTML = `<div class="modal-card wide agents-card"><div class="modal-head"><h2>${escapeHTML(t('Agent team'))}</h2><button type="button" class="ag-close" data-close aria-label="${escapeHTML(t('close'))}"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+<p class="muted">${escapeHTML(t('On a new page the lead agent plans the sections, then every agent builds its part at the same time — each one is a cursor on the canvas.'))}</p>
+<label class="ag-count"><span>${escapeHTML(t('Agents per page'))}</span><input type="range" id="agentsN" min="${AGENTS_MIN}" max="${AGENTS_MAX}" value="${agentsN}" style="--p:${(agentsN - AGENTS_MIN) / (AGENTS_MAX - AGENTS_MIN) * 100}%"><b class="ag-n">${agentsN}</b></label>
+<p class="ag-free muted" hidden>${escapeHTML(t('The free AI runs up to 9 at once — connect your own key for 20.'))}</p>
+<div class="ag-head"><h3>${escapeHTML(t('Your agents'))}</h3><span class="muted">${escapeHTML(t('each one adds its own section to every new page, with its own model'))}</span></div>
+<div class="ag-list">${myAgents.map((a, i) => `<div class="ag-row${a.on ? '' : ' off'}" data-agent="${i}"><span class="ag-dot" style="--c:${['#7dd3fc', '#f9a8d4', '#a7f3d0', '#fde68a', '#c4b5fd', '#fdba74', '#93c5fd', '#fca5a5'][i % 8]}"></span><input data-f="name" value="${escapeHTML(a.name)}" maxlength="40" aria-label="${escapeHTML(t('Agent name'))}"><select data-f="model" aria-label="${escapeHTML(t('Model'))}">${opt(a)}</select><button type="button" class="switch" role="switch" aria-checked="${!!a.on}" data-agent-on aria-label="on"><i></i></button><button type="button" class="ag-close ag-del" data-agent-del title="${escapeHTML(t('remove'))}" aria-label="${escapeHTML(t('remove'))}"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button><textarea data-f="role" rows="2" maxlength="400" placeholder="${escapeHTML(t('What it builds, e.g. a pricing section with 3 plans'))}">${escapeHTML(a.role)}</textarea></div>`).join('') || `<div class="ag-empty muted">${escapeHTML(t('No agents of your own yet — start from an idea:'))}</div>`}</div>
+<div class="ag-ideas">${myAgents.length < 8 ? AGENT_IDEAS.map((x, i) => `<button type="button" class="chip" data-idea="${i}">+ ${escapeHTML(t(x.name))}</button>`).join('') + `<button type="button" class="chip" data-agent-add>+ ${escapeHTML(t('blank agent'))}</button>` : ''}</div>
+<div class="modal-actions"><button class="btn primary" data-close>${escapeHTML(t('done'))}</button></div></div>`;
+  paintCount();
+}
+function openAgents(){ paintAgents(); showModal('agentsModal'); }
+
+// ── / commands in the message box. Toggles act at once; prompt commands are sent with an expert instruction attached
+const SLASH_PROMPTS = {
+  new: 'Build a NEW complete page from scratch with the whole agent team (it is not an edit of the current page).',
+  polish: 'Design pass on the current element, like a senior product designer: fix the type scale and rhythm, spacing on an 8px grid, alignment, contrast (WCAG AA), consistent radii and shadows, hover and focus states, one accent colour. Keep the content and structure; answer with action "update".',
+  mobile: 'Make the current element work perfectly on phones (360–430px) and tablets: a @media (max-width:760px) block, stacked grids, readable sizes, ≥44px tap targets, no horizontal scroll, images that scale. Desktop must stay as it is; answer with action "update".',
+  copy: 'Rewrite every text of the current element like a senior copywriter: a concrete headline with the real benefit, short scannable lines, real-sounding names, numbers and prices, clear calls to action, no lorem ipsum or filler. Same language and layout; answer with action "update".',
+  fix: 'Find and fix what is broken in the current element: overlapping or cut-off text, overflowing boxes, broken images, wrong z-order, low contrast, misaligned grids, empty areas. Answer with action "update" and the complete fixed element.',
+  '3d': 'Add a real 3D object to the current element where it helps most (a hero visual or a showcase): <img src="model:SHAPE MATERIAL COLOR"> with a fitting shape and material, sized and placed so it never covers text. Answer with action "update".',
+};
+export function slashCommands(){
+  const lim = agentLimit(), mine = myAgents.filter(a => a.on).length;
+  return [
+    { cmd: 'agents', icon: '◎', label: t('Agent team'), hint: t('how many agents build a page, add your own') + ` · ${lim}${mine ? ' + ' + mine : ''}`, kind: 'panel' },
+    { cmd: 'new', icon: '✦', label: t('New page'), hint: t('build from scratch with the whole team'), kind: 'prompt' },
+    { cmd: 'app', icon: '</>', label: t('App mode'), hint: t('working mini-apps: calculators, quizzes, games'), kind: 'toggle', on: appOn },
+    { cmd: 'x3', icon: '⧉', label: t('3 variants'), hint: t('three versions to pick from (3 generations)'), kind: 'toggle', on: variantsOn },
+    { cmd: 'polish', icon: '◇', label: t('Polish design'), hint: t('type, spacing, contrast, states'), kind: 'prompt' },
+    { cmd: 'mobile', icon: '▯', label: t('Mobile'), hint: t('make it work on phones'), kind: 'prompt' },
+    { cmd: 'copy', icon: '¶', label: t('Rewrite texts'), hint: t('like a senior copywriter'), kind: 'prompt' },
+    { cmd: 'fix', icon: '⚑', label: t('Fix layout'), hint: t('overlaps, overflow, contrast'), kind: 'prompt' },
+    { cmd: '3d', icon: '◆', label: t('Add 3D'), hint: t('a real 3D object where it fits'), kind: 'prompt' },
+  ];
+}
+// what is switched on right now — small chips in the message box, a click turns them off
+export function slashModes(){
+  const out = [];
+  if (appOn) out.push({ cmd: 'app', label: 'app' });
+  if (variantsOn) out.push({ cmd: 'x3', label: '×3' });
+  const mine = myAgents.filter(a => a.on).length;
+  if (agentsN !== 7 || mine) out.push({ cmd: 'agents', label: `${agentLimit()}${mine ? '+' + mine : ''} ${t('agents')}` });
+  return out;
+}
+// runs a toggle or panel command; returns false for prompt commands (the box keeps "/cmd " for the user to finish)
+export function runSlash(cmd){
+  if (cmd === 'app') { appBtn.click(); return true; }
+  if (cmd === 'x3') { variantsBtn.click(); return true; }
+  if (cmd === 'agents') { openAgents(); return true; }
+  return false;
+}
 const trigger = picker.querySelector('.model-trigger'), menu = picker.querySelector('.model-menu'), mSearch = picker.querySelector('input');
 const chevron = '<svg class="model-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>';
 function renderPicker(){
@@ -1322,16 +1452,16 @@ function renderPicker(){
   trigger.innerHTML = `${modelLogo(m)}<span class="model-trigger-name">${escapeHTML(m.name)}</span>${chevron}`;
   $('sbModel').textContent = `${p?.name || m.pid} · ${m.name}`;
   const q = mSearch.value.trim().toLocaleLowerCase();
-  const groups = PROVIDERS.filter(pr => keys[pr.id] || pr.publicModels).map(pr => {
+  const groups = PROVIDERS.filter(pr => pr.kind === 'proxy' || active(pr.id)).map(pr => {
     const list = providerModels(pr).filter(x => `${x.name} ${x.vendor || ''} ${x.id} ${pr.name}`.toLocaleLowerCase().includes(q));
     if (!list.length && q) return '';
     const status = pr.kind === 'proxy' ? quotaText() : !keys[pr.id] ? ' · key required' : loading[pr.id] ? ' · loading…' : modelErr[pr.id] ? ' · error' : '';
     const firstPaid = list.find(x => x.paid);
     // each provider in its own section, so its sticky header pushes the previous one away instead of overlapping it
-    return `<div class="model-sec"><div class="model-group">${providerLogo(pr)}${escapeHTML(pr.name)}<span>${status}</span></div>` + list.map(x => (x === firstPaid ? '<div class="model-sub">pay per use · $ per 1M tokens in · out</div>' : '') + `<button type="button" role="option" class="model-option${x.key === currentModel ? ' active' : ''}" data-model="${escapeHTML(x.key)}" aria-selected="${x.key === currentModel}">${modelLogo(x)}<span class="model-text"><span class="model-title">${escapeHTML(x.name)}</span><span class="model-meta">${escapeHTML(x.vendor || pr.name)}${x.ctx ? ' · ' + fmtCtx(x.ctx) + ' context' : ''}${x.note ? ' · ' + escapeHTML(x.note) : ''}</span></span>${x.price ? `<span class="model-price" title="price per 1M tokens: input · output">${fmtPrice(x.price)}</span>` : ''}${x.key === currentModel ? '<span class="model-check">✓</span>' : ''}</button>`).join('') + '</div>';
+    return `<div class="model-sec"><div class="model-group">${providerLogo(pr)}${escapeHTML(pr.name)}<span>${status}</span></div>` + list.map(x => (x === firstPaid ? '<div class="model-sub">pay per use · $ per 1M tokens in · out</div>' : '') + `<button type="button" role="option" class="model-option${x.key === currentModel ? ' active' : ''}" data-model="${escapeHTML(x.key)}" aria-selected="${x.key === currentModel}">${modelLogo(x)}<span class="model-text"><span class="model-title">${escapeHTML(x.name)}</span><span class="model-meta">${escapeHTML(x.vendor || pr.name)}${x.ctx ? ' · ' + fmtCtx(x.ctx) + ' context' : ''}${x.note ? ' · ' + escapeHTML(x.note) : ''}</span></span>${x.price ? `<span class="model-price" title="price per 1M tokens: input · output">${fmtPrice(x.price)}</span>` : isFree(x, pr) ? `<span class="model-free" title="${escapeHTML(t('costs nothing'))}">$0</span>` : ''}${x.key === currentModel ? '<span class="model-check">✓</span>' : ''}</button>`).join('') + '</div>';
   }).join('');
   picker.querySelector('.model-list').innerHTML = groups || '<div class="model-empty">nothing found</div>';
-  const connected = PROVIDERS.filter(pr => keys[pr.id]).length, total = PROVIDERS.filter(pr => pr.kind !== 'proxy').length;
+  const connected = PROVIDERS.filter(pr => active(pr.id)).length, total = PROVIDERS.filter(pr => pr.kind !== 'proxy').length;
   picker.querySelector('.model-add').textContent = `+ connect your own keys (${connected} of ${total})`;
 }
 function toggleMenu(open = menu.classList.contains('hidden')){
@@ -1350,7 +1480,7 @@ picker.querySelector('.model-add').onclick = () => { toggleMenu(false); openSett
 document.addEventListener('pointerdown', e => { if (!picker.contains(e.target)) toggleMenu(false); });
 
 async function loadProvider(p){
-  if (!keys[p.id] && !p.publicModels) { delete modelsBy[p.id]; delete modelErr[p.id]; renderPicker(); renderProviders(); return; }
+  if (p.kind !== 'proxy' && !active(p.id)) { delete modelsBy[p.id]; delete modelErr[p.id]; autoPick(); renderPicker(); renderProviders(); return; }
   loading[p.id] = true; delete modelErr[p.id]; renderProviders(); renderPicker();
   try { modelsBy[p.id] = await listModels(p, keys[p.id]); }
   catch (e) { modelErr[p.id] = e.message; delete modelsBy[p.id]; }
@@ -1358,38 +1488,62 @@ async function loadProvider(p){
 }
 // If the selected model has no key, fall back to the first model of a connected provider
 function autoPick(){
-  if (keys[current().pid]) return;
+  if (active(current().pid)) return;
   // someone who connected their own key probably wants to use it instead of the free quota
-  const pr = PROVIDERS.find(x => keys[x.id] && providerModels(x).length);
+  const pr = PROVIDERS.find(x => active(x.id) && providerModels(x).length);
   if (!pr && usable(current().pid)) return;
   // pick the provider's recommended model when it's available, otherwise the first one
+  if (!pr && !usable(current().pid)) { currentModel = 'oc::auto'; store.set('form-model', currentModel); return; }
   if (pr) { const list = providerModels(pr); const best = (pr.prefer || []).map(id => list.find(x => x.id === id)).find(Boolean); currentModel = (best || list[0]).key; store.set('form-model', currentModel); }
 }
 function loadModels(){ PROVIDERS.forEach(loadProvider); }
 
-// "AI providers" dialog: a key for each service and its connection status
+// "AI keys" dialog: every service is a row with a round switch — on opens the key field, off forgets the key
+const provOpen = new Set();
+const provLogo = p => p.kind === 'proxy' || logo(p.logo) ? providerLogo(p) : `<span class="model-logo letter">${escapeHTML(p.name[0])}</span>`;
 function renderProviders(){
   const box = $('providers'); if (!box) return;
   const focused = document.activeElement?.dataset?.key;
   box.innerHTML = PROVIDERS.map(p => {
-    if (p.kind === 'proxy') return `<div class="prov on prov-free">${providerLogo(p)}<div class="prov-info"><div class="prov-name">${escapeHTML(p.name)}</div><div class="prov-note">${escapeHTML(p.note)}</div></div>${authUser ? `<span class="prov-st ok">✓ signed in${quota ? ` · ${quota.used}/${quota.limit} used today` : ''}</span>` : '<button class="btn primary" type="button" data-free-signin>sign in for 20 a day</button>'}</div>`;
-    const k = keys[p.id] || '';
-    const st = !k ? '' : loading[p.id] ? '<span class="prov-st">checking…</span>' : modelErr[p.id] ? `<span class="prov-st err" title="${escapeHTML(modelErr[p.id])}">✗ ${escapeHTML(String(modelErr[p.id]).slice(0, 60))}</span>` : `<span class="prov-st ok">✓ ${(modelsBy[p.id] || []).length} models</span>`;
-    return `<div class="prov${k ? ' on' : ''}">${providerLogo(p)}<div class="prov-info"><div class="prov-name">${escapeHTML(p.name)}</div><div class="prov-note">${escapeHTML(p.note)} · <a href="${p.keyUrl}" target="_blank" rel="noreferrer">get a key ↗</a></div></div><input type="password" data-key="${p.id}" value="${escapeHTML(k)}" placeholder="${escapeHTML(p.hint || 'API key')}" autocomplete="off" spellcheck="false">${st}</div>`;
+    if (p.kind === 'proxy') return `<div class="prov on prov-free">${provLogo(p)}<div class="prov-info"><div class="prov-name">${escapeHTML(p.name)}<span class="model-free">$0</span></div><div class="prov-note">${escapeHTML(p.note)}</div></div>${authUser ? `<span class="prov-st ok">✓ signed in${quota ? ` · ${quota.used}/${quota.limit} used today` : ''}</span>` : '<button class="btn primary" type="button" data-free-signin>sign in for 20 a day</button>'}</div>`;
+    const k = keys[p.id] || '', on = active(p.id) || provOpen.has(p.id);
+    const st = !k ? '' : keysOff.has(p.id) ? '' : loading[p.id] ? '<span class="prov-st">checking…</span>' : modelErr[p.id] ? `<span class="prov-st err" title="${escapeHTML(modelErr[p.id])}">✗ ${escapeHTML(String(modelErr[p.id]).slice(0, 60))}</span>` : `<span class="prov-st ok">✓ ${(modelsBy[p.id] || []).length} models</span>`;
+    return `<div class="prov${on ? ' on' : ''}" data-prov="${p.id}">${provLogo(p)}<div class="prov-info"><div class="prov-name">${escapeHTML(p.name)}${p.free ? '<span class="model-free">free tier</span>' : ''}</div><div class="prov-note">${escapeHTML(p.note)}</div></div><button type="button" class="switch" role="switch" aria-checked="${on}" data-switch="${p.id}" aria-label="${escapeHTML(p.name)}"><i></i></button>`
+      + (on ? `<div class="prov-key"><input type="password" data-key="${p.id}" value="${escapeHTML(k)}" placeholder="${escapeHTML(t('Paste your key') + (p.hint ? ' · ' + p.hint : ''))}" autocomplete="off" spellcheck="false"><a class="btn" href="${p.keyUrl}" target="_blank" rel="noreferrer">${escapeHTML(t('get a key'))} ↗</a>${k ? `<button type="button" class="btn" data-forget="${p.id}">${escapeHTML(t('remove key'))}</button>` : ''}${st}</div>` : k ? `<div class="prov-key prov-saved">${escapeHTML(t('key saved · switched off'))}</div>` : '') + '</div>';
   }).join('');
   if (focused) { const el = box.querySelector(`[data-key="${focused}"]`); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }
 }
-function openSettings(){ $('rememberKeys').checked = remember; renderProviders(); showModal('settings'); }
+// openSettings('openrouter') opens the dialog with that service switched on and its key field focused
+function openSettings(pid){
+  $('rememberKeys').checked = remember; if (pid && byId(pid) && byId(pid).kind !== 'proxy') provOpen.add(pid);
+  renderProviders(); showModal('settings');
+  if (pid) requestAnimationFrame(() => { const row = $('providers').querySelector(`[data-prov="${pid}"]`); row?.scrollIntoView({ block: 'center' }); row?.querySelector('input')?.focus(); });
+}
+$('providers').addEventListener('click', e => {
+  const fg = e.target.closest('[data-forget]');
+  if (fg) { const pid = fg.dataset.forget; delete keys[pid]; keysOff.delete(pid); saveOff(); saveKeys(); loadProvider(byId(pid)); renderStart(); return; }
+  const sw = e.target.closest('[data-switch]'); if (!sw) return;
+  const pid = sw.dataset.switch, on = sw.getAttribute('aria-checked') === 'true';
+  // off keeps the key (only its models leave the list); on brings them back without typing it again
+  if (on) { provOpen.delete(pid); if (keys[pid]) { keysOff.add(pid); saveOff(); loadProvider(byId(pid)); renderStart(); } renderProviders(); }
+  else { provOpen.add(pid); if (keysOff.delete(pid)) { saveOff(); if (keys[pid]) { loadProvider(byId(pid)); renderStart(); } } renderProviders(); if (!keys[pid]) $('providers').querySelector(`[data-key="${pid}"]`)?.focus(); }
+});
+// Get started (empty canvas): the free AI works at once; the logos open the key dialog on that service
+function renderStart(){
+  const box = $('esLogos'); if (!box) return;
+  box.innerHTML = PROVIDERS.filter(p => p.kind !== 'proxy').slice(0, 8).map(p => `<button type="button" class="es-logo${active(p.id) ? ' on' : ''}" data-start-key="${p.id}" title="${escapeHTML(p.name + ' — ' + p.note)}">${provLogo(p)}<span>${escapeHTML(p.name.replace(/ \(.*\)$/, ''))}</span>${p.free ? '<em>$0</em>' : ''}</button>`).join('');
+}
+$('emptyStart')?.addEventListener('click', e => { const b = e.target.closest('[data-start-key]'); if (b) openSettings(b.dataset.startKey); else if (e.target.closest('[data-start-keys]')) openSettings('openrouter'); });
 $('providers').addEventListener('click', e => { if (e.target.closest('[data-free-signin]')) { $('settings').classList.add('hidden'); openAuth('signup'); } });
 $('providers').addEventListener('change', e => {
   const pid = e.target.dataset.key; if (!pid) return;
   const v = e.target.value.trim();
   if (v) keys[pid] = v; else delete keys[pid];
-  saveKeys(); loadProvider(byId(pid));
+  saveKeys(); loadProvider(byId(pid)); renderStart();
 });
 $('rememberKeys').onchange = e => { remember = e.target.checked; saveKeys(); };
-$('forgetKeys').onclick = () => { keys = {}; saveKeys(); PROVIDERS.forEach(p => { if (!p.publicModels) delete modelsBy[p.id]; }); renderProviders(); renderPicker(); };
-renderPicker();
+$('forgetKeys').onclick = () => { keys = {}; keysOff.clear(); saveOff(); saveKeys(); PROVIDERS.forEach(p => { if (!p.publicModels) delete modelsBy[p.id]; }); renderProviders(); renderPicker(); };
+renderPicker(); renderStart();
 
 /* ── AI chat ─────────────────────────────────────────────── */
 initChatUI({ setState: (...a) => setState(...a) });
@@ -1449,7 +1603,9 @@ nameEl.addEventListener('blur', () => {
    src="art:neon cube over dark terrain, 3d render" is a picture DRAWN by the free FLUX model (/api/image) —
    cinematic / 3D heroes. At most 2 per answer; signed out or out of quota → a dark neon-glow picture. */
 // only inside attribute values / url(): visible text like "photo: by Anna" stays untouched
-const MEDIA_RE = /(?<=["'(]\s*)(photo|attachment|kept|art):([^"'()<>\n]{1,240})/g;
+const MEDIA_RE = /(?<=["'(]\s*)(photo|attachment|kept|art|model):([^"'()<>\n]{1,240})/g;
+// model: = a real 3D object rendered in the browser (scene3d.js renderModel): free, ~0.2 s and ~10 KB each
+const MODEL_MAX = 8, MODEL_EMPTY = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 const ART_MAX = 2;
 // in the page's accent hue (cinematic sites set artHue while their media is resolved)
 let artHue = 220;
@@ -1487,16 +1643,17 @@ async function drawArt(q){
 }
 // Replace every photo:/attachment:/art: token. Repeats of one query get different photos (i = 0, 1, 2…).
 // kept:N = an image the element already had (sent to the model as a short token).
-async function resolveMedia(code, attachments = [], onPhotos, kept = [], onArt){
+async function resolveMedia(code, attachments = [], onPhotos, kept = [], onArt, onModels){
   const found = [...code.matchAll(MEDIA_RE)];
   if (!found.length) return code;
-  const seen = new Map(), jobs = [], arts = [];
+  const seen = new Map(), jobs = [], arts = [], models = [];
   for (const m of found) {
     if (m[1] === 'art') {
       const q = m[2].trim().slice(0, 240);
       if (arts.includes(q) || arts.length < ART_MAX) { if (!arts.includes(q)) arts.push(q); m.art = q; }
       continue; // over the limit: the neon placeholder
     }
+    if (m[1] === 'model') { const q = m[2].trim().slice(0, 120).toLowerCase(); if (models.includes(q) || models.length < MODEL_MAX) { if (!models.includes(q)) models.push(q); m.model = q; } continue; }
     if (m[1] !== 'photo') continue;
     let [q, o = 'landscape'] = m[2].trim().split('?');
     q = q.trim().toLowerCase(); if (!['landscape', 'portrait', 'square'].includes(o)) o = 'landscape';
@@ -1506,10 +1663,14 @@ async function resolveMedia(code, attachments = [], onPhotos, kept = [], onArt){
   }
   if (jobs.length) onPhotos?.([...new Set(jobs.map(j => j.q))]);
   if (arts.length) (onArt || onPhotos)?.(arts);
-  const got = new Map(), drawn = new Map();
+  if (models.length) onModels?.(models);
+  const got = new Map(), drawn = new Map(), rendered = new Map();
+  // 3D objects one after another (each takes the GPU for a moment), while photos and art download
+  const modelJob = models.length ? load3d().then(async m => { for (const q of models) { try { rendered.set(q, await m.renderModel(q)); } catch {} } }).catch(() => {}) : null;
   await Promise.all([
     ...jobs.map(j => fetchPhoto(j.q, j.o, j.i).then(url => got.set(`${j.q}|${j.o}|${j.i}`, url), () => {})),
     ...arts.map(q => drawArt(q).then(url => drawn.set(q, url), () => {})),
+    modelJob,
   ]);
   let k = 0;
   return code.replace(MEDIA_RE, (all, kind, ref) => {
@@ -1517,6 +1678,7 @@ async function resolveMedia(code, attachments = [], onPhotos, kept = [], onArt){
     if (kind === 'attachment') { const a = attachments.filter(x => x.url)[(parseInt(ref) || 1) - 1]; return a?.url || PLACEHOLDER; }
     if (kind === 'kept') return kept[(parseInt(ref) || 1) - 1] || PLACEHOLDER;
     if (kind === 'art') return (m?.art && drawn.get(m.art)) || artPlaceholder(artHue);
+    if (kind === 'model') return (m?.model && rendered.get(m.model)) || MODEL_EMPTY;
     const j = m?.job; return (j && got.get(`${j.q}|${j.o}|${j.i}`)) || PLACEHOLDER;
   });
 }
@@ -1537,9 +1699,20 @@ export async function readAttachment(file){
   return { id: crypto.randomUUID(), name: file.name, text: await file.text(), size: file.size };
 }
 $('send').onclick = () => {
-  const request = $('prompt').value.trim(), att = pendingAttachments;
+  let request = $('prompt').value.trim(), att = pendingAttachments;
   if (!request && !att.length) return;
-  if (!att.length) return runAI(request);
+  // "/polish make it calmer" → the request plus the command's expert instruction; "/app" alone just switches the mode
+  const sl = request.match(/^\/([a-z0-9]+)\b\s*([\s\S]*)$/i), slash = {};
+  if (sl) {
+    const cmd = sl[1].toLowerCase(), rest = sl[2].trim(), info = slashCommands().find(c => c.cmd === cmd);
+    if (info && info.kind !== 'prompt') { runSlash(cmd); $('prompt').value = ''; if (!rest && !att.length) return; request = rest; }
+    else if (info) {
+      slash.extra = '\n\nCommand /' + cmd + ': ' + SLASH_PROMPTS[cmd];
+      if (cmd === 'new') slash.swarm = true;
+      request = rest || (cmd === 'new' ? t('a new page') : info.label);
+    }
+  }
+  if (!att.length) return runAI(request, slash);
   pendingAttachments = []; window.dispatchEvent(new CustomEvent('oc:attachments-sent'));
   const imgs = att.filter(a => a.url), files = att.filter(a => a.text != null);
   const vision = byId(current().pid)?.kind !== 'proxy';
@@ -1549,6 +1722,8 @@ $('send').onclick = () => {
     if (vision) custom.images = imgs.map(a => a.url);
   }
   if (files.length) custom.extra = files.map(f => `\n\nAttached file "${f.name}":\n${f.text.slice(0, 20000)}`).join('');
+  if (slash.extra) custom.extra = (custom.extra || '') + slash.extra;
+  if (slash.swarm) custom.swarm = true;
   runAI(request || (imgs.length ? 'Use the attached image' + (imgs.length > 1 ? 's' : '') : 'Use the attached file'), custom);
 };
 
@@ -1634,12 +1809,100 @@ function signupNudge(why){
   $('messages').append(row); toBottom();
 }
 
+/* ── Swarm: a new page is planned first, then every section is written by its own AI agent at the same time.
+   The agents stream into their own slots of the live build on the canvas (build-stage.js swarm/part), each
+   with its own cursor. The planner writes the shared design system, so the sections look like one page. ── */
+const SWARM_RE = /сайт|site|page|страниц|лендинг|landing|портфолио|portfolio|магазин|shop|store|блог|blog|homepage|главн/i;
+// with a page already on the canvas only an explicit "new page" request starts a swarm (anything else is an edit)
+const SWARM_NEW = /нов(ый|ую|ая|ое)|new|ещ[её] од|another|с нуля|from scratch|другой сайт|second site/i;
+const sectionCode = text => {
+  let s = String(text || '').replace(/<think>[\s\S]*?(<\/think>|$)/gi, '');
+  const f = s.match(/```(?:html)?\s*\n([\s\S]*?)(```|$)/i);
+  s = f ? f[1] : s.slice(Math.max(0, s.search(/<(style|section|header|footer|div|nav|main)\b/i)));
+  return s.replace(/```[\s\S]*$/, '').trim();
+};
+// Every agent starts from a component of our catalog: the closest full-width section for its kind
+const REF_KINDS = [
+  [/header|nav/, /navbar|header|navigation|top bar/i], [/hero|intro|banner/, /hero/i], [/feature|benefit|service|why/, /feature|bento|benefit|service/i],
+  [/pricing|plan|tariff/, /pricing|plan/i], [/testimonial|review|quote/, /testimonial|review|quote/i], [/faq|question/, /faq|accordion|question/i],
+  [/cta|newsletter|signup|subscribe/, /call to action|cta|newsletter|subscribe/i], [/footer/, /footer/i], [/team|people|about/, /team|about|founder/i],
+  [/gallery|work|portfolio|case|showcase|project/, /gallery|portfolio|case|showcase|work|project/i], [/stat|number|metric/, /stat|metric|number|kpi/i],
+  [/contact|form|booking|book/, /contact|booking|form/i], [/logo|partner|client/, /logo|partner|client/i], [/blog|news|article/, /blog|article|news|post/i],
+  [/step|process|how/, /step|process|how it works|timeline/i], [/menu|product|shop|catalog/, /menu|product|shop|catalog|card/i],
+];
+function pickRef(kind, used){
+  const hit = REF_KINDS.find(([k]) => k.test(kind)); if (!hit || !presets.length) return null;
+  const pool = presets.filter(x => hit[1].test(x.name) && String(x.code).length < 7000 && !used.has(x.name) && (x.full || /Landing|Cinematic|Navigation|Pricing/.test(x.category || '')));
+  const pick = pool.length ? pool[Math.floor(Math.random() * Math.min(pool.length, 12))] : null;
+  if (pick) used.add(pick.name);
+  return pick;
+}
+async function buildSwarm({ p, key, m, request, recent, system, stop }){
+  const stage = stop.stage();
+  const mine = myAgents.filter(a => a.on && (a.role || a.name)).map(a => ({ ...a, kind: agentSlug(a.name), model: a.model && allModels().find(x => x.key === a.model && usable(x.pid)) || null }));
+  const free = p.kind === 'proxy';
+  // the free AI allows a planner + 9 calls per request; the user's agents on their own keys don't count
+  const SWARM_MAX = Math.max(2, Math.min(20 - mine.length, agentLimit()) - (free ? mine.filter(a => !a.model || byId(a.model.pid)?.kind === 'proxy').length : 0));
+  const SWARM_MIN = Math.min(5, SWARM_MAX);
+  stop.step('planning the page');
+  const plan = `You are the lead designer of a team that builds ONE web page in parallel: you plan it, then each designer writes one section at the same time. Reply with ONLY one JSON object, no markdown fences:
+{"name":"short page name","reply":"one short friendly line to the user, in the language of the request","css":"…","sections":[{"kind":"header","brief":"…"}]}
+- sections: ${SWARM_MIN}–${SWARM_MAX} in page order, a header first and a footer last; pick what this kind of business really needs (a café: menu with real prices, hours, address, booking; a SaaS: value, how it works, product, pricing, FAQ; a portfolio: work first). "kind" is one lowercase word (header, hero, features, menu, pricing, gallery, testimonials, faq, cta, contact, footer…). "brief" (English, 1–3 sentences) says exactly what the section shows: layout idea, real-sounding texts, names, numbers and prices in the language of the request, which photo: or model: pictures to use — specific enough that a designer can build it without seeing the others.${mine.length ? `
+- The user's own agents build these sections at the same time — do NOT plan them, leave room for them: ${mine.map(a => `"${a.kind}" (${a.role || a.name})`).join('; ')}.` : ''}
+- css: the shared design system as compact CSS (under 2000 characters), every selector starting with .pg: CSS variables on .pg (--bg, --surface, --text, --muted, --line, --accent, --accent-text, --radius, --font), .pg{background:var(--bg);color:var(--text);font-family:var(--font)}, .pg .wrap{max-width:1160px;margin:0 auto;padding:0 28px}, type scale for .pg h1/.pg h2/.pg h3/.pg p, .pg .btn and .pg .btn-ghost (≥44px tall, hover and focus-visible), .pg .eyebrow, a @media (max-width:760px) block. One accent colour, refined neutrals, a ${isLightPage() ? 'light' : 'dark'} page unless the request asks otherwise. No section-specific styles.
+${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}.`;
+  let data = null;
+  for (let attempt = 0; attempt < 2 && !data; attempt++) {
+    const content = await chat(p, key, m.id, plan, (recent ? 'Conversation so far (for context):\n' + recent + '\n\n' : '') + 'Request: ' + request + (attempt ? '\n\nIMPORTANT: reply with ONLY the JSON object.' : ''), [], null);
+    try { const j = firstJSON(String(content).replace(/<think>[\s\S]*?<\/think>/gi, '')); data = j && looseJSON(j.json); } catch { data = null; }
+    if (!data || !Array.isArray(data.sections) || data.sections.length < 2) data = null;
+  }
+  if (!data) { stop.step('the plan came out garbled — building it in one go'); return null; }
+  let secs = data.sections.slice(0, SWARM_MAX).map(s => ({ kind: String(s?.kind || 'section').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 20) || 'section', brief: String(s?.brief || '').slice(0, 900) }));
+  // the user's agents go in before the closing CTA / contact / footer
+  if (mine.length) {
+    let at = secs.length; while (at > 1 && /footer|contact|cta|newsletter/.test(secs[at - 1].kind)) at--;
+    secs.splice(at, 0, ...mine.map(a => ({ kind: a.kind, brief: (a.role || a.name).slice(0, 400), own: a })));
+  }
+  secs = secs.map((s, i) => ({ ...s, i }));
+  const css = String(data.css || '').replace(/<\/?style[^>]*>/gi, '').slice(0, 6000);
+  stage?.swarm(css, secs.map(s => s.kind));
+  stop.step(`${secs.length} agents are building the sections at once: ${secs.map(s => s.kind).join(', ')}`);
+  const outline = secs.map(s => `${s.i + 1}. ${s.kind} — ${s.brief}`).join('\n');
+  await presetsReady.catch(() => {});
+  const used = new Set(); secs.forEach(s => { s.ref = pickRef(s.own ? s.kind + ' ' + s.brief : s.kind, used); });
+  if (mine.length) stop.step('your agents: ' + mine.map(a => a.name + (a.model ? ' (' + (a.model.name || a.model.id) + ')' : '')).join(', '));
+  const refs = secs.filter(s => s.ref).map(s => `${s.kind} ← «${s.ref.name}»`);
+  if (refs.length) stop.step('starting from library components: ' + refs.join(', '));
+  const one = async s => {
+    const n = s.i + 1, tag = s.kind === 'header' ? 'header' : s.kind === 'footer' ? 'footer' : 'section';
+    const base = s.ref ? `\n\nLIBRARY COMPONENT to build from — «${s.ref.name}» from the openconstructor catalog. Use it as the base: keep its layout idea, structure and craft details (spacing, hover states, icons, motion), but restyle it with the shared design system variables, rename every class to the .s${n} prefix and replace all texts and pictures with this page's content:\n\`\`\`html\n${s.ref.code}\n\`\`\`` : '';
+    const ask = `Page request: ${request}\n\nThe page plan (other designers build the other sections at the same time):\n${outline}\n\nShared design system — already on the page inside the wrapper .pg; use its variables and classes (.wrap, .btn, .btn-ghost, .eyebrow), do NOT redefine them:\n\`\`\`css\n${css}\n\`\`\`\n\nYOUR PART: section ${n} of ${secs.length} — ${s.kind}: ${s.brief}\n\nSECTION MODE (this overrides the answer format above — no JSON header line): reply with ONLY one \`\`\`html block: first ONE <style> where every selector starts with .s${n} (e.g. .s${n} .grid{…}), then ONE <${tag} class="s${n}">…</${tag}> element, full width, its content inside <div class="wrap">. Give it an explicit background from the shared variables (alternate var(--bg) and var(--surface) with the neighbours for rhythm) and an explicit text colour. Texts in the language of the request.${base}`;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let acc = '';
+      try {
+        const own = s.own?.model, ap = own ? byId(own.pid) : p;
+        const content = await chat(ap, own ? keys[own.pid] : key, own ? own.id : m.id, system, ask, [], piece => { acc += piece || ''; stage?.part(s.i, acc); });
+        const code = sectionCode(typeof content === 'string' && content.trim() ? content : acc);
+        if (/<(section|header|footer|div)\b/i.test(code)) { stage?.part(s.i, '```html\n' + code, true); return code; }
+      } catch (err) { if (err.code === 'signin' || err.status === 401 || attempt) throw err; }
+    }
+    return '';
+  };
+  const done = await Promise.allSettled(secs.map(one));
+  const signin = done.find(x => x.status === 'rejected' && x.reason?.code === 'signin');
+  if (signin) throw signin.reason;
+  const codes = done.map(x => x.status === 'fulfilled' ? x.value : '').filter(Boolean);
+  if (codes.length < 2) throw done.find(x => x.status === 'rejected')?.reason || Error('The agents could not build the sections');
+  return { action: 'add', full: true, name: String(data.name || 'New page').slice(0, 60), reply: String(data.reply || `Done — ${codes.length} agents built the page section by section.`), code: `<style>${css}</style><div class="pg">${codes.join('\n')}</div>` };
+}
+
 async function runAI(request, custom = {}){
   const m = current(), p = byId(m.pid), key = keys[m.pid];
   if (!p) { $('chatStatus').textContent = 'Pick a model from the list below the input.'; return; }
   // the free AI works signed out too (a few tries a day); the server says when it's time to sign in
   if (p.kind !== 'proxy' && !key) { $('chatStatus').textContent = `Add a ${p.name} key to use this model.`; openSettings(); return; }
-  track('ai_send');
+  track('ai_send'); tokensTurn();
   // What a change request applies to: the selection, else the page being worked on (the last element the AI
   // built or the only full-width section), so 'make the photos bigger' edits it instead of adding a new page
   const fulls = items.filter(x => x.full);
@@ -1653,7 +1916,7 @@ async function runAI(request, custom = {}){
     strip.innerHTML = custom.shown.map(a => a.url ? `<img src="${a.url}" alt="${escapeHTML(a.name)}" title="${escapeHTML(a.name)}">` : `<span class="msg-file">📄 ${escapeHTML(a.name)}</span>`).join('');
     asked.append(strip); toBottom();
   }
-  const stop = thinking({ ghost: true });
+  const stop = thinking({ ghost: true, stage: custom.user ? null : liveStage(target) });
   // cinematic / 3D site requests get one finished section as a quality reference (the rules alone are too abstract for small models)
   const cineRef = text => {
     if (!/\b3d\b|3д|cinemat|кинемат|immersive|иммерсив|neon|неон|futur|футур|premium|премиум|luxury|люкс|award|awwwards/i.test(text) || /\b(model|object|asset|scene)\b|модел|объект|ассет|сцен/i.test(text)) return '';
@@ -1680,21 +1943,31 @@ ${appMode ? APP_RULES + '\n- No external links or fonts. Icons as inline SVG.' :
 - Cinematic / 3D websites: when the user asks for a 3D, immersive, cinematic, futuristic, neon, luxury or "premium/award-winning" website, page or landing, build HTML (NOT scene3d) in this style:
   · near-black background (#03050a–#0a0a0f), light text; ONE neon accent (electric blue #4d8dff, violet, cyan or magenta) used for glow: box-shadow 0 0 20px/60px/140px in the accent, text-shadow, radial-gradient light pools behind objects;
   · huge tight headlines: font-size clamp(44px,8vw,112px), line-height .95, letter-spacing -0.045em, weight 600, a second half of the sentence in a muted grey (Immersive experiences. <span>Lasting impressions.</span>); tiny uppercase labels above with letter-spacing .3em;
-  · 3D objects in pure CSS: a parent with perspective:900px, a child with transform-style:preserve-3d and rotateX/rotateY, slow infinite float/spin keyframes — glowing neon frames, cubes from 6 faces (translateZ = half size) with dotted radial-gradient "particles" or glass faces, perspective grid floors (rotateX(60deg) on a line grid);
+  · 3D objects are model: pictures (see "3D objects on pages"), with a radial-gradient light pool behind them in the accent and a slow float; CSS 3D (perspective + rotateX/Y) only for FLAT things — a tilted card, a glowing neon frame, a perspective grid floor (rotateX(60deg) on a line grid);
   · the hero background is a generated 3D render: <img src="art:…"> or background-image:url('art:…') with an English description ending in "cinematic 3d render, dark background, volumetric light" (art:glowing blue neon square floating above dark rocky terrain, cinematic 3d render, dark background, volumetric light). Use art: at most twice, only for big hero / showcase visuals; darken with a gradient overlay so the text stays readable;
   · motion on scroll without JS: @supports (animation-timeline:view()){.x{animation:rise linear both;animation-timeline:view();animation-range:entry 0% cover 35%}} @keyframes rise{from{opacity:0;transform:translateY(60px)}} — also for media that scales from .8 to 1 and words that light up from #2a3040 to white; marquee logo walls with mask fades; thin 1px #ffffff1c dividers, numbered services 01–04, wide case-study cards;
-  · the hero MUST show a glowing CSS 3D object next to (not over) the headline — e.g. the neon frame from the reference (.stage with perspective + a rotated, glowing square + a light pool + a perspective ground);
-  · a COMPLETE site of 7+ sections, not just a hero: header, hero with the 3D object, a big statement, products or a 3D showcase (CSS cube), numbered services 01–04, case studies, logo wall, call to action, footer;
-  · in this style do NOT use photo: (stock photos break the mood) — case-study and product cards get dark cards with coloured radial-gradient light pools, CSS 3D objects or the art: picture instead;
+  · the hero MUST show a glowing 3D object next to (not over) the headline — a model: picture (chrome knot, glass gem, iridescent blob…) on a light pool, or the neon frame from the reference;
+  · a COMPLETE site of 7+ sections, not just a hero: header, hero with the 3D object, a big statement, products or a 3D showcase (model: objects), numbered services 01–04, case studies, logo wall, call to action, footer;
+  · in this style do NOT use photo: (stock photos break the mood) — case-study and product cards get dark cards with coloured radial-gradient light pools, model: objects or the art: picture instead;
   · lots of space (section padding 110px+), few words per block, everything respects prefers-reduced-motion.
 - Motion (EVERY website, landing or full page, any style): it must feel alive like an award-winning site — sections and cards rise in on scroll, pictures zoom from .88 to 1 as they enter, one big statement whose words light up one after another while scrolling, a logo wall as an endless marquee with mask fades, hover lift + soft glow on cards and buttons, a slow float on the hero visual. Pure CSS: scroll effects inside @supports (animation-timeline:view()){…} with animation-timeline:view() and animation-range:entry 0% cover 30%; everything wrapped so prefers-reduced-motion turns it off. The header and the hero are visible at once (no scroll reveal on them).
-- 3D: when the user asks for a 3D model, 3D asset, 3D object or 3D scene (or the Current element is a 3D scene), you CAN do it: use action "scene3d" and, instead of the html block, ONE \`\`\`json block with the scene. Shape:
+- 3D objects on pages: NEVER build spheres, tori, pyramids, gems, blobs or cubes out of divs and CSS transforms — they come out flat and broken. Put a real rendered object instead: <img src="model:SHAPE MATERIAL COLOR" alt="…"> (transparent PNG, square; size it with CSS, e.g. width:min(420px,40vw)). SHAPE: cube, sphere, torus, ring, knot, pyramid, cone, cylinder, capsule, diamond, icosahedron, dodecahedron, blob, star, heart, helix, coin, shapes (a little composition), or "letter X" / "text AB" for a 3D logo mark of 1–4 Latin characters or digits (model:letter R chrome). MATERIAL: chrome, gold, metal, glass, iridescent, pearl, plastic, matte, clay, velvet, neon. COLOR: a #hex or a colour word (model:knot plastic #ff5a36, model:diamond glass #8b5cf6, model:torus chrome, model:blob iridescent). Use them for heroes, feature cards (one per card, same material across a set), product showcases and decorative accents; give them a slow float (@keyframes up/down 6–8s), a soft drop-shadow or a radial-gradient light pool behind. Up to 8 per page.
+- 3D: when the user asks for a 3D model, 3D asset, 3D object or 3D scene AS THE ELEMENT ITSELF (or the Current element is a 3D scene), you CAN do it: use action "scene3d" and, instead of the html block, ONE \`\`\`json block with the scene. Shape:
 {"size":[520,400],"background":null,"environment":"studio|sunset|night","autoRotate":20,"floor":{"shadow":true},"camera":{"position":[3,2,4],"target":[0,0.6,0],"fov":40},"objects":[{"name":"seat","shape":"box","size":[1,0.12,1],"rounded":0.04,"position":[0,0.5,0],"rotation":[0,0,0],"color":"#c2410c","metalness":0,"roughness":0.6,"children":[]}]}
 shapes: box (size [w,h,d], rounded), sphere (radius), cylinder (radius or radiusTop/radiusBottom, height, sides), cone (radius, height), torus (radius, tube, arc°), capsule (radius, length), plane (size [w,h]), icosahedron/dodecahedron/octahedron/tetrahedron (radius, detail), ring (inner, outer), lathe (points [[r,y],…] profile — vases, cups, bottles), extrude (points [[x,y],…] outline + depth, bevel — swords, stars, logos), group (children only).
 Each object: name, position [x,y,z] in meters (y up, ground at y=0, a chair is ~0.9 m tall), rotation [x,y,z] in degrees, scale, color "#hex", metalness 0-1, roughness 0-1, emissive "#hex" + emissiveIntensity for glow, opacity, flat:true for a low-poly look, animate {"spin":[0,45,0] deg/s, "bob":0.05, "pulse":0.05}, children (positions relative to the parent).
 Build recognizable things from MANY well-placed parts (a chair = seat + backrest + 4 legs; a character = body, head, eyes, arms, legs), with a coherent palette. Omit "camera" to auto-frame. Leave background null to sit on the page. For a change to a 3D Current element, return the WHOLE updated scene.
 - Internet: you can look things up on the web. When the request needs facts you may not know or that change (news, current events, prices, a real company, product, person, place or website, library docs, "find", "search", "latest", "today"), and the message has no "Web results" for it yet, reply with ONLY line 1: {"action":"search","query":"short web search query"} and nothing else — the results come back to you. Never search for things you can make up (design ideas, sample texts, generic content). When "Web results" are given, base your answer on them.
 - Do not style html or body; use unique class names with a shared prefix.
+- Understand the job first (silently, do not write the plan): who visits this page and the ONE thing it must make them do. Then pick the sections a real business of this kind needs — a café: menu with real prices, hours, address, booking; a SaaS: value in one line, how it works, product shots, pricing, FAQ, sign-up; a portfolio: selected work first, then about and contact; a tool or calculator: the tool itself above the fold, a short explanation, examples. Never pad with generic blocks.
+- Copy like a senior copywriter: specific, concrete and short — real-sounding names, numbers, prices, places, dates and outcomes ("Ships in 48 hours", "4.9 from 2,300 reviews"); no lorem ipsum, no "Feature 1", no empty buzzwords ("innovative solutions", "next level"). Headlines say the benefit; buttons say the action ("Book a table", not "Submit").
+- Craft like a senior product designer (Linear, Stripe, Vercel, Apple level):
+  · a small design system — define colours as CSS variables on your root wrapper class (not :root, html or body) (--bg, --surface, --text, --muted, --line, --accent) and reuse them; ONE accent colour, neutrals for everything else; no rainbow, no purple-to-blue gradient clichés unless asked;
+  · type: font-family system-ui/-apple-system/"Segoe UI"/Inter-like stacks; a clear scale (display clamp(40px,6vw,76px) / h2 clamp(28px,3.4vw,44px) / body 16–18px / small 13–14px), line-height 1.05–1.15 for headings and 1.55–1.7 for text, letter-spacing -0.02em to -0.04em on big headings, max 60–70 characters per line;
+  · layout: content in a centred container (max-width 1120–1200px, side padding 24–32px), an 8px spacing rhythm, generous section padding (88–128px), CSS grid with auto-fit/minmax for card sets, align everything to the same left edges; vary the rhythm — not every section is three equal cards;
+  · details: consistent radii (one small, one large), 1px hairline borders in --line, layered soft shadows only on raised things, inline SVG icons with one stroke width (1.5–2) and size, buttons ≥44px tall with clear :hover and :focus-visible, real <a>/<button>/<form>, semantic tags (header, nav, main, section, footer), alt texts;
+  · responsive: it is exported to phones — add @media (max-width:760px) rules: grids to one column, smaller display type, reduced padding, nav collapses to the essentials; no fixed widths over 100%, no 100vh heights, no position:fixed.
+- Self-check before answering: every class used is styled, every section has an explicit background and text colour, nothing overflows, the page reads well at 1440px and at 390px.
 ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current year is ${new Date().getFullYear()}. Use it for copyright lines, dates and \"since\"/\"years\" texts; never write an older year as the current one.\n- Clean, modern design: spacing, heading hierarchy, rounded corners, shadows, hover states. Respect prefers-reduced-motion for animations.
 - Write all UI text in the components in the same language as the user's request.
 - Keep the code compact (no comments, no repeated boilerplate) so the answer fits in one response.`;
@@ -1767,6 +2040,8 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
       if (!data) throw Error('The model answered in an unexpected format');
       artHue = Number.isFinite(+data.hue) ? +data.hue : 220;
       result = { action: 'add', full: true, name: String(data.brand || 'Cinematic site').slice(0, 60) + ' · 3D site', code: cinePage(data), reply: String(data.reply || '') };
+    } else if (!appMode && !custom.user && !custom.ask && !custom.images?.length && !variantsOn && (!target || custom.swarm || (implicit && SWARM_NEW.test(request))) && (custom.swarm || SWARM_RE.test(request)) && (result = await buildSwarm({ p, key, m, request, recent, system, stop }))) {
+      // a new page built by parallel agents (planner + one agent per section, see buildSwarm)
     } else if (variantsOn && !appMode && !custom.user && !custom.ask && !custom.images?.length) {
       stop.step('making 3 different variants');
       const hints = [
@@ -1780,7 +2055,7 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
       if (builds.length >= 2) {
         stop.step('finding photos for the variants');
         await Promise.all(builds.map(async r => { r.full = r.full === true || r.full === 'true'; r.code = await fixContrast(withBrand(await resolveMedia(r.code, custom.attachments || [], () => {}, kept)), r.full); }));
-        stop.step('your turn: pick a variant');
+        stop.step('your turn: pick a variant'); stop.stageOff();
         const pick = await chooseVariant(builds);
         if (pick === null) { await stop.finish('no variant picked'); setState('kept the page as it was'); message('No variant picked — the page stays as it was.', 'assistant'); return; }
         if (pick === 'all') {
@@ -1822,7 +2097,7 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
     if (!prepared) {
       // cinematic pages: stock photos break the mood whatever the model was told → drawn art / neon light instead
       if (cineRef(custom.ask || request)) result.code = result.code.replace(/(["'(]\s*)photo:([^"'()<>\n?]{1,80})(\?\w+)?/g, (_, q, what) => `${q}art:${what.trim()}, cinematic 3d render, dark background, volumetric neon light`);
-      result.code = await resolveMedia(result.code, custom.attachments || [], qs => stop.step('finding photos: ' + qs.slice(0, 4).join(', ') + (qs.length > 4 ? '…' : '')), kept, qs => stop.step('drawing 3D art: ' + qs.map(q => q.slice(0, 40)).join(' · ')));
+      result.code = await resolveMedia(result.code, custom.attachments || [], qs => stop.step('finding photos: ' + qs.slice(0, 4).join(', ') + (qs.length > 4 ? '…' : '')), kept, qs => stop.step('drawing 3D art: ' + qs.map(q => q.slice(0, 40)).join(' · ')), qs => stop.step('rendering 3D objects: ' + qs.slice(0, 4).join(' · ')));
       artHue = 220;
       result.code = appMode ? withBrand(result.code) : await fixContrast(withBrand(result.code), full);
       if (full && !appMode) result.code = withMotion(result.code);

@@ -9,6 +9,11 @@ export const PROVIDERS = [
   { id: 'groq', name: 'Groq', logo: 'groq', base: 'https://api.groq.com/openai/v1', free: true, keyUrl: 'https://console.groq.com/keys', hint: 'gsk_…', note: 'no-cost plan with GPT-OSS 120B (fast) and Qwen 3.8 27B (best design, ~1 page a minute)', prefer: ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b'] },
   { id: 'cerebras', name: 'Cerebras', logo: 'cerebras-color', base: 'https://api.cerebras.ai/v1', free: true, keyUrl: 'https://cloud.cerebras.ai', hint: 'csk-…', note: 'fastest GPT-OSS; $5 trial credit (card required), then pay as you go', prefer: ['gpt-oss-120b'] },
   { id: 'mistral', name: 'Mistral', logo: 'mistral-color', base: 'https://api.mistral.ai/v1', free: true, keyUrl: 'https://console.mistral.ai/api-keys', hint: '', note: 'free tier for experimentation' },
+  { id: 'zai', name: 'Z.ai (GLM)', logo: 'zai', base: 'https://api.z.ai/api/paas/v4', free: true, keyUrl: 'https://z.ai/manage-apikey/apikey-list', hint: '', note: 'GLM Flash models at no cost; GLM flagship models pay as you go', prefer: ['glm-4.5-flash'] },
+  { id: 'siliconflow', name: 'SiliconFlow', logo: 'siliconcloud-color', base: 'https://api.siliconflow.com/v1', free: true, keyUrl: 'https://cloud.siliconflow.com/account/ak', hint: 'sk-…', note: 'open models (Qwen, DeepSeek, GLM); a set of smaller ones free' },
+  { id: 'cohere', name: 'Cohere', logo: 'cohere-color', base: 'https://api.cohere.ai/compatibility/v1', free: true, keyUrl: 'https://dashboard.cohere.com/api-keys', hint: '', note: 'free trial key (rate-limited, non-commercial): Command models' },
+  { id: 'huggingface', name: 'Hugging Face', logo: 'huggingface-color', base: 'https://router.huggingface.co/v1', free: true, keyUrl: 'https://huggingface.co/settings/tokens', hint: 'hf_…', note: 'thousands of open models via Inference Providers; small free monthly credit' },
+  { id: 'llm7', name: 'LLM7', logo: '', base: 'https://api.llm7.io/v1', free: true, keyUrl: 'https://token.llm7.io', hint: '', note: 'free token by email; small independent service, best effort' },
   { id: 'deepseek', name: 'DeepSeek', logo: 'deepseek-color', base: 'https://api.deepseek.com', free: false, keyUrl: 'https://platform.deepseek.com/api_keys', hint: 'sk-…', note: 'very low cost, strong at code' },
   { id: 'openai', name: 'OpenAI', logo: 'openai', base: 'https://api.openai.com/v1', free: false, keyUrl: 'https://platform.openai.com/api-keys', hint: 'sk-…', note: 'GPT models' },
   { id: 'anthropic', name: 'Anthropic', logo: 'claude-color', base: 'https://api.anthropic.com/v1', free: false, keyUrl: 'https://console.anthropic.com/settings/keys', hint: 'sk-ant-…', note: 'Claude, the strongest at layout', kind: 'anthropic' },
@@ -101,17 +106,21 @@ async function readSSE(r, onEvent){
   }
 }
 const isSSE = r => /event-stream/i.test(r.headers.get('content-type') || '');
+// token usage as the API reports it: OpenAI-style { prompt_tokens, completion_tokens } or Anthropic { input_tokens, output_tokens }
+const usageOf = u => u && (u.prompt_tokens != null || u.completion_tokens != null) ? { in: +u.prompt_tokens || 0, out: +u.completion_tokens || 0 }
+  : u && (u.input_tokens != null || u.output_tokens != null) ? { in: (+u.input_tokens || 0) + (+u.cache_read_input_tokens || 0) + (+u.cache_creation_input_tokens || 0), out: +u.output_tokens || 0 } : null;
 async function readOpenAIStream(r, onDelta){
-  let text = '', cut = false;
+  let text = '', cut = false, usage = null;
   await readSSE(r, e => {
     if (e.error) throw Error(e.error.message || 'stream error');
+    if (e.usage) usage = usageOf(e.usage) || usage;
     const ch = e.choices?.[0]; if (!ch) return;
     const piece = ch.delta?.content || '', why = ch.delta?.reasoning || ch.delta?.reasoning_content || '';
     if (piece) text += piece;
     if (piece || why) onDelta?.(piece, why);
     if (ch.finish_reason === 'length') cut = true;
   });
-  return { text, cut };
+  return { text, cut, usage };
 }
 
 // One request. Returns { text, cut } — `cut` is true when the model stopped because it hit the length limit.
@@ -133,42 +142,61 @@ async function once(p, key, model, system, messages, onDelta){
     if (isSSE(r)) return readOpenAIStream(r, onDelta);
     const d = await r.json();
     const ch = d.choices?.[0];
-    return { text: ch?.message?.content || '', cut: ch?.finish_reason === 'length' };
+    return { text: ch?.message?.content || '', cut: ch?.finish_reason === 'length', usage: usageOf(d.usage) };
   }
   if (p.kind === 'anthropic') {
     const r = await fetch(`${p.base}/messages`, { method: 'POST', headers: anthropicHeaders(key), body: JSON.stringify({ model, max_tokens: 8000, system, messages, ...(onDelta ? { stream: true } : {}) }) });
     if (!r.ok) throw Error(await errorText(r));
     if (onDelta && isSSE(r)) {
-      let text = '', cut = false;
+      let text = '', cut = false, inT = 0, outT = 0;
       await readSSE(r, e => {
         if (e.type === 'error') throw Error(e.error?.message || 'stream error');
+        if (e.type === 'message_start') { const u = usageOf(e.message?.usage); if (u) { inT = u.in; outT = u.out; } }
+        if (e.type === 'message_delta' && e.usage) { if (e.usage.output_tokens != null) outT = +e.usage.output_tokens || outT; if (e.usage.input_tokens) inT = +e.usage.input_tokens; }
         if (e.type === 'content_block_delta' && e.delta?.type === 'text_delta') { text += e.delta.text; onDelta(e.delta.text, ''); }
         else if (e.type === 'content_block_delta' && e.delta?.type === 'thinking_delta') onDelta('', e.delta.thinking || '');
         else if (e.type === 'message_delta' && e.delta?.stop_reason === 'max_tokens') cut = true;
       });
-      return { text, cut };
+      return { text, cut, usage: inT || outT ? { in: inT, out: outT } : null };
     }
     const d = await r.json();
-    return { text: (d.content || []).map(c => c.text || '').join(''), cut: d.stop_reason === 'max_tokens' };
+    return { text: (d.content || []).map(c => c.text || '').join(''), cut: d.stop_reason === 'max_tokens', usage: usageOf(d.usage) };
   }
   const headers = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key };
   if (p.id === 'openrouter') headers['X-Title'] = 'openconstructor';
   // OpenRouter reserves credit for max_tokens, so cap it; reasoning models get a modest effort so thinking doesn't eat the answer
   const extra = p.id === 'openrouter' ? { max_tokens: 12000 } : {};
   if (/gpt-oss|^o\d|reason/i.test(model)) extra.reasoning_effort = 'low';
-  if (onDelta) extra.stream = true;
+  if (onDelta) { extra.stream = true; extra.stream_options = { include_usage: true }; } // the real token counts arrive in the last chunk
   let r = await fetch(`${p.base}/chat/completions`, { method: 'POST', headers, body: JSON.stringify({ model, ...extra, messages: [{ role: 'system', content: system }, ...messages] }) });
-  // some providers reject reasoning_effort for some models — retry once without it
-  if (!r.ok && r.status === 400 && extra.reasoning_effort) { delete extra.reasoning_effort; r = await fetch(`${p.base}/chat/completions`, { method: 'POST', headers, body: JSON.stringify({ model, ...extra, messages: [{ role: 'system', content: system }, ...messages] }) }); }
+  // some providers reject reasoning_effort or stream_options — retry once without them
+  if (!r.ok && (r.status === 400 || r.status === 422) && (extra.reasoning_effort || extra.stream_options)) { delete extra.reasoning_effort; delete extra.stream_options; r = await fetch(`${p.base}/chat/completions`, { method: 'POST', headers, body: JSON.stringify({ model, ...extra, messages: [{ role: 'system', content: system }, ...messages] }) }); }
   if (!r.ok) throw Error(await errorText(r));
   if (isSSE(r)) return readOpenAIStream(r, onDelta);
   const d = await r.json();
   const ch = d.choices?.[0], c = ch?.message?.content;
-  return { text: Array.isArray(c) ? c.map(x => x.text || '').join('') : (c || ''), cut: ch?.finish_reason === 'length' };
+  return { text: Array.isArray(c) ? c.map(x => x.text || '').join('') : (c || ''), cut: ch?.finish_reason === 'length', usage: usageOf(d.usage) };
 }
+
+// Token counter (an estimate, ~3.6 characters a token): `turn` is the current request, `session` everything since the page opened.
+// The composer shows it live while the agents write ('oc:tokens' events, at most every 80 ms).
+export const tokens = { turnIn: 0, turnOut: 0, session: 0, live: 0, approx: false };
+const est = s => Math.ceil(String(s || '').length / 3.6);
+let tokTimer = 0;
+const tokEmit = () => { if (tokTimer || typeof CustomEvent === 'undefined') return; tokTimer = setTimeout(() => { tokTimer = 0; globalThis.dispatchEvent?.(new CustomEvent('oc:tokens', { detail: { ...tokens } })); }, 80); };
+const tokAdd = (i, o) => { tokens.turnIn += i; tokens.turnOut += o; tokens.session += i + o; tokEmit(); };
+export function tokensTurn(){ tokens.turnIn = 0; tokens.turnOut = 0; tokens.approx = false; tokEmit(); }
+const tokLive = d => { tokens.live = Math.max(0, tokens.live + d); tokEmit(); };
 
 // Full answer: if the model is cut off by its output limit, ask it to continue (up to 3 times) and glue the parts.
 export async function chat(p, key, model, system, user, images = [], onDelta = null){
+  tokLive(1);
+  try { return await chatAll(p, key, model, system, user, images, onDelta); } finally { tokLive(-1); }
+}
+async function chatAll(p, key, model, system, user, images, onDelta){
+  const outer = onDelta;
+  let streamed = 0;
+  onDelta = (piece, why) => { const n = est((piece || '') + (why || '')); streamed += n; tokAdd(0, n); outer?.(piece, why); };
   if (p.kind === 'proxy' && images.length) throw Error('Screenshots need a vision model — connect Gemini or OpenAI with your own key');
   const content = !images.length ? user
     : p.kind === 'anthropic' ? [...images.map(url => { const [, type, data] = url.match(/^data:([^;]+);base64,(.*)$/) || []; return { type: 'image', source: { type: 'base64', media_type: type, data } }; }), { type: 'text', text: user }]
@@ -176,7 +204,13 @@ export async function chat(p, key, model, system, user, images = [], onDelta = n
   const messages = [{ role: 'user', content }];
   let out = '';
   for (let i = 0; i < 4; i++) {
-    const { text, cut } = await once(p, key, model, system, messages, onDelta);
+    const inEst = est(system) + messages.reduce((n, x) => n + est(typeof x.content === 'string' ? x.content : user), 0) + images.length * 800;
+    tokAdd(inEst, 0);
+    streamed = 0;
+    const { text, cut, usage } = await once(p, key, model, system, messages, outer ? onDelta : null);
+    // the provider's own numbers replace the estimate; without them the estimate stays and the counter shows "~"
+    if (usage && (usage.in || usage.out)) tokAdd(usage.in - inEst, (usage.out || (streamed || est(text))) - streamed);
+    else { if (!streamed) tokAdd(0, est(text)); tokens.approx = true; tokEmit(); }
     out += text;
     if (!cut || !text) break;
     messages.push({ role: 'assistant', content: text }, { role: 'user', content: 'You were cut off. Continue EXACTLY where you stopped — no repetition, no preamble, no code fence reopening.' });

@@ -2,7 +2,7 @@ openconstructor — карта проекта
 ==============================
 Зачем этот файл: чтобы ИИ-помощник (и люди) не перечитывали весь код в каждой сессии.
 Читать его ПЕРВЫМ, потом открывать только нужные места. Обновлять, когда меняется структура.
-Последнее обновление: 2026-11-12
+Последнее обновление: 2026-11-13
 
 КАК УСТРОЕНО В ДВУХ СЛОВАХ
 --------------------------
@@ -35,7 +35,10 @@ studio.js (~2000 строк) — ядро редактора. Ориентиры
   "function buildHTML"  итоговый HTML страницы (экспорт/публикация); hasApps() → withAppHead
   "function openDevicePreview"  просмотр телефон/планшет/компьютер
   "function setPlaying" ▶ play: iframe получают мышь
-  "variantsBtn" / "appBtn"  переключатели ×3 и ⚡ app рядом с выбором модели
+  "variantsBtn" / "appBtn"  переключатели ×3 и app — СКРЫТЫ (display:none), остаются в DOM для тестов/Code;
+                          управляются /командами: slashCommands(), slashModes(), runSlash(), SLASH_PROMPTS
+  "Agent team"            agentsN (oc-agents-n, 3–20; free AI ≤ 9), myAgents (oc-my-agents: name, role, model, on),
+                          окно agentsModal (paintAgents/openAgents)
   "async function runAI"  весь запрос к ИИ: системный промпт (const system), appMode, cineMode,
                           варианты ×3, 3D, веб-поиск, вставка результата на холст
   "export const studio" API для остальных модулей (items, page, html, update, load, ai, setAppMode, appMode,
@@ -51,7 +54,7 @@ code.js + code.css — экран «openconstructor code» (кнопка «</> c
   возвращается при закрытии), снизу строка состояния (ошибки, авто-починка, строки по языкам, Стр/Стлб).
   Размеры панелей тянутся (data-sash), всё хранится в localStorage 'oc-code-ui2'. Ctrl+S в коде = «apply».
   После каждой правки «+N −M» в заголовке и заметка по файлам в чате (track, postChange).
-  Стиль: терминальный, плоский акцент #ff5a36 (коралл, цвет спутника в лого; текст на нём белый), без эмодзи и фиолетовых градиентов. openCode({ prompt, appId }), closeCode().
+  Стиль: терминальный, монохромный акцент #f2f2f2 (текст на нём тёмный), без эмодзи и фиолетовых градиентов. openCode({ prompt, appId }), closeCode().
   Запросы к ИИ здесь меняют только приложение в фокусе: studio.setCodeFocus(id) → runAI берёт его как target
   (null = сделать новое; undefined = обычный режим холста).
 apps.js — мини-приложения: APP_CSP, APP_SHIM (localStorage в изолированном окне), appDoc, appPreview,
@@ -64,6 +67,14 @@ ai-parse.js — разбор ответа ИИ: строка JSON-заголов
 providers.js — провайдеры ИИ и вызов chat(); keyvault.js — ключи пользователя (только в браузере).
 chat-ui.js — сообщения чата, «думающий» блок со шагами; значок «думает» = лого, плоскости которого
   по очереди «складываются» (LOGO_THINK, CSS .fold-think в studio.css).
+build-stage.js — «стройка на глазах» ПРЯМО НА ХОЛСТЕ: черновик .bs-draft кладётся в #board (масштаб/скролл вместе
+  с холстом) — в конец страницы для новой страницы, в свободное место для компонента, поверх правимого элемента
+  при правке (сам элемент скрыт). Пока модель думает — скелет страницы (или текущая страница). Код из стрима
+  рендерится по секциям (morph: узлы сопоставляются по тегу+классу, готовые не перерисовываются; при правке хвост
+  старой страницы остаётся). Курсор ИИ на каждую секцию (до 20, подписан именем секции); курсор пишущейся секции
+  идёт за последней строкой, остальные «осматривают» свои блоки. Холст сам прокручивается за стройкой.
+  Без стрима — replay готового кода за ~2.4 с. Подключение: studio.js liveStage(target) → thinking({ stage }) в
+  chat-ui.js; draftBottom растит высоту страницы. Выключено на телефоне и при reduced motion. e2e: "live build".
 thinking-cursor.js — пока ИИ работает, а чат не на экране, у курсора мыши плашка с лого и словом из чата.
 layout.js — рейка слева + ОДНА панель: вид chat | library | layers (ключ localStorage 'oc-layout2').
   Ctrl+B — скрыть/показать панель, Ctrl+Shift+B — чат. Событие oc:show-view / oc:open-chat переключают вид.
@@ -72,16 +83,21 @@ layout.js — рейка слева + ОДНА панель: вид chat | libra
   (favicon-48/96, icon-192/512, apple-touch-icon, favicon.ico) — нарисованы скриптом PIL из тех же многоугольников.
   og.png обновлён (1200×630, исходник — HTML-макет, рендер через headless Chrome). Пиксельный куб в cli/ui.mjs ещё старый.
 Поле ввода чата — React-компонент в src/main.jsx (#react-composer textarea), он кладёт текст в скрытый #prompt и жмёт #send.
+  «/» открывает меню команд (.slash-menu: /agents /new /app /x3 /polish /mobile /copy /fix /3d), включённые режимы —
+  чипы .mode-chip слева, счётчик токенов .tok-chip (событие oc:tokens из providers.js: tokens, tokensTurn()). Во время стрима — оценка ~3.6 симв/токен, после ответа заменяется точным usage провайдера (stream_options.include_usage; Anthropic message_start/message_delta; worker пробрасывает usage бесплатного ИИ). Без usage остаётся «~».
+  $('send').onclick разбирает "/cmd текст": toggle/panel выполняются сразу, prompt-команды добавляют custom.extra, /new → custom.swarm.
 publish.js — окно публикации, адрес, свои домены; без входа просит аккаунт (askSignIn).
 projects.js — облачные проекты + карточка «страница только в этом браузере» (maybeNudge).
 local-projects.js — список проектов на этом устройстве, startNew().
 auth.js — вход (Supabase), openAuth('signup'|'signin'), событие oc:auth (detail = user).
 screens.js — несколько экранов в проекте; versions.js — история версий; inline-edit.js — правка текста двойным кликом.
 exporters.js — экспорт в React/Vue/Svelte/Tailwind/Roblox/LÖVE (скрипты вырезает!); export-zip.js — .zip.
-scene3d.js — 3D из JSON (Three.js); cine-template.js + presets-cine.js — «кинематографичные» сайты.
+scene3d.js — 3D из JSON (Three.js); renderModel(query) — объекты для страниц по токену <img src="model:knot chrome #ff5a36">
+  (формы, материалы MeshPhysical: chrome/gold/glass/iridescent/pearl/plastic/clay/neon…, "letter R" — 3D-буквы шрифтом helvetiker),
+  прозрачная картинка ~10 КБ за ~0.2 с; resolveMedia в studio.js (MODEL_MAX 8). e2e: "3D objects"; cine-template.js + presets-cine.js — «кинематографичные» сайты.
 contrast.js — чинит нечитаемый текст (не применяется к приложениям). track.js — счётчики воронки
   (список событий в track.js И в supabase/events.sql — новые события требуют SQL).
-presets*.js — каталог из 300+ компонентов; categories.js — разделы каталога.
+presets*.js — каталог: 535 видимых компонентов (presets-ui.js: 40 маленьких UI-компонентов × 5 стилей = 200, кодом THEMES × TYPES) + 200 скрытых секций presets-v4.js (25 типов × 8 стилей, hidden:true — только образцы для агентов роя, в панели не показываются); categories.js — разделы каталога.
 src/Welcome.jsx + src/welcome.css — стартовый экран: hero.
   Над заголовком крупное лого (.wl-mark): при загрузке плоскости буквы складываются по очереди.
   Стиль стартового экрана: шрифт Geist (Google Fonts) для текста, JetBrains Mono только для мелких акцентов
@@ -144,3 +160,36 @@ promo/ — материалы для соцсетей (roblox-export.gif: шаб
 Этап 2: экспорт в папку на компьютере (File System Access API в Chrome/Edge, иначе .zip);
   экспорт в React и т.п. сейчас вырезает скрипты — для приложений нужен свой путь.
 Этап 3: хранение данных приложений (ответы, заявки) — нужен SQL в Supabase.
+
+РОЙ АГЕНТОВ (studio.js buildSwarm, 2026-11-13)
+---------------------------------------------
+Новая страница (пустой холст или явное «новый/new/с нуля», SWARM_RE + SWARM_NEW): сначала «архитектор» — один вызов,
+JSON { name, reply, css (общая дизайн-система на .pg), sections:[{kind, brief}] } (5–7 секций), затем по ОДНОМУ
+параллельному вызову на секцию (SECTION MODE: <style> с селекторами .sN + один <section class="sN">). Каждый агент
+стримит в свой слот черновика (build-stage.js swarm()/part()), у каждого свой курсор. Итог: <style>css</style>
+<div class="pg">секции</div> → обычная обработка (фото, model:, контраст, motion). План не разобрался → обычный путь.
+Сервер (worker.js) считает до 10 вызовов одного X-OC-Turn за одну генерацию (было 4) — НУЖЕН deploy воркера.
+e2e: "swarm". thinking() отдаёт стройку через stop.stage().
+Число секций = agentLimit() (настройка «Команда агентов»); свои агенты пользователя (myAgents) встают секциями
+перед cta/contact/footer, планировщик их не планирует, каждый может идти на своей модели (свой провайдер и ключ).
+
+ВНЕШНИЙ ВИД (2026-11-13): монохром — акцент #f2f2f2, текст на акценте var(--on-accent) #0a0a0a (светлая тема:
+акцент #18181b). Коралл #ff5a36 убран из CSS/JS/лого; PNG-иконки и og.png ещё коралловые.
+Стартовый экран: герой с орбитами (Welcome.jsx OrbitHero): 3D-лого public/hero-mark.webp (scene3d renderModel
+'openconstructor chrome #8a8f9c', 900px) + логотипы моделей на трёх наклонных эллипсах (id градиентов уникальны: orbLogo).
+Пустой холст: блок «Get started» (#emptyStart, логотипы провайдеров → openSettings(pid)).
+Окно «AI keys» (#settings): строка на провайдера с круглым тумблером .switch; вкл — поле ключа, выкл — ключ
+  СОХРАНЯЕТСЯ, провайдер выключен (keysOff, localStorage 'oc-keys-off', active(pid)); «удалить ключ» — data-forget.
+  Список моделей = бесплатный ИИ + только включённые провайдеры со своим ключом (OpenRouter без ключа больше не показывается).
+Орбита: наведение на логотип — орбиты замирают, точки загораются, карточка ORBIT_INFO (вендор, семейство, через каких провайдеров).
+Бейдж $0 (.model-free, isFree()) у бесплатных моделей в списке. Новые провайдеры: Z.ai, SiliconFlow, Cohere,
+Hugging Face, LLM7 (все с CORS). Логотипы — LobeHub Icons (MIT), src/logos; VENDOR_LOGOS сопоставляет вендоров.
+Холст: в nodeDoc *{animation-timeline:auto!important} — scroll-анимации показывают конечное состояние.
+Агенты роя берут за основу компонент каталога: pickRef(kind) в studio.js (REF_KINDS → похожая полноширинная секция).
+Стройка рисует линии стыковки (build-stage.js drawLinks: швы между секциями, нити от курсоров к якорям).
+Плавающий чат (layout.js, по умолчанию на десктопе ≥900px): окно ответов поверх холста (тащить за шапку, угол — размер,
+двойной клик — сброс; L.fx/fy/fw/fh), поле ввода — плашка .float-composer внизу холста; ⇄ — закрепить сбоку / снова плавающее.
+Орбита: у каждого логотипа свои часы — останавливается только тот, на который навели.
+Плашка ввода (layout.js + studio.css «Liquid-glass»): одна стеклянная плашка, модель справа у кнопки отправки; шторка .fc-grab сверху
+(клик или потянуть вниз) прячет её, остаётся .fc-mini «Ask AI /» (клик или клавиша / возвращает), L.fcHidden.
+Окно чата, вытащенное за край холста, прячется в край (L.edge left|right, язычок .edge-tab выдвигает обратно); закрытие анимировано.

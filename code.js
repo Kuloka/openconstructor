@@ -139,8 +139,9 @@ const frame = $('cwFrame'), iframe = $('cwIframe'), stage = $('cwStage'), wInput
 /* ── The chat moves in while the workspace is open, then goes back to its place ── */
 const chat = $('chatPanel');
 let home = null;
-function takeChat(){ if (home || !chat) return; home = { parent: chat.parentNode, next: chat.nextSibling }; $('cwChat').append(chat); }
-function giveChat(){ if (!home) return; home.parent.insertBefore(chat, home.next); home = null; window.dispatchEvent(new Event('resize')); }
+// the floating chat (layout.js) turns back into a plain panel here: the message box returns inside it
+function takeChat(){ if (home || !chat) return; document.body.classList.add('chat-in-code'); window.dispatchEvent(new Event('oc:layout')); home = { parent: chat.parentNode, next: chat.nextSibling }; $('cwChat').append(chat); }
+function giveChat(){ if (!home) return; home.parent.insertBefore(chat, home.next); home = null; document.body.classList.remove('chat-in-code'); window.dispatchEvent(new Event('oc:layout')); window.dispatchEvent(new Event('resize')); }
 
 /* ── Which app is open ── */
 let focus = null, isOpen = false, prevAppMode = false, lastDoc = '';

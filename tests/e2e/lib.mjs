@@ -42,7 +42,7 @@ export async function editor(url, { reply = () => 'ok', lang = 'en', connect = t
         posts.push(rq.postData || '');
         const r = reply(rq.postData || '');
         if (r?.sse) { type = 'text/event-stream'; body = r.sse.map(c => 'data: ' + JSON.stringify(c) + '\n\n').join('') + 'data: [DONE]\n\n'; }
-        else body = JSON.stringify({ choices: [{ message: { content: r }, finish_reason: 'stop' }] });
+        else body = JSON.stringify({ choices: [{ message: { content: r }, finish_reason: 'stop' }], usage: { prompt_tokens: 1234, completion_tokens: 56 } });
       }
       send('Fetch.fulfillRequest', { requestId: id, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: type }, ...cors], body: Buffer.from(body).toString('base64') });
     }
@@ -63,6 +63,8 @@ export async function editor(url, { reply = () => 'ok', lang = 'en', connect = t
   await send('Page.navigate', { url }); await sleep(3000);
   if (connect) { // connect the (faked) Groq provider
     await ev(`(document.getElementById('settingsButton').click(), 1)`); await sleep(300);
+    // the key field shows once the service's switch is on
+    await ev(`(document.querySelector('#providers [data-key=groq]') || document.querySelector('#providers [data-switch=groq]').click(), 1)`); await sleep(150);
     await ev(`(() => { const i = document.querySelector('#providers [data-key=groq]'); i.value = 'gsk_test'; i.dispatchEvent(new Event('change', { bubbles: true })); document.querySelector('[data-close="settings"]').click(); return 1; })()`);
     await sleep(1500);
   }

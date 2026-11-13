@@ -32,7 +32,7 @@ function badge(slug){
   const box = 'all:initial;position:fixed;right:12px;bottom:12px;z-index:2147483647;display:flex;align-items:center;gap:10px;padding:6px 10px;border:1px solid #363636;border-radius:6px;background:#111111ee;box-shadow:0 6px 24px #0008;font:12px/1.4 ui-monospace,Consolas,monospace;color:#c4c4c4';
   const link = 'all:unset;cursor:pointer;color:#f2f2f2;font:inherit';
   const muted = 'all:unset;cursor:pointer;color:#8e8e8e;font:inherit;text-decoration:underline';
-  return `\n<div data-oc-badge style="${box}"><a href="${HOME}" target="_blank" rel="noopener" style="${link}">Made with <b style="all:unset;color:#ff5a36;font-weight:600">openconstructor</b></a><a href="${esc(report)}" target="_blank" rel="noopener" style="${muted}">report</a></div>\n`;
+  return `\n<div data-oc-badge style="${box}"><a href="${HOME}" target="_blank" rel="noopener" style="${link}">Made with <b style="all:unset;color:#f2f2f2;font-weight:600">openconstructor</b></a><a href="${esc(report)}" target="_blank" rel="noopener" style="${muted}">report</a></div>\n`;
 }
 
 // Social preview tags (each skipped when the page already declares its own)
@@ -75,8 +75,8 @@ function inject(html, slug, title, hash = ''){
 function notice(status, title, text, link = { href: HOME, label: 'open openconstructor' }){
   const body = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} · openconstructor</title>
 <style>:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:#0a0a0a;color:#f2f2f2;font:14px/1.6 "JetBrains Mono",Consolas,ui-monospace,monospace}
-main{max-width:440px;text-align:center}.code{font-size:56px;font-weight:700;color:#ff5a36;letter-spacing:-.02em;margin:0}h1{font-size:15px;font-weight:600;margin:6px 0 4px;text-transform:uppercase;letter-spacing:.08em;color:#c4c4c4}p{color:#8e8e8e;margin:0 0 22px}
-a{display:inline-block;padding:8px 16px;border-radius:4px;background:#ff5a36;color:#ffffff;font-weight:600;text-decoration:none}a:hover{background:#ff7a5c}</style></head>
+main{max-width:440px;text-align:center}.code{font-size:56px;font-weight:700;color:#f2f2f2;letter-spacing:-.02em;margin:0}h1{font-size:15px;font-weight:600;margin:6px 0 4px;text-transform:uppercase;letter-spacing:.08em;color:#c4c4c4}p{color:#8e8e8e;margin:0 0 22px}
+a{display:inline-block;padding:8px 16px;border-radius:4px;background:#f2f2f2;color:#ffffff;font-weight:600;text-decoration:none}a:hover{background:#d4d4d4}</style></head>
 <body><main><p class="code">${status}</p><h1>${esc(title)}</h1><p>${esc(text)}</p><a href="${esc(link.href)}">${esc(link.label)}</a></main></body></html>`;
   return new Response(body, { status, headers: { ...PAGE_HEADERS, 'Cache-Control': 'no-store' } });
 }
@@ -181,7 +181,7 @@ async function notifyAuthor(env, slug, data){
   const pageUrl = `${HOME}/p/${slug}`, title = page.title || slug;
   const html = `<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:560px;margin:0 auto;color:#18181b">
 <p style="margin:0 0 4px;color:#71717a;font-size:13px">New message from your page</p>
-<h2 style="margin:0 0 16px;font-size:20px"><a href="${pageUrl}" style="color:#ff5a36;text-decoration:none">${esc(title)}</a></h2>
+<h2 style="margin:0 0 16px;font-size:20px"><a href="${pageUrl}" style="color:#f2f2f2;text-decoration:none">${esc(title)}</a></h2>
 <table style="width:100%;border-collapse:collapse;font-size:14px">${rows.map(([k, v]) => `<tr><td style="padding:8px 12px 8px 0;color:#71717a;vertical-align:top;white-space:nowrap">${esc(k)}</td><td style="padding:8px 0;white-space:pre-wrap">${esc(v)}</td></tr>`).join('')}</table>
 <p style="margin:20px 0 0;color:#71717a;font-size:12px">All messages are in the editor: publish → your published pages → ✉. ${replyTo ? 'Reply to this e-mail to answer the sender.' : ''} To stop these e-mails, switch off ✉ e-mail for this page there.</p>
 <p style="margin:8px 0 0;color:#a1a1aa;font-size:12px">openconstructor · <a href="${HOME}" style="color:#a1a1aa">openconstructor.pw</a></p></div>`;
@@ -504,12 +504,12 @@ const waiMax = (model, max) => Math.min(max, /gpt-oss/.test(model) ? AI_MAX_TOKE
 // (`npx wrangler secret put <SECRET>`); when one is out of quota (429) or down (5xx), the next one answers.
 // Cloudflare Workers AI needs no key and goes first.
 const BACKENDS = [
-  { id: 'openrouter', secret: 'OPENROUTER_API_KEY', url: 'https://openrouter.ai/api/v1/chat/completions', model: 'openrouter/free', extra: { } },
-  { id: 'gemini', secret: 'GEMINI_API_KEY', url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', model: 'gemini-2.5-flash', extra: { reasoning_effort: 'low' } },
+  { id: 'openrouter', secret: 'OPENROUTER_API_KEY', url: 'https://openrouter.ai/api/v1/chat/completions', model: 'openrouter/free', extra: { }, usage: true },
+  { id: 'gemini', secret: 'GEMINI_API_KEY', url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', model: 'gemini-2.5-flash', extra: { reasoning_effort: 'low' }, usage: true },
   // Gemma on the same key: ~14k free requests a day. It takes no system message and at most 8192 output tokens.
-  { id: 'gemma', secret: 'GEMINI_API_KEY', url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', model: 'gemma-3-27b-it', noSystem: true, maxOut: 8192, extra: { } },
+  { id: 'gemma', secret: 'GEMINI_API_KEY', url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', model: 'gemma-3-27b-it', noSystem: true, maxOut: 8192, extra: { }, usage: true },
   { id: 'mistral', secret: 'MISTRAL_API_KEY', url: 'https://api.mistral.ai/v1/chat/completions', model: 'mistral-medium-latest', extra: { } },
-  { id: 'groq', secret: 'GROQ_API_KEY', url: 'https://api.groq.com/openai/v1/chat/completions', model: 'openai/gpt-oss-120b', extra: { reasoning_effort: 'low' } },
+  { id: 'groq', secret: 'GROQ_API_KEY', url: 'https://api.groq.com/openai/v1/chat/completions', model: 'openai/gpt-oss-120b', extra: { reasoning_effort: 'low' }, usage: true },
 ];
 const freeBackends = env => [...(env.AI ? WORKERS_AI_MODELS.map(model => ({ id: 'workers-ai', model })) : []), ...BACKENDS.filter(b => env[b.secret])];
 const freeBackend = env => freeBackends(env)[0]?.id || null;
@@ -537,7 +537,7 @@ function foldSystem(messages){
   const content = typeof u.content === 'string' ? sys + '\n\n' + u.content : [{ type: 'text', text: sys }, ...(u.content || [])];
   return rest.map((m, j) => j === i ? { ...m, content } : m);
 }
-const upstreamBody = (b, body, stream) => JSON.stringify({ model: b.model, messages: b.noSystem ? foldSystem(body.messages) : body.messages, max_tokens: b.maxOut ? Math.min(body.max_tokens, b.maxOut) : body.max_tokens, ...(stream ? { stream: true } : {}), ...b.extra });
+const upstreamBody = (b, body, stream) => JSON.stringify({ model: b.model, messages: b.noSystem ? foldSystem(body.messages) : body.messages, max_tokens: b.maxOut ? Math.min(body.max_tokens, b.maxOut) : body.max_tokens, ...(stream ? { stream: true, ...(b.usage ? { stream_options: { include_usage: true } } : {}) } : {}), ...b.extra });
 async function callOpenAICompatible(env, b, body){
   const headers = { Authorization: `Bearer ${env[b.secret]}`, 'Content-Type': 'application/json' };
   if (b.id === 'openrouter') { headers['HTTP-Referer'] = 'https://openconstructor.pw'; headers['X-Title'] = 'openconstructor'; }
@@ -552,7 +552,7 @@ async function callWorkersAI(env, body, model){
   try {
     const out = await env.AI.run(model, { messages: body.messages, max_tokens: waiMax(model, body.max_tokens) });
     const content = typeof out === 'string' ? out : out?.response ?? out?.choices?.[0]?.message?.content ?? '';
-    return { status: 200, be, text: JSON.stringify({ choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: out?.finish_reason === 'length' ? 'length' : 'stop' }] }) };
+    return { status: 200, be, text: JSON.stringify({ choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: out?.finish_reason === 'length' ? 'length' : 'stop' }], ...(out?.usage ? { usage: out.usage } : {}) }) };
   } catch (err) {
     const msg = String(err?.message || err);
     return { status: /limit|quota|neurons|429/i.test(msg) ? 429 : 502, text: msg, be };
@@ -611,6 +611,7 @@ function normalizeSSE(){
     const content = ch?.delta?.content ?? (typeof j.response === 'string' ? j.response : ''), reasoning = ch?.delta?.reasoning ?? ch?.delta?.reasoning_content ?? '';
     const finish = ch?.finish_reason === 'length' ? 'length' : ch?.finish_reason ? 'stop' : null;
     if (content || reasoning || finish) ctrl.enqueue(enc.encode(sseChunk(content, reasoning, finish)));
+    if (j.usage && (j.usage.prompt_tokens || j.usage.completion_tokens)) ctrl.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: j.usage.prompt_tokens || 0, completion_tokens: j.usage.completion_tokens || 0 } })}\n\n`));
   };
   return new TransformStream({
     transform(chunk, ctrl){ buf += dec.decode(chunk, { stream: true }); let i; while ((i = buf.indexOf('\n')) >= 0) { line(buf.slice(0, i), ctrl); buf = buf.slice(i + 1); } },
@@ -618,7 +619,7 @@ function normalizeSSE(){
   });
 }
 // A whole (non-streamed) completion as a one-chunk stream, so the client handles one format
-const oneShotSSE = text => { let content = ''; try { content = JSON.parse(text).choices?.[0]?.message?.content || ''; } catch {} return new Response(sseChunk(content, '', 'stop') + 'data: [DONE]\n\n').body; };
+const oneShotSSE = text => { let content = '', usage = null; try { const j = JSON.parse(text); content = j.choices?.[0]?.message?.content || ''; usage = j.usage || null; } catch {} return new Response(sseChunk(content, '', 'stop') + (usage ? `data: ${JSON.stringify({ choices: [], usage })}\n\n` : '') + 'data: [DONE]\n\n').body; };
 // Like callUpstream, but returns { status, stream } — falls through to the next backend until one starts answering
 async function callUpstreamStream(env, body){
   let last = null;
@@ -662,11 +663,12 @@ async function aiChat(request, env){
   // Signed in: the user's JWT goes to PostgREST, auth.uid() is the user whose quota is counted.
   // Signed out: a few generations a day per visitor, so people can try it before making an account.
   // Calls that belong to one message (a web search and then the answer, a retry of a garbled answer)
-  // carry the same X-OC-Turn id and count once: up to 4 calls per id within 10 minutes.
+  // carry the same X-OC-Turn id and count once: up to 10 calls per id within 10 minutes (a page built by
+  // parallel section agents is a planner call plus one call per section).
   const turn = /^[0-9a-f]{16,40}$/.test(request.headers.get('X-OC-Turn') || '') ? 'turn:' + request.headers.get('X-OC-Turn') : '';
   const seen = turn && env.SYNC ? +(await env.SYNC.get(turn)) || 0 : 0;
   let quota = {};
-  if (seen > 0 && seen < 4) await env.SYNC.put(turn, String(seen + 1), { expirationTtl: 600 });
+  if (seen > 0 && seen < 10) await env.SYNC.put(turn, String(seen + 1), { expirationTtl: 600 });
   else {
     const t = token ? await takeQuota(env, token) : await anonQuota(request, env);
     if (t.error) return t.error;
