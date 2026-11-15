@@ -397,6 +397,19 @@ async function ddgSearch(q){
   }
   return out;
 }
+// DuckDuckGo's text-only page: answers when the html page turns server requests away
+async function ddgLite(q){
+  const r = await fetch('https://lite.duckduckgo.com/lite/', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'Mozilla/5.0 (compatible; openconstructor-web/1.0)' }, body: 'q=' + encodeURIComponent(q), signal: AbortSignal.timeout(5000) });
+  if (!r.ok) return [];
+  const html = await r.text(), out = [], snippets = [...html.matchAll(/class=['"]result-snippet['"][^>]*>([\s\S]*?)<\/td>/g)].map(m => decodeEntities(m[1].replace(/<[^>]+>/g, '')).trim());
+  for (const [i, m] of [...html.matchAll(/<a[^>]+href=['"]([^'"]+)['"][^>]*class=['"]result-link['"][^>]*>([\s\S]*?)<\/a>/g)].entries()) {
+    let link = decodeEntities(m[1]); const uddg = link.match(/[?&]uddg=([^&]+)/); if (uddg) link = decodeURIComponent(uddg[1]);
+    if (/duckduckgo\.com\/y\.js|ad_provider/.test(link)) continue;
+    out.push({ title: decodeEntities(m[2].replace(/<[^>]+>/g, '')).trim(), url: link.startsWith('//') ? 'https:' + link : link, snippet: snippets[i] || '' });
+    if (out.length >= 6) break;
+  }
+  return out;
+}
 async function wikiSearch(q){
   const r = await fetch('https://en.wikipedia.org/w/api.php?action=query&list=search&format=json&srlimit=5&srsearch=' + encodeURIComponent(q), { headers: { 'User-Agent': 'openconstructor-web/1.0 (https://openconstructor.pw)' }, signal: AbortSignal.timeout(5000) });
   if (!r.ok) return [];
@@ -419,6 +432,7 @@ async function web(request, ctx, url){
     try { data = { pages: [await readPage(u, 7000)] }; } catch (e) { return fail(502, `Couldn't open the site (${e.message})`); }
   } else {
     let results = await ddgSearch(q).catch(() => []);
+    if (!results.length) results = await ddgLite(q).catch(() => []);
     if (!results.length) results = await wikiSearch(q).catch(() => []);
     // the text of the first two readable results, for facts the snippets don't carry
     const pages = (await Promise.all(results.slice(0, 3).map(r => { const u = publicUrl(r.url); return u ? readPage(u, 2500).catch(() => null) : null; }))).filter(Boolean).slice(0, 2);
@@ -502,7 +516,8 @@ const AI_MAX_BODY = 200_000;
 const AI_MAX_TOKENS = 8000;
 // Open models on Cloudflare's GPUs through the AI binding: no API keys. Tried first, in this order
 // (both work on the Workers Free plan; ~10k neurons a day, then the keyed backends below answer).
-const WORKERS_AI_MODELS = ['@cf/openai/gpt-oss-120b', '@cf/meta/llama-3.3-70b-instruct-fp8-fast'];
+// the last one is the thrifty fallback: Qwen3 30B-A3B costs the fewest neurons (~2M input / ~330k output tokens a day free)
+const WORKERS_AI_MODELS = ['@cf/openai/gpt-oss-120b', '@cf/meta/llama-3.3-70b-instruct-fp8-fast', '@cf/qwen/qwen3-30b-a3b-fp8'];
 // output limit per Workers AI model: gpt-oss takes a whole page (8000), llama 3.3 stops at 4096
 const waiMax = (model, max) => Math.min(max, /gpt-oss/.test(model) ? AI_MAX_TOKENS : 4096);
 
@@ -511,13 +526,20 @@ const waiMax = (model, max) => Math.min(max, /gpt-oss/.test(model) ? AI_MAX_TOKE
 // Cloudflare Workers AI needs no key and goes first.
 const BACKENDS = [
   { id: 'openrouter', secret: 'OPENROUTER_API_KEY', url: 'https://openrouter.ai/api/v1/chat/completions', model: 'openrouter/free', extra: { }, usage: true },
-  { id: 'gemini', secret: 'GEMINI_API_KEY', url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', model: 'gemini-2.5-flash', extra: { reasoning_effort: 'low' }, usage: true },
+  // first: the best free designer (scripts/eval/out/after-gemini vs before-gemini). Its free tier is ~10 requests a minute, so
+  // a refusal (429, or 400 'location not supported' in the EU) falls through at once to Flash-Lite, then to the rest.
+  { id: 'gemini', first: true, secret: 'GEMINI_API_KEY', url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', model: 'gemini-2.5-flash', extra: { reasoning_effort: 'low' }, usage: true },
+  { id: 'gemini-lite', first: true, secret: 'GEMINI_API_KEY', url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', model: 'gemini-2.5-flash-lite', extra: { reasoning_effort: 'low' }, usage: true },
   // Gemma on the same key: ~14k free requests a day. It takes no system message and at most 8192 output tokens.
   { id: 'gemma', secret: 'GEMINI_API_KEY', url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', model: 'gemma-3-27b-it', noSystem: true, maxOut: 8192, extra: { }, usage: true },
   { id: 'mistral', secret: 'MISTRAL_API_KEY', url: 'https://api.mistral.ai/v1/chat/completions', model: 'mistral-medium-latest', extra: { } },
   { id: 'groq', secret: 'GROQ_API_KEY', url: 'https://api.groq.com/openai/v1/chat/completions', model: 'openai/gpt-oss-120b', extra: { reasoning_effort: 'low' }, usage: true },
+  // Cerebras: ~1M free tokens a day, very fast; skipped until CEREBRAS_API_KEY is set (npx wrangler secret put CEREBRAS_API_KEY)
+  { id: 'cerebras', secret: 'CEREBRAS_API_KEY', url: 'https://api.cerebras.ai/v1/chat/completions', model: 'gpt-oss-120b', extra: { reasoning_effort: 'low' }, usage: true },
 ];
-const freeBackends = env => [...(env.AI ? WORKERS_AI_MODELS.map(model => ({ id: 'workers-ai', model })) : []), ...BACKENDS.filter(b => env[b.secret])];
+const freeBackends = env => [...BACKENDS.filter(b => b.first && env[b.secret]), ...(env.AI ? WORKERS_AI_MODELS.map(model => ({ id: 'workers-ai', model })) : []), ...BACKENDS.filter(b => !b.first && env[b.secret])];
+// worth trying the next backend: limits, outages, auth, size — and a region the backend refuses (Gemini's free tier in the EU)
+const tryNext = r => r.status === 429 || r.status === 413 || r.status >= 500 || r.status === 402 || r.status === 401 || r.status === 403 || (r.status === 400 && /location|region|country|not supported/i.test(String(r.text)));
 const freeBackend = env => freeBackends(env)[0]?.id || null;
 
 // Call the upstreams in order and always answer in OpenAI chat-completions shape: { status, text, be }.
@@ -528,7 +550,7 @@ async function callUpstream(env, body){
     if (r.status >= 200 && r.status < 300) return r;
     last = r;
     console.error('ai: backend failed, trying next', b.id, r.status, String(r.text).slice(0, 200));
-    if (!(r.status === 429 || r.status === 413 || r.status >= 500 || r.status === 402 || r.status === 401 || r.status === 403)) break; // a real request error: don't retry elsewhere (413: the next backend may take bigger requests)
+    if (!tryNext(r)) break; // a real request error: don't retry elsewhere (413: the next backend may take bigger requests)
   }
   return last || { status: 503, text: 'no backend', be: null };
 }
@@ -651,7 +673,7 @@ async function callUpstreamStream(env, body){
     }
     last = r;
     console.error('ai stream: backend failed, trying next', b.id, r.status, String(r.text).slice(0, 200));
-    if (!(r.status === 429 || r.status === 413 || r.status >= 500 || r.status === 402 || r.status === 401 || r.status === 403)) break;
+    if (!tryNext(r)) break;
   }
   return last || { status: 503, text: 'no backend', be: null };
 }
@@ -803,8 +825,9 @@ async function aiQuota(request, env){
 
 /* ── Stock photos for AI-built pages ─────────────────────────
    GET /api/photo?q=latte+art&o=landscape|portrait|square&i=0
-   Returns one image (bytes) for a short search query. Pexels when PEXELS_API_KEY is set (free key,
-   no attribution required), otherwise Openverse limited to CC0 / public domain (no key, no attribution).
+   Returns one image (bytes) for a short search query. Pexels when PEXELS_API_KEY is set, otherwise Openverse
+   CC0 / public domain (no key): StockSnap first, then all photographs, only results whose title or tags name the
+   subject. No real match → a photo-real FLUX picture on Workers AI (PHOTO_AI_DAILY a day).
    The editor turns it into a data: URL, so pages stay self-contained. Cached at the edge for a week. */
 const PHOTO_UA = 'openconstructor/1.0 (+https://openconstructor.pw)';
 async function photoSearch(env, q, o){
@@ -817,39 +840,73 @@ async function photoSearch(env, q, o){
     }
   }
   const aspect = o === 'landscape' ? 'wide' : o === 'portrait' ? 'tall' : 'square';
+  // Relevance: a result counts only if its title or tags name the subject. The subject = the query's words minus
+  // generic ones ("shot", "close up", "interior", "dark"…): "espresso shot" must show espresso, never a golf shot.
+  const all = q.split(' ').filter(w => w.length > 1);
+  const keys = all.filter(w => !PHOTO_GENERIC.has(w));
+  const subject = (keys.length ? keys : all).map(photoStem);
+  const score = x => {
+    const hay = ' ' + [x.title, ...(x.tags || []).map(t => t.name)].join(' ').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ') + ' ';
+    return subject.reduce((n, k) => n + (hay.includes(' ' + k) ? 1 : 0), 0);
+  };
   const search = async (words, extra) => {
-    const r = await fetch(`https://api.openverse.org/v1/images/?q=${encodeURIComponent(words)}&page_size=8&license=cc0,pdm&mature=false&source=stocksnap${extra}`, { headers: { 'User-Agent': PHOTO_UA } });
+    const r = await fetch(`https://api.openverse.org/v1/images/?q=${encodeURIComponent(words)}&page_size=20&license=cc0,pdm&mature=false${extra}`, { headers: { 'User-Agent': PHOTO_UA } });
     if (!r.ok) return [];
     const d = await r.json();
-    return (d.results || []).filter(x => !x.mature).map(x => ({ urls: [x.thumbnail + '?full_size=true', x.thumbnail], credit: `${x.title || 'Photo'} — ${x.creator || 'unknown'} (${String(x.license).toUpperCase()})` }));
+    return (d.results || []).filter(x => !x.mature);
   };
-  // Only StockSnap (curated CC0 stock photography): the rest of Openverse is mostly snapshots and
-  // off-topic pictures. A query with no match is shortened from the front ('black oversized hoodie'
-  // → 'oversized hoodie' → 'hoodie'): the last word is usually the subject.
-  // then from the back ('black hoodie streetwear' → 'black hoodie' → 'hoodie'), then single words
-  const words = q.split(' ');
-  const tries = [...new Set([
-    ...words.map((_, k) => words.slice(k).join(' ')),
-    ...words.map((_, k) => words.slice(0, words.length - k).join(' ')),
-    ...[...words].sort((a, b) => b.length - a.length),
-  ])].filter(w => w.length > 2).slice(0, 6);
-  for (const w of tries) {
-    let list = await search(w, `&aspect_ratio=${aspect}`);
-    if (list.length < 3) list = [...list, ...await search(w, '')];
-    if (list.length) return list;
+  const pack = x => ({ urls: [x.thumbnail + '?full_size=true', x.thumbnail], credit: `${x.title || 'Photo'} — ${x.creator || 'unknown'} (${String(x.license).toUpperCase()})` });
+  // StockSnap first (curated CC0 stock photography), then all photographs on Openverse; each query tried as is,
+  // then reduced to its subject words (never to a generic word alone). At most 6 lookups.
+  const subj = (keys.length ? keys : all);
+  const tries = [...new Set([q, subj.join(' '), ...[...subj].sort((x, y) => y.length - x.length)])].filter(w => w.length > 2).slice(0, 3);
+  const need = Math.max(1, Math.ceil(subject.length / 2));
+  let lookups = 0;
+  for (const where of ['&source=stocksnap', '&category=photograph']) {
+    for (const w of tries) {
+      if (++lookups > 6) break;
+      const found = (await search(w, `${where}&aspect_ratio=${aspect}`)).map(x => [score(x), x]).filter(([n]) => n >= need);
+      if (found.length) return found.sort((x, y) => y[0] - x[0]).slice(0, 8).map(([, x]) => pack(x));
+    }
   }
+  // nothing real matched: a photo-real picture made by FLUX on Workers AI (free; capped per day, the chat comes first)
+  if (env.AI) return [{ ai: true, prompt: q, credit: 'AI-generated image (FLUX.1 schnell)' }];
   return [];
+}
+// words that describe a photo, not its subject
+const PHOTO_GENERIC = new Set('shot shots close closeup up top view overhead flat lay background backdrop interior exterior modern minimal minimalist aesthetic beautiful dark light bright warm cozy cosy fresh hot cold style stylish photo image picture concept detail details lifestyle scene texture wide portrait square the a an of with and in on for at by'.split(' '));
+const photoStem = w => w.length > 4 ? w.replace(/ies$/, 'y').replace(/(?<=[^s])s$/, '') : w;
+const PHOTO_AI_DAILY = 40;
+async function photoAI(env, prompt, o){
+  const day = new Date().toISOString().slice(0, 10), k = `photo-ai:${day}`;
+  const used = env.SYNC ? +(await env.SYNC.get(k)) || 0 : 0;
+  if (used >= PHOTO_AI_DAILY) return null;
+  if (env.SYNC) await env.SYNC.put(k, String(used + 1), { expirationTtl: 172800 });
+  const frame = o === 'portrait' ? 'vertical composition' : o === 'square' ? 'square composition' : 'wide composition';
+  const out = await env.AI.run('@cf/black-forest-labs/flux-1-schnell', { prompt: `professional stock photograph of ${prompt}, ${frame}, natural light, realistic, high detail, no text`, steps: 6 });
+  if (!out?.image) return null;
+  const bin = atob(out.image), bytes = new Uint8Array(bin.length);
+  for (let n = 0; n < bin.length; n++) bytes[n] = bin.charCodeAt(n);
+  return bytes;
 }
 async function photo(request, env, ctx, url){
   const q = (url.searchParams.get('q') || '').replace(/[^\p{L}\p{N} &'-]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 60).toLowerCase();
   if (!q) return fail(400, 'Missing ?q= search words.');
   const o = ['landscape', 'portrait', 'square'].includes(url.searchParams.get('o')) ? url.searchParams.get('o') : 'landscape';
   const i = Math.min(7, Math.max(0, parseInt(url.searchParams.get('i')) || 0));
-  const cache = caches.default, key = new Request(`https://photo-cache.invalid/v5/${o}/${i}/${encodeURIComponent(q)}`);
+  const cache = caches.default, key = new Request(`https://photo-cache.invalid/v6/${o}/${i}/${encodeURIComponent(q)}`);
   const hit = await cache.match(key); if (hit) return hit;
   let list;
   try { list = await photoSearch(env, q, o); } catch { list = []; }
   if (!list.length) return fail(404, 'No photo found.');
+  if (list[0].ai) {
+    let bytes = null;
+    try { bytes = await photoAI(env, list[0].prompt, o); } catch (err) { console.error('photo: ai failed', String(err?.message || err).slice(0, 200)); }
+    if (!bytes) return fail(404, 'No photo found.');
+    const res = new Response(bytes, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=604800', 'X-Photo-Credit': encodeURIComponent(list[0].credit) } });
+    ctx.waitUntil(cache.put(key, res.clone()));
+    return res;
+  }
   // start at the requested result, fall through to the next ones when a host refuses
   let img = null, pick = null, type = '';
   for (let k = 0; k < Math.min(4, list.length) && !img; k++) {

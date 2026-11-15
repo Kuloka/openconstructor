@@ -1,0 +1,14 @@
+{
+  "name": "openconstructor-desktop",
+  "version": "0.1.0",
+  "description": "openconstructor on your computer: pick the AI agent you already use (Claude Code, Codex, Gemini CLI…) and it builds pages with openconstructor's catalog, live.",
+  "main": "main.cjs",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "45.3.2"
+  }
+}

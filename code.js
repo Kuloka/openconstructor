@@ -46,7 +46,7 @@ root.className = 'cw hidden'; root.id = 'codeWorkspace';
 root.setAttribute('role', 'dialog'); root.setAttribute('aria-label', 'openconstructor code');
 root.innerHTML = `
 <header class="cw-bar">
-  <button class="cw-brand" type="button" data-cw="close" title="${esc(t('Back to the editor'))}"><span class="oc-logo tiny" aria-hidden="true"></span><span class="cw-word"><i>open</i>constructor</span><b>code</b></button>
+  <button class="cw-brand" type="button" data-cw="close" title="${esc(t('Back to the editor'))}"><span class="oc-logo tiny" aria-hidden="true"></span><span class="cw-word" data-no-i18n><i>open</i>constructor</span><b>code</b></button>
   <div class="cw-title"><span class="cw-name" id="cwName"></span><span class="cw-diff" id="cwDiff"></span></div>
   <div class="cw-actions">
     <div class="cw-layout" role="group" aria-label="${esc(t('Layout'))}">

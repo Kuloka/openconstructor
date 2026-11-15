@@ -1,19 +1,26 @@
 // one id per user message: the free AI counts a search + answer (or a retry) as one generation
 export const aiTurn = { id: '' };
+// the "stop" button: every model request of the current turn listens to this signal (studio.js runAI sets it)
+export const aiCancel = { signal: null };
 // AI providers. All are CORS-checked: requests go straight from the browser with the user's key.
 // Once there is a server, this same module will be called through a proxy (keys will move to the server).
 export const PROVIDERS = [
   { id: 'oc', name: 'openconstructor AI', logo: '', base: '/api', free: true, keyUrl: '', hint: '', note: 'no key needed — 3 free tries a day without an account, 20 a day when signed in', kind: 'proxy', publicModels: true },
   { id: 'openrouter', name: 'OpenRouter', logo: 'openrouter', base: 'https://openrouter.ai/api/v1', free: true, keyUrl: 'https://openrouter.ai/keys', hint: 'sk-or-…', note: '300+ models in one key: Claude, GPT, Gemini and more — a dozen at no cost (Gemma 4, Nemotron), GPT-OSS from $0.02/M', publicModels: true },
+  { id: 'ovh', name: 'OVHcloud AI', logo: '', base: 'https://oai.endpoints.kepler.ai.cloud.ovh.net/v1', free: true, noKey: true, keyUrl: 'https://www.ovhcloud.com/en/public-cloud/ai-endpoints/catalog/', hint: '', note: 'no key, no sign-up: GPT-OSS 120B, Qwen 3.5 397B, Llama 3.3 70B; EU servers, 2 requests a minute per model', prefer: ['gpt-oss-120b', 'Qwen3.5-397B-A17B'] },
+  { id: 'llm7', name: 'LLM7', logo: '', base: 'https://api.llm7.io/v1', free: true, noKey: true, optionalKey: true, keyUrl: 'https://token.llm7.io', hint: '', note: 'no key needed: DeepSeek V4 Flash, GPT-OSS 20B, Codestral; a free token by email raises the limits; small independent service', prefer: ['DeepSeek-V4-Flash-0731'] },
   { id: 'gemini', name: 'Google Gemini', logo: 'gemini-color', base: 'https://generativelanguage.googleapis.com/v1beta/openai', free: true, keyUrl: 'https://aistudio.google.com/apikey', hint: 'AIza…', note: 'no-cost tier with Flash models, strong at layout', prefer: ['gemini-2.5-flash', 'gemini-flash-latest'] },
   { id: 'groq', name: 'Groq', logo: 'groq', base: 'https://api.groq.com/openai/v1', free: true, keyUrl: 'https://console.groq.com/keys', hint: 'gsk_…', note: 'no-cost plan with GPT-OSS 120B (fast) and Qwen 3.8 27B (best design, ~1 page a minute)', prefer: ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b'] },
   { id: 'cerebras', name: 'Cerebras', logo: 'cerebras-color', base: 'https://api.cerebras.ai/v1', free: true, keyUrl: 'https://cloud.cerebras.ai', hint: 'csk-…', note: 'fastest GPT-OSS; $5 trial credit (card required), then pay as you go', prefer: ['gpt-oss-120b'] },
   { id: 'mistral', name: 'Mistral', logo: 'mistral-color', base: 'https://api.mistral.ai/v1', free: true, keyUrl: 'https://console.mistral.ai/api-keys', hint: '', note: 'free tier for experimentation' },
-  { id: 'zai', name: 'Z.ai (GLM)', logo: 'zai', base: 'https://api.z.ai/api/paas/v4', free: true, keyUrl: 'https://z.ai/manage-apikey/apikey-list', hint: '', note: 'GLM Flash models at no cost; GLM flagship models pay as you go', prefer: ['glm-4.5-flash'] },
-  { id: 'siliconflow', name: 'SiliconFlow', logo: 'siliconcloud-color', base: 'https://api.siliconflow.com/v1', free: true, keyUrl: 'https://cloud.siliconflow.com/account/ak', hint: 'sk-…', note: 'open models (Qwen, DeepSeek, GLM); a set of smaller ones free' },
+  { id: 'zai', name: 'Z.ai (GLM)', logo: 'zai', base: 'https://api.z.ai/api/paas/v4', free: true, freeIf: /flash/i, keyUrl: 'https://z.ai/manage-apikey/apikey-list', hint: '', note: 'GLM Flash models at no cost; GLM flagship models pay as you go', prefer: ['glm-4.5-flash'] },
+  { id: 'siliconflow', name: 'SiliconFlow', logo: 'siliconcloud-color', base: 'https://api.siliconflow.com/v1', free: true, freeIf: /[1-9]b/i, keyUrl: 'https://cloud.siliconflow.com/account/ak', hint: 'sk-…', note: 'open models (Qwen, DeepSeek, GLM); a set of smaller ones free' },
   { id: 'cohere', name: 'Cohere', logo: 'cohere-color', base: 'https://api.cohere.ai/compatibility/v1', free: true, keyUrl: 'https://dashboard.cohere.com/api-keys', hint: '', note: 'free trial key (rate-limited, non-commercial): Command models' },
-  { id: 'huggingface', name: 'Hugging Face', logo: 'huggingface-color', base: 'https://router.huggingface.co/v1', free: true, keyUrl: 'https://huggingface.co/settings/tokens', hint: 'hf_…', note: 'thousands of open models via Inference Providers; small free monthly credit' },
+  { id: 'huggingface', name: 'Hugging Face', logo: 'huggingface-color', base: 'https://router.huggingface.co/v1', free: false, keyUrl: 'https://huggingface.co/settings/tokens', hint: 'hf_…', note: 'thousands of open models via Inference Providers; small free monthly credit' },
   { id: 'llm7', name: 'LLM7', logo: '', base: 'https://api.llm7.io/v1', free: true, keyUrl: 'https://token.llm7.io', hint: '', note: 'free token by email; small independent service, best effort' },
+  { id: 'aion', name: 'Aion Labs', logo: 'aionlabs-color', base: 'https://api.aionlabs.ai/v1', free: true, keyUrl: 'https://www.aionlabs.ai/app/api-keys/', hint: '', note: 'free forever, no card: Aion 3.0 models; 20K tokens a day — enough for small edits' },
+  { id: 'gonka', name: 'Gonka', logo: '', base: 'https://proxy.gonkabroker.com/v1', free: true, keyUrl: 'https://app.gonkabroker.com/signup', hint: '', lanes: 1, note: 'free tokens after sign-up (phone number) for the model chosen in the Gonka dashboard — MiniMax M2.7 by default; DeepSeek V4 Flash and GLM 5.3 Flash too', prefer: ['MiniMaxAI/MiniMax-M2.7', 'deepseek-ai/DeepSeek-V4-Flash-0731'] },
+  { id: 'modelscope', name: 'ModelScope', logo: 'alibaba-color', base: 'https://api-inference.modelscope.cn/v1', free: true, keyUrl: 'https://modelscope.cn/my/myaccesstoken', hint: 'ms-…', note: '2,000 free requests a day of Qwen 3.5; needs an Alibaba Cloud account with real-name check (mainland China)' },
   { id: 'deepseek', name: 'DeepSeek', logo: 'deepseek-color', base: 'https://api.deepseek.com', free: false, keyUrl: 'https://platform.deepseek.com/api_keys', hint: 'sk-…', note: 'very low cost, strong at code' },
   { id: 'openai', name: 'OpenAI', logo: 'openai', base: 'https://api.openai.com/v1', free: false, keyUrl: 'https://platform.openai.com/api-keys', hint: 'sk-…', note: 'GPT models' },
   { id: 'anthropic', name: 'Anthropic', logo: 'claude-color', base: 'https://api.anthropic.com/v1', free: false, keyUrl: 'https://console.anthropic.com/settings/keys', hint: 'sk-ant-…', note: 'Claude, the strongest at layout', kind: 'anthropic' },
@@ -78,10 +85,12 @@ export async function listModels(p, key){
   if (p.id === 'openrouter') list = list.filter(m => (!m.out || m.out.includes('text')) && !m.id.startsWith('openrouter/') && !(m.price && (m.price[0] < 0 || m.price[1] < 0)));
   if (p.id === 'gemini') list = list.filter(m => /gemini|gemma/i.test(m.id));
   if (p.id === 'openai') list = list.filter(m => /^(gpt|o\d|chatgpt)/i.test(m.id));
+  if (p.id === 'ovh') list = list.filter(m => !/^nvr-|bge|e5-|stable-diffusion|sdxl|flux/i.test(m.id));
   return list.map(m => {
     const clean = String(m.name).replace(/\s*\(free\)\s*/i, '').replace(/^models\//, '').trim();
     const [vendor, ...rest] = clean.split(': ');
-    const paid = !!(m.price && (m.price[0] > 0 || m.price[1] > 0));
+    // a service with only some models free (freeIf): the rest cost money even when the API sends no prices
+    const paid = !!(m.price && (m.price[0] > 0 || m.price[1] > 0)) || !!(p.freeIf && !p.freeIf.test(m.id));
     return { id: m.id, name: rest.length ? rest.join(': ') : clean, vendor: rest.length ? vendor : '', ctx: m.ctx, paid, price: paid ? m.price : null };
   }).sort((a, b) => (a.paid - b.paid) || a.name.localeCompare(b.name));
 }
@@ -130,7 +139,7 @@ async function once(p, key, model, system, messages, onDelta){
   if (p.kind === 'proxy') {
     // signed out works too: the server gives a few free tries a day, then asks to sign in (error code "signin")
     const token = await sessionToken();
-    const r = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}), ...(aiTurn.id ? { 'X-OC-Turn': aiTurn.id } : {}) }, body: JSON.stringify({ model, messages: [{ role: 'system', content: system }, ...messages], ...(onDelta ? { stream: true } : {}) }) });
+    const r = await fetch('/api/ai', { method: 'POST', signal: aiCancel.signal, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}), ...(aiTurn.id ? { 'X-OC-Turn': aiTurn.id } : {}) }, body: JSON.stringify({ model, messages: [{ role: 'system', content: system }, ...messages], ...(onDelta ? { stream: true } : {}) }) });
     if (token) readQuota(r);
     if (!r.ok) {
       let d = null; try { d = await r.clone().json(); } catch {}
@@ -145,7 +154,7 @@ async function once(p, key, model, system, messages, onDelta){
     return { text: ch?.message?.content || '', cut: ch?.finish_reason === 'length', usage: usageOf(d.usage) };
   }
   if (p.kind === 'anthropic') {
-    const r = await fetch(`${p.base}/messages`, { method: 'POST', headers: anthropicHeaders(key), body: JSON.stringify({ model, max_tokens: 8000, system, messages, ...(onDelta ? { stream: true } : {}) }) });
+    const r = await fetch(`${p.base}/messages`, { method: 'POST', signal: aiCancel.signal, headers: anthropicHeaders(key), body: JSON.stringify({ model, max_tokens: 8000, system, messages, ...(onDelta ? { stream: true } : {}) }) });
     if (!r.ok) throw Error(await errorText(r));
     if (onDelta && isSSE(r)) {
       let text = '', cut = false, inT = 0, outT = 0;
@@ -168,10 +177,11 @@ async function once(p, key, model, system, messages, onDelta){
   const extra = p.id === 'openrouter' ? { max_tokens: 12000 } : {};
   if (/gpt-oss|^o\d|reason/i.test(model)) extra.reasoning_effort = 'low';
   if (onDelta) { extra.stream = true; extra.stream_options = { include_usage: true }; } // the real token counts arrive in the last chunk
-  let r = await fetch(`${p.base}/chat/completions`, { method: 'POST', headers, body: JSON.stringify({ model, ...extra, messages: [{ role: 'system', content: system }, ...messages] }) });
+  if (!key) delete headers.Authorization;
+  let r = await fetch(`${p.base}/chat/completions`, { method: 'POST', signal: aiCancel.signal, headers, body: JSON.stringify({ model, ...extra, messages: [{ role: 'system', content: system }, ...messages] }) });
   // some providers reject reasoning_effort or stream_options — retry once without them
-  if (!r.ok && (r.status === 400 || r.status === 422) && (extra.reasoning_effort || extra.stream_options)) { delete extra.reasoning_effort; delete extra.stream_options; r = await fetch(`${p.base}/chat/completions`, { method: 'POST', headers, body: JSON.stringify({ model, ...extra, messages: [{ role: 'system', content: system }, ...messages] }) }); }
-  if (!r.ok) throw Error(await errorText(r));
+  if (!r.ok && (r.status === 400 || r.status === 422) && (extra.reasoning_effort || extra.stream_options)) { delete extra.reasoning_effort; delete extra.stream_options; r = await fetch(`${p.base}/chat/completions`, { method: 'POST', signal: aiCancel.signal, headers, body: JSON.stringify({ model, ...extra, messages: [{ role: 'system', content: system }, ...messages] }) }); }
+  if (!r.ok) { const e = Error(await errorText(r)); e.status = r.status; throw e; }
   if (isSSE(r)) return readOpenAIStream(r, onDelta);
   const d = await r.json();
   const ch = d.choices?.[0], c = ch?.message?.content;

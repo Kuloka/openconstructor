@@ -98,7 +98,7 @@ function Composer(){
    </button>)}
   </div>}
   <input ref={fileInput} type="file" accept={ACCEPT} multiple hidden onChange={e=>{addFiles(e.target.files);e.target.value=''}}/>
-  <InputBar value={value} onChange={(next)=>{if(preserveInput.current && next===''){preserveInput.current=false;return}setValue(next)}} onSend={submit} status="ready" onStop={()=>{}} disabled={busy} placeholder={t('describe what to build or change — / for commands')}
+  <InputBar value={value} onChange={(next)=>{if(preserveInput.current && next===''){preserveInput.current=false;return}setValue(next)}} onSend={submit} status={busy?'streaming':'ready'} onStop={()=>window.dispatchEvent(new CustomEvent('oc:stop'))} disabled={busy} placeholder={t('describe what to build or change — / for commands')}
    onAttach={()=>fileInput.current?.click()} attachedImages={images} attachedFiles={files} onRemoveImage={remove} onRemoveFile={remove} isDragOver={drag}
    onPaste={e=>{const fs=[...(e.clipboardData?.files||[])];if(fs.length){e.preventDefault();addFiles(fs)}}} leftActions={left} />
  </div>;

@@ -3,6 +3,7 @@
 import { t } from './i18n.js';
 import { MD_RE, md } from './markdown.js';
 import logoSvg from './src/logo.svg?raw';
+import { swarmGlyph } from './swarm-glyph.js';
 import { createStage } from './build-stage.js';
 
 const $ = id => document.getElementById(id);
@@ -64,8 +65,6 @@ $('messages').addEventListener('click', e => {
 // "thinking" → "composing" when the answer arrives, and the real code is typed into a small window
 // while it's placed. At the end it folds into "thought for 7s" (click to see the steps again).
 // Returns end(): end() removes it (error), end.compose(name, code), end.answer(), end.finish().
-// "Thinking" glyph: the logo (the folded C) with its planes folding in one after another (CSS: .fold-think)
-export const LOGO_THINK = '<svg class="fold-think" viewBox="4 4 40 40" aria-hidden="true"><polygon class="f1" points="17,6 42,6 31,17 17,17"/><polygon class="f2" points="6,17 17,6 17,17"/><rect class="f3" x="6" y="18.5" width="11" height="11"/><polygon class="f4" points="6,31 17,31 17,42"/><polygon class="f5" points="17,31 31,31 42,42 17,42"/></svg>';
 const MOODS = ['thinking', 'vibing', 'coding', 'sketching', 'tinkering', 'composing', 'assembling', 'brewing', 'crafting', 'polishing'];
 export function thinking({ ghost = false, stage = null } = {}){
   const node = document.createElement('div');
@@ -110,8 +109,8 @@ export function thinking({ ghost = false, stage = null } = {}){
   const plan = [[0, 'reading your request'], [700, 'thinking it through'], [3500, 'planning the layout'], [8000, 'choosing colors and type'], [14000, 'writing the code']];
   const timers = plan.map(([at, label]) => setTimeout(() => step(label), at));
   const clock = setInterval(() => { time.textContent = Math.floor((Date.now() - t0) / 1000) + 's'; }, 250);
-  // the glyph: the logo folding (pure CSS, stops itself under reduced motion)
-  node.querySelector('.th-glyph').innerHTML = LOGO_THINK;
+  // the glyph: a swarm of dots gathering and spreading (swarm-glyph.js, still under reduced motion)
+  node.querySelector('.th-glyph').append(swarmGlyph());
   const spin = 0;
   // the title keeps changing until the end: thinking → vibing → coding…
   let wi = 0, exploring = false;

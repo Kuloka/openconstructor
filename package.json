@@ -21,13 +21,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "vite build -c vite.oc3d.config.js && vite build",
+    "build": "vite build -c vite.oc3d.config.js && node scripts/build-catalog.mjs && vite build",
     "build:3d": "vite build -c vite.oc3d.config.js",
+    "build:catalog": "node scripts/build-catalog.mjs",
     "preview": "npm run build && wrangler dev",
     "deploy": "npm test && npm run build && wrangler deploy",
     "deploy:domains": "wrangler deploy -c wrangler.domains.jsonc",
     "test": "node --test \"tests/unit/*.test.js\"",
-    "test:e2e": "node --test --test-concurrency=1 tests/e2e/run.mjs"
+    "test:e2e": "node --test --test-concurrency=1 tests/e2e/run.mjs",
+    "desktop": "cmd /c desktop\\start.cmd"
   },
   "devDependencies": {
     "wrangler": "^4.158.0"

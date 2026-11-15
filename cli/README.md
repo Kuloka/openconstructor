@@ -45,3 +45,42 @@ For unlimited use, set one of these before starting:
 Edit the files by hand whenever you like: the browser reloads, and the next request works on your version.
 
 The preview server listens on `127.0.0.1` only. MIT license.
+
+## MCP server: openconstructor as a tool for AI agents
+
+```bash
+npx openconstructor mcp [folder]
+```
+
+Runs openconstructor as an [MCP](https://modelcontextprotocol.io) server over stdio. Your agent
+(Claude Code, Claude Desktop, Cursor or any MCP client) uses it to build web pages from the catalog of
+735 hand-made sections and components. The agent is the AI here, so no key and no quota are needed.
+
+**Claude Code:**
+
+```bash
+claude mcp add openconstructor -- npx -y openconstructor mcp
+```
+
+**Claude Desktop, Cursor and others** (`claude_desktop_config.json`, `.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "openconstructor": { "command": "npx", "args": ["-y", "openconstructor", "mcp", "/path/to/site"] }
+  }
+}
+```
+
+| tool | what it does |
+| --- | --- |
+| `search_components`, `list_categories`, `get_component` | find ready sections (hero, pricing, FAQ, dashboards, game UI…) and components, read their HTML+CSS |
+| `page_new`, `page_set`, `page_get` | start a page, set its name and background, see its sections |
+| `page_add_section`, `page_update_section`, `page_move_section`, `page_remove_section` | assemble the page from catalog items or your own HTML |
+| `preview` | local preview with live reload (`open: true` opens the browser) |
+| `screenshot` | PNG of the page from headless Chrome or Edge, so the agent checks its own work (width 390 = phone) |
+| `export` | one HTML file, a React component, a Vue SFC or a Svelte component |
+
+Inside any HTML, `<img src="model:knot chrome #7b6cf6">` becomes a live real-time 3D object and
+`<img src="photo:coffee shop interior">` becomes a free stock photo. The page is kept in the folder
+as `openconstructor.json` and `index.html`, which is rebuilt after every change.

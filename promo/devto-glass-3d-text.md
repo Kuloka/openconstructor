@@ -3,10 +3,10 @@ title: "WebGL can't see the page behind it. So how do you make glass text that f
 published: false
 description: "4 browser gotchas I hit shipping live 3D glass text in an AI page builder — milky glass, invisible canvases, the 16-context limit and a letter D made of a box and half a donut."
 tags: webdev, javascript, threejs, showdev
-cover_image: ./openconstructor-glass-word.png
+cover_image: https://raw.githubusercontent.com/Kuloka/openconstructor/main/promo/openconstructor-glass-word.png
 ---
 
-![A 3D glass word "OpenConstructor" floating on a dark canvas](./openconstructor-glass-word.png)
+![A 3D glass word "OpenConstructor" floating on a dark canvas](https://raw.githubusercontent.com/Kuloka/openconstructor/main/promo/openconstructor-glass-word.png)
 
 That's a real 3D word made of glass. It's rendered live in WebGL, it turns toward your cursor, and an AI put it on the page from one sentence: *"Make the word OpenConstructor look like glass so that it reacts to the cursor."*
 

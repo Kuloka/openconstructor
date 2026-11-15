@@ -1,12 +1,12 @@
-// While the AI works and the chat is not on screen, a small pill with the logo
+// While the AI works and the chat is not on screen, a small pill with the thinking swarm
 // follows the mouse: what the AI is doing ("thinking", "coding"…) and for how long.
 // It reads the live "thinking" message in the chat, so it never disagrees with it.
-import { LOGO_THINK } from './chat-ui.js';
+import { swarmGlyph } from './swarm-glyph.js';
 
 const pill = document.createElement('div');
 pill.className = 'th-cursor';
 pill.setAttribute('aria-hidden', 'true');
-pill.innerHTML = `${LOGO_THINK}<span class="th-cursor-text"></span><span class="th-cursor-time"></span>`;
+pill.innerHTML = `<span class="th-cursor-text"></span><span class="th-cursor-time"></span>`;
 document.body.append(pill);
 const text = pill.querySelector('.th-cursor-text'), time = pill.querySelector('.th-cursor-time');
 
@@ -31,5 +31,9 @@ setInterval(() => {
     time.textContent = node.querySelector('.th-time')?.textContent || '';
     if (!shown) place();
   }
-  if (want !== shown) { shown = want; pill.classList.toggle('on', want); }
+  if (want !== shown) {
+    shown = want; pill.classList.toggle('on', want);
+    // the swarm only runs while the pill is out
+    if (want) pill.prepend(swarmGlyph()); else pill.querySelector('.swarm-glyph')?.remove();
+  }
 }, 200);

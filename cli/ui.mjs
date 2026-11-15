@@ -1,6 +1,6 @@
 // How openconstructor code looks in the terminal. It follows the website (studio.css / code.css / chat-ui.js):
-// near-black panels with #262626 lines, one coral accent (#ff5a36), uppercase panel labels, the folded-C
-// logo, the tiny folded C + retyped mood words + step checklist while the AI works, the change list
+// near-black panels with #262626 lines, one coral accent (#ff5a36), uppercase panel labels, the pixel-cursor
+// logo, the tiny pixel cursor + retyped mood words + step checklist while the AI works, the change list
 // "● index.html HTML +32 −0" with the language bar, and the status bar with the green "ready" dot.
 // Plain ANSI escapes, 24-bit colour, half-block characters (two pixels per character cell).
 
@@ -83,41 +83,33 @@ export function pixelLines(grid){
   return lines;
 }
 
-/* ── The logo, as in src/logo.svg: the folded C, white planes, dimmer folds, the coral square in the middle ── */
+/* ── The logo, as in public/favicon.svg: the pixel cursor, a white body inside a lavender outline ── */
 const LOGO = [
-  '.....WWWWWWWWWWWW.',
-  '....FFWWWWWWWWWW..',
-  '...FFFWWWWWWWWW...',
-  '..FFFFWWWWWWWW....',
-  '.FFFFFWWWWWWW.....',
-  '.FFFFFWWWWWW......',
-  'CCCCCC............',
-  'CCCCCC............',
-  'CCCCCC............',
-  'CCCCCC............',
-  'CCCCCC............',
-  'CCCCCC............',
-  '.FFFFFWWWWWW......',
-  '.FFFFFWWWWWWW.....',
-  '..FFFFWWWWWWWW....',
-  '...FFFWWWWWWWWW...',
-  '....FFWWWWWWWWWW..',
-  '.....WWWWWWWWWWWW.',
+  'o.......',
+  'oo......',
+  'ofo.....',
+  'offo....',
+  'offfo...',
+  'offffo..',
+  'offfffo.',
+  'offfoooo',
+  'ofoofo..',
+  'oo.ofo..',
+  'o...ofo.',
+  '....ofo.',
+  '.....oo.',
 ];
-const FACE = { W: T.text, F: [176, 176, 176], C: T.accent };
+const FACE = { f: T.text, o: [123, 108, 246] };
 export const cubePixels = () => LOGO.map(row => [...row].map(ch => FACE[ch] || null));
 
-/* ── A tiny folded C for the "thinking" header (chat-ui.js LOGO_THINK): planes fold in one by one, then glow ── */
+/* ── A tiny cursor for the "thinking" header (chat-ui.js LOGO_THINK): drawn in row by row, then glows ── */
 const SPARK = (() => {
-  const MINI = ['.WWWW', 'FW...', 'C....', 'C....', 'FW...', '.WWWW'];
-  // which plane each pixel belongs to: 0 top bar, 1 upper fold, 2 square, 3 lower fold, 4 bottom bar
-  const plane = (r, q) => r === 0 || (r === 1 && q === 1) ? 0 : r === 1 ? 1 : r < 4 ? 2 : r === 4 && q === 0 ? 3 : 4;
-  const frame = (upto, lit) => pixelLines(MINI.map((row, r) => [...row].map((ch, q) => {
-    if (ch === '.' || plane(r, q) > upto) return null;
-    if (ch === 'C') return T.accent;
-    return ch === 'F' ? (lit ? [210, 210, 210] : [150, 150, 150]) : (lit ? [255, 255, 255] : T.text2);
+  const MINI = ['o...', 'of..', 'ofo.', 'oooo', 'o.o.', '..o.'];
+  const frame = (upto, lit) => pixelLines(MINI.map((row, r) => [...row].map(ch => {
+    if (ch === '.' || r > upto) return null;
+    return ch === 'f' ? (lit ? [255, 255, 255] : T.text2) : (lit ? [160, 150, 255] : [123, 108, 246]);
   })));
-  return [frame(0), frame(1), frame(2), frame(3), frame(4), frame(4, 1)];
+  return [frame(1), frame(2), frame(3), frame(4), frame(5), frame(5, 1)];
 })();
 const MOODS = ['thinking', 'vibing', 'coding', 'sketching', 'tinkering', 'composing', 'assembling', 'brewing', 'crafting', 'polishing'];
 
@@ -170,9 +162,9 @@ export async function intro({ version, info }){
   hide(); w('\n');
   let height = 0;
   const paint = lines => { if (height) w(`${ESC}${height}A\r`); w(lines.map(l => `${ESC}2K${l}`).join('\n') + '\n'); height = lines.length; };
-  // the C folds in from top to bottom, each new pixel lit for a frame
+  // the cursor is drawn in from the tip down, each new pixel lit for a frame
   const order = [];
-  full.forEach((row, r) => row.forEach((p, q) => { if (p) order.push([r, q, r * 7 + (LOGO[r][q] === 'F' ? 0 : LOGO[r][q] === 'C' ? 30 : 10) + Math.random() * 10]); }));
+  full.forEach((row, r) => row.forEach((p, q) => { if (p) order.push([r, q, r * 7 + q * 2 + (LOGO[r][q] === 'f' ? 6 : 0) + Math.random() * 6]); }));
   order.sort((a, b) => a[2] - b[2]);
   const grid = full.map(row => row.map(() => null));
   const FRAMES = 14, per = Math.ceil(order.length / FRAMES);

@@ -1,9 +1,10 @@
 /* Приветственная страница openconstructor — в той же терминальной эстетике, что и редактор */
 .wl {
-  --wl-accent: #f2f2f2;
+  --wl-accent: #6f60f2; /* lavender from the logo: buttons, focus, selection */
+  --wl-accent-text: #a79dff; /* the same hue, light enough for small text on the dark page */
   --wl-mono: "JetBrains Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
   position: fixed; inset: 0; z-index: 100; overflow-y: auto; overflow-x: hidden;
-  background: #0a0a0a; color: #f2f2f2; font-family: var(--wl-mono);
+  background: #0a0a0b; color: #f2f2f3; font-family: var(--wl-mono);
   background-image: radial-gradient(#191919 1px, transparent 1px); background-size: 20px 20px;
   animation: wl-in .4s ease-out;
 }
@@ -28,14 +29,14 @@
 
 .wl-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 34px; padding: 0 14px; border-radius: 4px; font-size: 13px; font-weight: 600; white-space: nowrap; transition: background .12s, border-color .12s, opacity .12s; }
 .wl-btn.lg { height: 42px; padding: 0 20px; font-size: 14px; }
-.wl-btn.primary { border: 1px solid var(--wl-accent); background: var(--wl-accent); color: #0a0a0a; }
-.wl-btn.primary:hover { background: #d4d4d4; }
+.wl-btn.primary { border: 1px solid var(--wl-accent); background: var(--wl-accent); color: #ffffff; }
+.wl-btn.primary:hover { background: #7b6cf6; border-color: #7b6cf6; }
 .wl-btn.primary:disabled { opacity: .4; cursor: default; }
 .wl-btn.ghost { border: 1px solid #363636; background: #111111; color: #f2f2f2; }
 .wl-lang { height: 34px; padding: 0 10px; border: 1px solid #ffffff1a; border-radius: 6px; background: #ffffff0d; color: #e6e6e6; font: inherit; font-size: 13px; cursor: pointer; }
 .wl-lang:hover { border-color: #ffffff66; color: #fff; }
 .wl-lang option { background: #111111; color: #f2f2f2; }
-.wl-lang option:checked { background: #f2f2f2; color: #0a0a0a; }
+.wl-lang option:checked { background: var(--wl-accent); color: #fff; }
 .wl-btn.ghost:hover { border-color: #4f4f4f; background: #171717; }
 
 .wl-hero { display: flex; flex-direction: column; align-items: center; max-width: 900px; margin: 0 auto; padding: 72px 24px 32px; text-align: center; }
@@ -61,7 +62,7 @@
 
 .wl-prompt { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 660px; margin-top: 36px; padding: 6px 6px 6px 12px; border: 1px solid #363636; border-radius: 6px; background: #111111f2; transition: border-color .15s; }
 .wl-prompt:focus-within { border-color: var(--wl-accent); }
-.wl-prompt-caret { color: var(--wl-accent); font-weight: 700; }
+.wl-prompt-caret { color: var(--wl-accent-text); font-weight: 700; }
 .wl-prompt input { flex: 1; min-width: 0; height: 36px; border: 0; outline: 0; background: transparent; color: #f2f2f2; font: 14px var(--wl-mono); }
 .wl-prompt input::placeholder { color: #5e5e5e; }
 .wl-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; max-width: 720px; margin-top: 12px; }
@@ -72,11 +73,11 @@
 .wl-stats { display: grid; grid-template-columns: repeat(4, 1fr); max-width: 900px; margin: 28px auto 0; border: 1px solid #262626; background: #111111; }
 .wl-stats > div { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 20px 12px; }
 .wl-stats > div + div { border-left: 1px solid #262626; }
-.wl-stats > div > span:first-child { font-size: 30px; font-weight: 800; letter-spacing: -1px; color: var(--wl-accent); font-variant-numeric: tabular-nums; }
+.wl-stats > div > span:first-child { font-size: 30px; font-weight: 800; letter-spacing: -1px; color: var(--wl-accent-text); font-variant-numeric: tabular-nums; }
 .wl-stats > div > span:last-child { color: #7a6d68; font-size: 12px; }
 
 .wl-section { max-width: 1120px; margin: 0 auto; padding: 104px 24px 0; text-align: center; scroll-margin-top: 16px; }
-.wl-eyebrow { color: var(--wl-accent); font-size: 12px; letter-spacing: .12em; }
+.wl-eyebrow { color: var(--wl-accent-text); font-size: 12px; letter-spacing: .12em; }
 .wl-eyebrow::before { content: "// "; color: #5e5e5e; }
 .wl-section h2 { margin: 10px 0 0; font-size: clamp(26px, 3.6vw, 38px); font-weight: 800; letter-spacing: -.04em; }
 .wl-section-sub { margin: 12px auto 0; max-width: 540px; color: #8e8e8e; font-size: 14px; line-height: 1.7; }
@@ -86,7 +87,7 @@
 
 .wl-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 40px; }
 .wl-step-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
-.wl-step-ic { display: grid; place-items: center; width: 40px; height: 40px; border: 1px solid #ffffff55; border-radius: 4px; background: #ffffff14; color: var(--wl-accent); }
+.wl-step-ic { display: grid; place-items: center; width: 40px; height: 40px; border: 1px solid #ffffff55; border-radius: 4px; background: #ffffff14; color: var(--wl-accent-text); }
 .wl-step-ic svg { width: 20px; height: 20px; }
 .wl-step-n { color: #363636; font-size: 28px; font-weight: 800; }
 
@@ -100,7 +101,7 @@
 .wl-thumb-blank { display: grid; place-items: center; background: repeating-linear-gradient(45deg, #0e0e0e 0 10px, #131313 10px 20px); border-style: dashed; border-color: #363636; }
 .wl-thumb-blank span { color: #5e5e5e; font-size: 28px; }
 .wl-tpl-info { padding: 14px 6px 2px; }
-.wl-tpl-open { margin: auto 6px 4px; padding-top: 10px; color: var(--wl-accent); font-size: 12px; opacity: 0; transition: opacity .15s; }
+.wl-tpl-open { margin: auto 6px 4px; padding-top: 10px; color: var(--wl-accent-text); font-size: 12px; opacity: 0; transition: opacity .15s; }
 .wl-tpl:hover .wl-tpl-open, .wl-tpl:focus-visible .wl-tpl-open { opacity: 1; }
 
 .wl-foot { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; max-width: 1120px; margin: 104px auto 0; padding: 20px 24px; border-top: 1px solid #262626; color: #5e5e5e; font-size: 12px; }
@@ -139,7 +140,7 @@
   content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: .07; mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
-.wl-dot { background: #f2f2f2; box-shadow: 0 0 0 3px #ffffff33; }
+.wl-dot { background: var(--wl-accent-text); box-shadow: 0 0 0 3px #7b6cf633; }
 .wl-donate { color: #f2f2f2; }
 .wl-nav nav .wl-gh { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 4px; color: #c4c4c4; font-size: 13px; text-decoration: none; transition: color .15s, background .15s; }
 .wl-nav nav .wl-gh:hover { color: #fff; background: #ffffff0d; }
@@ -159,7 +160,7 @@
 .wl-demo-bar i { width: 10px; height: 10px; border-radius: 50%; background: #282828; }
 .wl-demo-bar i:first-child { background: #f2f2f2; }
 .wl-demo-bar span { margin-left: 10px; }
-.wl-demo-bar em { margin-left: auto; padding: 3px 9px; border-radius: 4px; background: var(--wl-accent); color: #0a0a0a; font-style: normal; font-weight: 700; font-size: 11px; }
+.wl-demo-bar em { margin-left: auto; padding: 3px 9px; border-radius: 4px; background: var(--wl-accent); color: #fff; font-style: normal; font-weight: 700; font-size: 11px; }
 .wl-demo-body { display: grid; grid-template-columns: 150px minmax(0, 1fr) 230px; height: 440px; border-radius: 0 0 10px 10px; overflow: hidden; box-shadow: 0 40px 80px -30px #000; text-align: left; }
 .wl-demo small { display: block; margin-bottom: 10px; color: #6a6a6a; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
 .wl-demo-lib { padding: 12px; border-right: 1px solid #ffffff10; background: #111111; }
@@ -194,7 +195,7 @@
 @media (prefers-reduced-motion: reduce) { .wl-demo *, .wl-demo *::before { animation: none !important; opacity: 1 !important; } .wl-demo-sel, .wl-demo-curtain { display: none; } }
 
 /* Mini-apps section: live, clickable apps in the cards */
-.wl-new { margin-left: 5px; padding: 1px 5px; border-radius: 3px; background: var(--wl-accent); color: #0a0a0a; font: 700 9.5px/1.4 var(--wl-mono); font-style: normal; letter-spacing: .06em; text-transform: uppercase; vertical-align: 1px; }
+.wl-new { margin-left: 5px; padding: 1px 5px; border-radius: 3px; background: var(--wl-accent); color: #fff; font: 700 9.5px/1.4 var(--wl-mono); font-style: normal; letter-spacing: .06em; text-transform: uppercase; vertical-align: 1px; }
 .wl-apps { position: relative; }
 .wl-apps-glow { position: absolute; left: 50%; top: 40px; width: min(900px, 100%); height: 420px; transform: translateX(-50%); background: radial-gradient(closest-side, #ffffff1a, transparent 70%), radial-gradient(closest-side at 30% 60%, #ffffff1f, transparent 70%); filter: blur(10px); pointer-events: none; z-index: -1; }
 .wl-apps-grad { display: inline; }
@@ -310,7 +311,7 @@
 .wl-orbit-rings { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .wl-orbit-rings ellipse { fill: none; stroke: #ffffff; stroke-opacity: .07; stroke-width: .15; vector-effect: non-scaling-stroke; }
 .wl-orbit-glow { position: absolute; left: 50%; top: 50%; width: 60%; aspect-ratio: 1; transform: translate(-50%, -50%); border-radius: 50%; background: radial-gradient(circle, #ffffff14, transparent 65%); filter: blur(10px); }
-.wl-orbit-mark { position: absolute; left: 50%; top: 50%; z-index: 2; width: 40%; height: auto; transform: translate(-50%, -50%); filter: drop-shadow(0 30px 50px #000c); animation: wl-orb-float 7s ease-in-out infinite; }
+.wl-orbit-mark { position: absolute; left: 50%; top: 50%; z-index: 2; width: 54%; height: auto; transform: translate(-50%, -50%); filter: drop-shadow(0 30px 50px #000c); animation: wl-orb-float 7s ease-in-out infinite; }
 @keyframes wl-orb-float { 50% { transform: translate(-50%, calc(-50% - 10px)); } }
 .wl-orb-node { position: absolute; left: 0; top: 0; width: 120px; height: 120px; display: grid; place-items: center; will-change: transform, opacity; }
 .wl-orb-dots { position: absolute; inset: 0; width: 100%; height: 100%; fill: #e5e5e5; }
@@ -344,3 +345,53 @@
 .wl-orb-node { pointer-events: none; }
 .wl-orb-logo { pointer-events: auto; }
 .wl-orb-logo::before { content: ""; position: absolute; inset: -8px; }
+
+/* ── The living start screen (2026-11-15), the same look as the desktop app ──
+   a dot field that parts around the cursor (src/fx.js) + slow lavender light + film grain behind everything;
+   the hero's second line rotates; the prompt has a running light around it and the AI swarm in place of the caret */
+.wl { background-image: none; }
+.wl > .wl-bg { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+.wl-bg canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.wl-aurora i { position: absolute; width: 60vmax; height: 60vmax; border-radius: 50%; filter: blur(90px); opacity: .3; animation: wl-drift 26s ease-in-out infinite alternate; }
+.wl-aurora i:nth-child(1) { left: -18vmax; top: -26vmax; background: radial-gradient(circle, #6f60f2, transparent 62%); }
+.wl-aurora i:nth-child(2) { right: -24vmax; top: 6vh; background: radial-gradient(circle, #3b2fa8, transparent 60%); animation-duration: 32s; animation-delay: -8s; }
+.wl-aurora i:nth-child(3) { left: 30vw; bottom: -36vmax; background: radial-gradient(circle, #9d92ff55, transparent 60%); animation-duration: 38s; animation-delay: -14s; opacity: .2; }
+@keyframes wl-drift { to { transform: translate(6vw, 5vh) scale(1.12); } }
+.wl-grain { position: absolute; inset: -50%; opacity: .045; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); animation: wl-grain 1.2s steps(6) infinite; }
+@keyframes wl-grain { 33% { transform: translate(-3%, 2%); } 66% { transform: translate(2%, -3%); } }
+
+/* hero: the copy rises in, the second line rotates with a lavender sheen */
+.wl-hero-copy > * { animation: wl-rise .8s cubic-bezier(.2,.7,.2,1) both; }
+.wl-hero-copy > :nth-child(2) { animation-delay: .08s; } .wl-hero-copy > :nth-child(3) { animation-delay: .16s; } .wl-hero-copy > :nth-child(4) { animation-delay: .24s; } .wl-hero-copy > :nth-child(5) { animation-delay: .32s; } .wl-hero-copy > :nth-child(6) { animation-delay: .4s; }
+@keyframes wl-rise { from { opacity: 0; transform: translateY(18px); filter: blur(8px); } }
+.wl-dot { animation: wl-blink 2.4s ease-in-out infinite; box-shadow: 0 0 10px var(--wl-accent-text); }
+@keyframes wl-blink { 50% { opacity: .35; } }
+.wl-rot { display: block; overflow: hidden; padding-bottom: .08em; }
+.wl-rot-word { display: inline-block; background: linear-gradient(100deg, #fff 10%, #9d92ff 45%, #fff 80%) 0 0 / 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: wl-rot-in .6s cubic-bezier(.2,.7,.2,1) both, wl-sheen 4s linear infinite; }
+@keyframes wl-rot-in { from { transform: translateY(100%); opacity: 0; filter: blur(6px); } }
+@keyframes wl-sheen { to { background-position: -200% 0; } }
+
+/* the prompt: glass, a light running around its edge, the swarm where the caret was */
+.wl-prompt { position: relative; border-color: transparent; border-radius: 16px; background: #0e0e11d9; backdrop-filter: blur(16px); box-shadow: 0 30px 70px -30px #000; }
+.wl-prompt::before { content: ""; position: absolute; inset: 0; padding: 1px; border-radius: inherit; background: conic-gradient(from var(--wl-a, 0deg), #ffffff14, #9d92ff99, #ffffff14 30%, #ffffff14 70%, #6f60f299, #ffffff14); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: wl-ring 6s linear infinite; pointer-events: none; }
+@property --wl-a { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+@keyframes wl-ring { to { --wl-a: 360deg; } }
+.wl-prompt:focus-within { box-shadow: 0 0 0 5px #7b6cf62b, 0 30px 70px -20px #6f60f266; }
+.wl-prompt-swarm { display: block; width: 20px; height: 20px; flex: none; color: #9d92ff; }
+.wl-prompt-swarm canvas { width: 20px; height: 20px; display: block; color: #9d92ff; }
+.wl-prompt .wl-btn.primary { border-radius: 11px; }
+
+/* primary buttons: a soft glow and a light sweep */
+.wl-btn.primary { position: relative; overflow: hidden; box-shadow: 0 10px 30px -12px #6f60f2cc, inset 0 1px 0 #ffffff33; }
+.wl-btn.primary::after { content: ""; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 35%, #ffffff40 50%, transparent 65%); transform: translateX(-100%); animation: wl-shimmer 3.4s ease-in-out infinite 1.2s; pointer-events: none; }
+@keyframes wl-shimmer { 40%, 100% { transform: translateX(100%); } }
+.wl-btn.primary:disabled::after { animation: none; }
+
+/* cards lean toward the cursor (src/fx.js tilt) and light up their edge under it */
+.wl-card, .wl-app { transition: transform .5s cubic-bezier(.2,.7,.2,1), box-shadow .4s; will-change: transform; }
+.wl-card.spotlight-card { background: linear-gradient(#131317, #0d0d10); }
+.wl-card::after { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; background: radial-gradient(360px circle at var(--mx, 50%) var(--my, 0%), #9d92ff99, transparent 45%); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; opacity: 0; transition: opacity .3s; pointer-events: none; }
+.wl-card:hover::after { opacity: 1; }
+.wl-card:hover { box-shadow: 0 40px 80px -40px #000, 0 0 0 1px #9d92ff22; }
+
+@media (prefers-reduced-motion: reduce) { .wl-aurora i, .wl-grain, .wl-hero-copy > *, .wl-rot-word, .wl-prompt::before, .wl-btn.primary::after, .wl-dot { animation: none !important; } }

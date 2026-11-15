@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; frame-src http://127.0.0.1:* https://openconstructor.pw; connect-src 'self'">
+  <title>openconstructor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=Geist+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-screen="splash">
+  <!-- the living background: a field of dots that parts around the cursor, slow lavender light, film grain -->
+  <div class="bg" aria-hidden="true">
+    <div class="aurora"><i></i><i></i><i></i></div>
+    <canvas id="field"></canvas>
+    <div class="grain"></div>
+  </div>
+  <canvas id="burst" aria-hidden="true"></canvas>
+
+  <!-- ── Splash: the cursor assembles pixel by pixel ── -->
+  <section class="screen" id="splash" aria-label="Loading">
+    <div class="splash-center">
+      <svg class="px-logo" id="pxLogo" viewBox="-2 -2 52 82" aria-hidden="true"></svg>
+      <div class="wordmark" id="wordmark" aria-label="openconstructor"></div>
+      <div class="loader"><i></i></div>
+    </div>
+  </section>
+
+  <!-- ── Sign in / create an account ── -->
+  <section class="screen" id="auth" aria-label="Sign in" hidden>
+    <div class="auth-art">
+      <div class="orbits" aria-hidden="true">
+        <svg viewBox="-50 -50 100 100" preserveAspectRatio="xMidYMid meet"><ellipse rx="44" ry="17"/><ellipse rx="33" ry="12.5"/><ellipse rx="22" ry="8.5"/></svg>
+        <span class="orb o1">Claude</span><span class="orb o2">Codex</span><span class="orb o3">Gemini</span><span class="orb o4">DeepSeek</span>
+        <img class="hero-mark" src="../../public/hero-mark.webp" alt="">
+      </div>
+      <div class="auth-copy">
+        <span class="eyebrow"><i></i>openconstructor desktop</span>
+        <h1>Build interfaces<br><span class="rotator" id="rotator"><b>by talking.</b></span></h1>
+        <p>Describe a page and watch it assemble from 735 hand-made blocks, with live 3D and real photos. Bring the agent you already pay for, or use the free AI.</p>
+      </div>
+    </div>
+    <div class="auth-side">
+      <form class="auth-card" id="authForm" novalidate>
+        <div class="tabs" role="tablist"><span class="tab-pill" id="tabPill"></span>
+          <button type="button" role="tab" data-tab="signin" aria-selected="true">Sign in</button>
+          <button type="button" role="tab" data-tab="signup" aria-selected="false">Create account</button>
+        </div>
+        <div class="auth-step" id="stepCreds">
+          <label class="field"><input id="email" type="email" autocomplete="email" placeholder=" " required><span>Email</span></label>
+          <label class="field"><input id="password" type="password" autocomplete="current-password" placeholder=" " minlength="6" required><span>Password</span><button type="button" class="eye" id="eye" aria-label="Show password"><svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></label>
+        </div>
+        <div class="auth-step" id="stepCode" hidden>
+          <p class="code-note" id="codeNote">We sent a 6-digit code to your email.</p>
+          <div class="otp" id="otp"></div>
+        </div>
+        <div class="auth-msg" id="authMsg" role="status"></div>
+        <button class="cta" id="authSubmit" type="submit"><span id="authLabel">Sign in</span><i class="spin" aria-hidden="true"></i></button>
+        <button class="link" type="button" id="skipAuth">Continue without an account <span aria-hidden="true">→</span></button>
+      </form>
+      <p class="fine">Same account as openconstructor.pw · your projects sync</p>
+    </div>
+  </section>
+
+  <!-- ── Home ── -->
+  <section class="screen" id="home" aria-label="Home" hidden>
+    <header class="top">
+      <div class="brand"><img src="../../public/favicon.svg" alt="" width="24" height="24"><span><em>open</em>constructor</span></div>
+      <nav class="nav"><button type="button" data-go="home" aria-current="page">Home</button><button type="button" data-open="web">Editor</button><button type="button" data-open="code">Code</button><button type="button" data-go="agents">Agents</button></nav>
+      <div class="me"><button type="button" class="avatar" id="avatar" aria-haspopup="menu"><span id="avatarLetter">?</span></button>
+        <div class="menu" id="meMenu" role="menu" hidden><div class="menu-who" id="meEmail"></div><button type="button" role="menuitem" id="signOut">Sign out</button></div>
+      </div>
+    </header>
+    <div class="home-main">
+      <div class="greet">
+        <span class="eyebrow"><i></i><span id="clock"></span></span>
+        <h1 id="hello">Good evening.</h1>
+        <form class="ask" id="ask">
+          <span class="ask-swarm" id="askSwarm"></span>
+          <input id="askInput" placeholder="Describe a page — “a landing for a coffee shop with booking”" autocomplete="off">
+          <kbd>Ctrl K</kbd><button class="ask-go" type="submit" aria-label="Build"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+        </form>
+      </div>
+      <div class="tiles">
+        <button class="tile t-web" type="button" data-open="web">
+          <div class="tile-art art-web" aria-hidden="true">
+            <div class="mini"><div class="mini-side"><i></i><i></i><i></i><i></i></div><div class="mini-canvas"><b class="blk b1"></b><b class="blk b2"><i></i><i></i><i></i></b><b class="blk b3"></b><span class="mini-cursor"><svg viewBox="0 0 12 16"><path d="M1 1v12l3.5-3.5L7 15l2-1-2.5-5H11z"/></svg><em>agent</em></span></div></div>
+          </div>
+          <div class="tile-text"><span class="k">1</span><b>Web interface</b><span>The visual editor: blocks, canvas, AI swarm, export to HTML, React, Roblox.</span></div>
+        </button>
+        <button class="tile t-code" type="button" data-open="code">
+          <div class="tile-art art-code" aria-hidden="true">
+            <div class="code-lines"><p><i class="tk-kw">const</i> <i class="tk-fn">app</i> = <i class="tk-fn">build</i>(<i class="tk-st">'timer'</i>)</p><p><i class="tk-kw">app</i>.<i class="tk-fn">on</i>(<i class="tk-st">'tick'</i>, <i class="tk-fn">render</i>)</p><p><i class="tk-cm">// AI fixes errors live</i></p><p><i class="tk-kw">export</i> <i class="tk-kw">default</i> <i class="tk-fn">app</i><span class="caret"></span></p></div>
+          </div>
+          <div class="tile-text"><span class="k">2</span><b>Code</b><span>Working apps from a sentence: files, live preview, console, auto-fix.</span></div>
+        </button>
+        <button class="tile t-agents" type="button" data-go="agents">
+          <div class="tile-art art-agents" aria-hidden="true"><span class="agent-swarm" id="tileSwarm"></span><span class="chip c1">Claude Code</span><span class="chip c2">Codex</span><span class="chip c3">Gemini</span></div>
+          <div class="tile-text"><span class="k">3</span><b>Agents</b><span>Your own Claude Code, Codex or Gemini builds with our blocks. No API keys.</span></div>
+        </button>
+      </div>
+      <div class="small-tiles">
+        <button type="button" class="st" data-web-path="templates"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><b>Templates</b><span>Start from a page</span></button>
+        <button type="button" class="st" data-web-path="gallery"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/></svg><b>Gallery</b><span>What people built</span></button>
+        <button type="button" class="st" id="stFolder"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><b>Project folder</b><span id="stFolderPath">…</span></button>
+        <button type="button" class="st" id="stMcp"><svg viewBox="0 0 24 24"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M13 6l-2 12"/></svg><b>MCP for your agent</b><span id="stMcpNote">Copy the setup command</span></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── The editor / code workspace: the website itself ── -->
+  <section class="screen" id="web" aria-label="Editor" hidden>
+    <header class="webbar">
+      <button type="button" class="back" data-go="home"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Home</button>
+      <div class="seg" role="radiogroup"><span class="seg-pill" id="segPill"></span><button type="button" role="radio" data-mode="web" aria-checked="true">Web interface</button><button type="button" role="radio" data-mode="code" aria-checked="false">Code</button></div>
+      <span class="webstate" id="webState"></span>
+      <button type="button" class="ghost" id="webBrowser">Open in browser</button>
+    </header>
+    <div class="webwrap" id="webWrap"><div class="webload" id="webLoad"><span class="big-swarm" id="loadSwarm"></span><span>Opening the editor…</span></div></div>
+  </section>
+
+  <!-- ── Agents: your own agent builds with openconstructor's tools ── -->
+  <section class="screen" id="agentsScreen" aria-label="Agents" hidden>
+    <header class="webbar">
+      <button type="button" class="back" data-go="home"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Home</button>
+      <b class="bar-title">Agents</b>
+      <button class="folder" id="folder" type="button" title="Choose the project folder"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span id="folderName">…</span></button>
+      <button type="button" class="ghost" id="openFolder">Show files</button>
+      <button type="button" class="ghost" id="openBrowser">Open in browser</button>
+    </header>
+    <div class="layout">
+      <aside class="side">
+        <section class="agents">
+          <div class="label">Agent <span>uses your own sign-in</span></div>
+          <div class="agent-list" id="agents" role="radiogroup"></div>
+          <div class="conn" id="conn" hidden></div>
+        </section>
+        <section class="log" id="log" aria-live="polite">
+          <div class="hello" id="logHello"><b>Pick an agent, then describe the page.</b><span>It builds from 735 ready sections, adds live 3D and photos, checks its work with screenshots — you watch it on the right.</span><div class="ideas" id="ideas"></div></div>
+        </section>
+        <form class="composer" id="composer">
+          <div class="working" id="working" hidden><span class="swarm" id="swarm"></span><span id="mood">thinking</span><span class="time" id="time">0s</span></div>
+          <textarea id="input" rows="3" placeholder="A landing page for a coffee shop with a menu and booking" disabled></textarea>
+          <div class="composer-row"><span class="hint" id="hint">Connect an agent to start</span><button class="cta small" id="send" type="submit" disabled>Send</button></div>
+        </form>
+      </aside>
+      <section class="preview">
+        <div class="preview-bar">
+          <div class="devices" role="radiogroup" aria-label="Preview width"><button type="button" data-w="0" aria-checked="true" role="radio">Desktop</button><button type="button" data-w="820" aria-checked="false" role="radio">Tablet</button><button type="button" data-w="390" aria-checked="false" role="radio">Phone</button></div>
+          <span class="url" id="url"></span>
+          <button class="iconbtn" id="reload" type="button" title="Reload"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button>
+        </div>
+        <div class="frame-wrap" id="frameWrap"><iframe id="frame" title="Live preview"></iframe></div>
+      </section>
+    </div>
+  </section>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

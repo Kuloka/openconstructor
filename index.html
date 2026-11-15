@@ -9,10 +9,10 @@
   <meta name="theme-color" content="#0a0a0a">
   <meta name="color-scheme" content="dark">
   <meta name="application-name" content="openconstructor">
-  <link rel="icon" href="/favicon.ico?v=3" sizes="32x32 48x48">
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=3">
-  <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96.png?v=3">
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=3">
+  <link rel="icon" href="/favicon.ico?v=4" sizes="32x32 48x48">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=4">
+  <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96.png?v=4">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=4">
   <link rel="manifest" href="/site.webmanifest">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="openconstructor">
@@ -138,6 +138,23 @@
             <option value="834x1112">tablet 834</option>
             <option value="390x844">phone 390</option>
           </optgroup>
+          <optgroup label="phones">
+            <option value="440x956">iPhone 17 Pro Max · 440×956</option>
+            <option value="402x874">iPhone 17 Pro · 402×874</option>
+            <option value="420x912">iPhone Air · 420×912</option>
+            <option value="393x852">iPhone 17 · 393×852</option>
+            <option value="375x667">iPhone SE · 375×667</option>
+            <option value="412x891">Galaxy S26 Ultra · 412×891</option>
+            <option value="360x780">Galaxy S26 · 360×780</option>
+            <option value="412x914">Pixel 10 Pro XL · 412×914</option>
+            <option value="393x851">Pixel 10 · 393×851</option>
+          </optgroup>
+          <optgroup label="tablets">
+            <option value="744x1133">iPad mini · 744×1133</option>
+            <option value="820x1180">iPad Air 11″ · 820×1180</option>
+            <option value="1032x1376">iPad Pro 13″ · 1032×1376</option>
+            <option value="800x1280">Galaxy Tab S10 · 800×1280</option>
+          </optgroup>
           <optgroup label="game / roblox">
             <option value="1920x1080">1080p 1920×1080</option>
             <option value="1366x768">laptop 1366×768</option>
@@ -167,7 +184,7 @@
           </div>
         </div>
         <div class="canvas-empty hidden" id="canvasEmpty">
-          <span class="oc-logo empty-logo" aria-hidden="true"></span>
+          <img class="empty-logo" src="/favicon.svg?v=4" alt="" width="56" height="56">
           <h2>What are we building today?</h2>
           <p>Pick a starting point — you can mix all three.</p>
           <div class="empty-cards">
@@ -177,9 +194,9 @@
             <button class="empty-card" data-empty="screenshot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><b>From a screenshot</b><span>paste, drop or pick any design</span></button>
           </div>
           <div class="empty-start" id="emptyStart">
-            <div class="es-head"><b>Get started</b><span>The free AI works right away. For stronger models, connect your own key — many services have free models.</span></div>
+            <div class="es-head"><b>Get started</b><span>The free AI works right away. For stronger models, sign in with OpenRouter in one click (300+ models, many free) or paste your own key.</span></div>
+            <div class="es-ctas"><button class="btn primary es-cta" type="button" data-or-connect>Sign in with OpenRouter</button><button class="btn es-cta" type="button" data-start-keys>Paste an API key</button></div>
             <div class="es-logos" id="esLogos"></div>
-            <button class="btn primary es-cta" type="button" data-start-keys>Connect an API key</button>
           </div>
         </div>
       </div>

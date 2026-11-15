@@ -12,7 +12,7 @@ import { randomBytes } from 'node:crypto';
 import * as ui from './ui.mjs';
 const { c } = ui;
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 const SITE = process.env.OC_SITE || 'https://openconstructor.pw';
 
 /* ── Terminal look lives in ui.mjs: pixel folded-C logo, cards, the build animation ── */
@@ -27,6 +27,7 @@ if (flag('-h', '--help')) {
 Build small working web apps by talking to an AI, right in your terminal.
 
   ${c.bold('npx openconstructor')} ${c.grey('[folder] [-p "what to build"] [--port 4321] [--no-open]')}
+  ${c.bold('npx openconstructor mcp')} ${c.grey('[folder]')}   MCP server: AI agents build pages from the catalog
 
 The app lives in the folder as index.html, style.css and app.js and opens in your browser.
 Errors from the browser come back here; with auto-fix on, the AI repairs them right away.
@@ -454,4 +455,6 @@ async function main(){
   if (typeof firstPrompt === 'string') { out(`${c.acc(ARROW)} ${firstPrompt}`); run(firstPrompt); }
   else if (rl) rl.prompt();
 }
-main();
+// `openconstructor mcp [folder]`: the MCP server for AI agents (cli/mcp.mjs) instead of the chat
+if (process.argv[2] === 'mcp') import('./mcp.mjs').then(m => m.serve({ folder: process.argv[3] }));
+else main();

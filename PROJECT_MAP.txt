@@ -2,7 +2,7 @@ openconstructor — карта проекта
 ==============================
 Зачем этот файл: чтобы ИИ-помощник (и люди) не перечитывали весь код в каждой сессии.
 Читать его ПЕРВЫМ, потом открывать только нужные места. Обновлять, когда меняется структура.
-Последнее обновление: 2026-11-13
+Последнее обновление: 2026-11-15
 
 КАК УСТРОЕНО В ДВУХ СЛОВАХ
 --------------------------
@@ -54,7 +54,7 @@ code.js + code.css — экран «openconstructor code» (кнопка «</> c
   возвращается при закрытии), снизу строка состояния (ошибки, авто-починка, строки по языкам, Стр/Стлб).
   Размеры панелей тянутся (data-sash), всё хранится в localStorage 'oc-code-ui2'. Ctrl+S в коде = «apply».
   После каждой правки «+N −M» в заголовке и заметка по файлам в чате (track, postChange).
-  Стиль: терминальный, монохромный акцент #f2f2f2 (текст на нём тёмный), без эмодзи и фиолетовых градиентов. openCode({ prompt, appId }), closeCode().
+  Стиль: терминальный, акцент из var(--accent) (лаванда #6f60f2), без эмодзи и градиентов. openCode({ prompt, appId }), closeCode().
   Запросы к ИИ здесь меняют только приложение в фокусе: studio.setCodeFocus(id) → runAI берёт его как target
   (null = сделать новое; undefined = обычный режим холста).
 apps.js — мини-приложения: APP_CSP, APP_SHIM (localStorage в изолированном окне), appDoc, appPreview,
@@ -62,6 +62,9 @@ apps.js — мини-приложения: APP_CSP, APP_SHIM (localStorage в и
 worker.js (~1000) — сервер. Маршруты в конце файла ("async fetch"):
   /p/<slug> страницы (PAGE_HEADERS, для приложений APP_HEADERS через headersFor), /api/ai (бесплатный ИИ,
   лимиты ANON_DAILY=3 без входа, AI_DAILY с входом), /api/image, /api/photo, /api/web, /api/form/<slug>,
+  ФОТО (/api/photo, 2026-11-15): Openverse CC0/PDM — сначала StockSnap, потом все фотографии; результат берётся,
+  только если в названии/тегах есть предмет запроса (слова без PHOTO_GENERIC: shot, interior, dark…). Ничего не нашлось →
+  FLUX на Workers AI (photoAI, не больше PHOTO_AI_DAILY=40 в день, счётчик в KV). Кэш v6. Pexels — если задан PEXELS_API_KEY.
   /api/sync (Roblox), /api/domain, /api/og, /api/shot, /api/brand.
 ai-parse.js — разбор ответа ИИ: строка JSON-заголовка + блок ```html (parseAnswer, parseScene).
 providers.js — провайдеры ИИ и вызов chat(); keyvault.js — ключи пользователя (только в браузере).
@@ -82,10 +85,16 @@ build-stage.js — «стройка на глазах» ПРЯМО НА ХОЛС
 thinking-cursor.js — пока ИИ работает, а чат не на экране, у курсора мыши плашка с лого и словом из чата.
 layout.js — рейка слева + ОДНА панель: вид chat | library | layers (ключ localStorage 'oc-layout2').
   Ctrl+B — скрыть/показать панель, Ctrl+Shift+B — чат. Событие oc:show-view / oc:open-chat переключают вид.
-ЛОГО «Сложенная C»: src/logo.svg — 5 плоскостей, fill currentColor, «сгибы» fill-opacity .72, средний квадрат коралловый #ff5a36.
-  Иконки сайта/приложения = белая буква на коралловой плашке #ff5a36: public/favicon.svg и PNG-иконки
-  (favicon-48/96, icon-192/512, apple-touch-icon, favicon.ico) — нарисованы скриптом PIL из тех же многоугольников.
-  og.png обновлён (1200×630, исходник — HTML-макет, рендер через headless Chrome). Пиксельный куб в cli/ui.mjs ещё старый.
+ЛОГО «Пиксельный курсор» (2026-11-15): лавандовая плашка #7B6CF6, контур курсора #2A2163, тело белое. Сетка 8×13
+  (строки 'o.......' … — та же в src/logo.svg, chat-ui.js LOGO_THINK, cli/ui.mjs LOGO, model-kit.js ocmark).
+  src/logo.svg — плоский знак для UI: fill currentColor, контур fill-opacity .42.
+THINKING-ГЛИФ (2026-11-15): swarm-glyph.js — рой точек на <canvas> (кружат, собираются к центру, разлетаются), цвет var(--ai).
+  Стоит в чате (.th-glyph, слева от заголовка, пока сообщение не свёрнуто) и в пилюле у курсора (thinking-cursor.js).
+  Заголовок по-прежнему перебирает слова MOODS (thinking → vibing → coding…). Один rAF-цикл на все глифы;
+  скрытый 2 с глиф выходит из цикла. Под reduced motion рисуется один раз.
+  Иконки сайта (public/favicon.svg/.ico/-48/-96, icon-192/512, apple-touch-icon) — из присланного архива, кэш ?v=4.
+  Полные лого/знаки для светлого и тёмного фона — public/brand/. 3D: model-kit ocmark = воксельный курсор
+  (контур в заданном материале, по умолчанию лаванда; тело белое и чуть выступает). og.png ещё старый.
 Поле ввода чата — React-компонент в src/main.jsx (#react-composer textarea), он кладёт текст в скрытый #prompt и жмёт #send.
   «/» открывает меню команд (.slash-menu: /agents /new /app /x3 /polish /mobile /copy /fix /3d), включённые режимы —
   чипы .mode-chip слева, счётчик токенов .tok-chip (событие oc:tokens из providers.js: tokens, tokensTurn()). Во время стрима — оценка ~3.6 симв/токен, после ответа заменяется точным usage провайдера (stream_options.include_usage; Anthropic message_start/message_delta; worker пробрасывает usage бесплатного ИИ). Без usage остаётся «~».
@@ -170,6 +179,32 @@ cli/bin.mjs — npm-пакет "openconstructor" (npx openconstructor), без �
   ИИ: бесплатный /api/ai на openconstructor.pw (X-OC-Turn) или свой ключ из env (GROQ/GEMINI/OPENROUTER/…; OC_MODEL).
   История версий в .openconstructor/history, /undo. Тест: tests/unit/cli.test.js (поддельный ИИ).
   Публикация в npm делается вручную: cd cli && npm publish.
+DESKTOP (2026-11-15): desktop/ — Electron 45. main.cjs (окно, папка проекта в Документы/openconstructor/my-site,
+  локальный предпросмотр папки с live reload, IPC), acp.cjs (свой клиент Agent Client Protocol: JSON-RPC по stdio,
+  initialize / session/new с mcpServers=[наш cli/mcp.mjs через Electron как node] / session/prompt / session/update,
+  запросы разрешений и fs в пределах папки), preload.cjs (window.oc), ui/ (агенты, чат, рой swarm-glyph, предпросмотр).
+  Агенты: Claude Code (npx @agentclientprotocol/claude-agent-acp), Codex (npx @agentclientprotocol/codex-acp),
+  Gemini CLI (gemini --acp). Вход — у самого агента (authMethods → кнопки). Инструменты openconstructor разрешаются сами.
+  Запуск: cd desktop && npm i && npm start (из терминала VS Code — без ELECTRON_RUN_AS_NODE). OC_SHOT=… — снимок без кликов.
+  Экраны (ui/app.js, переходы — View Transitions): splash (курсор собирается из пикселей, fx.buildLogo) → auth
+  (account.cjs: Supabase REST — вход/регистрация/код из письма, сессия зашифрована safeStorage) → home (приветствие,
+  строка «Describe a page» → открывает редактор и отправляет запрос, плитки Web interface / Code / Agents с живыми
+  мини-сценами, наклон за курсором fx.tilt) → web (<webview> с сайтом: OC_WEB_URL или openconstructor.pw, сессия и
+  oc-welcomed кладутся в его localStorage) / agents. Фон: fx.field — точки расступаются вокруг курсора + аврора + зерно.
+  Запуск на Windows: двойной клик desktop\start.cmd или npm.cmd run desktop. Тестовые снимки: OC_SHOT, OC_SCREEN,
+  OC_JS ("__open('code')"), окно уходит за край экрана.
+  Ещё нет: сборки .exe/.dmg (electron-builder), переноса страницы агента в холст веб-редактора, входа через Google/GitHub.
+OPENROUTER ОДНОЙ КНОПКОЙ (2026-11-15): connect-openrouter.js — OAuth PKCE: openrouter.ai/auth → ?or-connect=1&code= →
+  POST /api/v1/auth/keys → ключ пользователя в keys.openrouter (сервер его не видит). Кнопки data-or-connect: пустой
+  холст (#emptyStart) и строка OpenRouter в окне AI keys. e2e: «OpenRouter: one-click sign-in…».
+MCP-СЕРВЕР (2026-11-15): cli/mcp.mjs — `npx openconstructor mcp [папка]`, stdio JSON-RPC без зависимостей (bin.mjs
+  передаёт ему управление, если первый аргумент mcp). ИИ здесь — сам агент, поэтому сервер ИИ не вызывает.
+  Инструменты: search_components / list_categories / get_component (каталог из cli/catalog.json.gz — его собирает
+  scripts/build-catalog.mjs из presets.js, входит в npm run build; npm run build:catalog — отдельно), page_new / page_set /
+  page_get / page_add_section / page_update_section / page_move_section / page_remove_section (страница-стопка в папке:
+  openconstructor.json + index.html), preview (127.0.0.1:4330+, live reload по SSE), screenshot (headless Chrome/Edge
+  флагом --screenshot, PNG как image-контент), export (html / react / vue / svelte). Токены model: → <canvas data-oc-model>
+  + oc3d.js с сайта, photo: → /api/photo. Тест: tests/unit/mcp.test.js. Публикации на /p/ пока нет (нужен вход).
 promo/ — материалы для соцсетей (roblox-export.gif: шаблон → холст → экспорт в Luau; html-export.gif: запрос в чат → ИИ собирает лендинг кофейни → Export → HTML page → файл открыт в браузере → карточка openconstructor.pw, 960×600, 15 с; html-export-result.html — тот самый выгруженный файл).
 
 ПЛАН «APPS» (мини-приложения)
@@ -192,18 +227,64 @@ e2e: "swarm". thinking() отдаёт стройку через stop.stage().
 Число секций = agentLimit() (настройка «Команда агентов»); свои агенты пользователя (myAgents) встают секциями
 перед cta/contact/footer, планировщик их не планирует, каждый может идти на своей модели (свой провайдер и ключ).
 
-ВНЕШНИЙ ВИД (2026-11-13): монохром — акцент #f2f2f2, текст на акценте var(--on-accent) #0a0a0a (светлая тема:
-акцент #18181b). Коралл #ff5a36 убран из CSS/JS/лого; PNG-иконки и og.png ещё коралловые.
+ВНЕШНИЙ ВИД (2026-11-15): палитра «графит и лаванда» — акцент #6f60f2 (лаванда лого, чуть глубже, чтобы белый текст
+на ней проходил AA), --on-accent #fff, --ai #9d92ff (курсоры/«думаю»); светлая тема «светлая студия»: акцент #6152ea,
+нейтрали с лёгким фиолетовым оттенком. Стартовый экран: --wl-accent #6f60f2, --wl-accent-text #a79dff для мелкого текста.
+SEO-страницы (public/pages.css) — тот же акцент. og.png ещё старый.
+Живой фон стартового экрана (2026-11-15): src/fx.js (field — точки расступаются вокруг курсора, tilt — наклон карточек),
+  .wl-bg (аврора + зерно + canvas) за всем содержимым, сменяющаяся 2-я строка заголовка (Rotator, ROTATE), рой в строке
+  запроса (.wl-prompt-swarm), бегущая подсветка по краю строки запроса и блик на главных кнопках. Тот же визуал — в desktop/ui.
 Стартовый экран: герой с орбитами (Welcome.jsx OrbitHero): 3D-лого public/hero-mark.webp (scene3d renderModel
-'openconstructor chrome #8a8f9c', 900px) + логотипы моделей на трёх наклонных эллипсах (id градиентов уникальны: orbLogo).
+'openconstructor plastic', 900px — пиксельный курсор из вокселей) + логотипы моделей на трёх наклонных эллипсах (id градиентов уникальны: orbLogo).
 Пустой холст: блок «Get started» (#emptyStart, логотипы провайдеров → openSettings(pid)).
-Окно «AI keys» (#settings): строка на провайдера с круглым тумблером .switch; вкл — поле ключа, выкл — ключ
+Окно «AI keys» (#settings): карточка на провайдера (вид — см. запись ниже) с круглым тумблером .switch; вкл — поле ключа, выкл — ключ
   СОХРАНЯЕТСЯ, провайдер выключен (keysOff, localStorage 'oc-keys-off', active(pid)); «удалить ключ» — data-forget.
   Список моделей = бесплатный ИИ + только включённые провайдеры со своим ключом (OpenRouter без ключа больше не показывается).
 Орбита: наведение на логотип — орбиты замирают, точки загораются, карточка ORBIT_INFO (вендор, семейство, через каких провайдеров).
 Бейдж $0 (.model-free, isFree()) у бесплатных моделей в списке. Новые провайдеры: Z.ai, SiliconFlow, Cohere,
 Hugging Face, LLM7 (все с CORS). Логотипы — LobeHub Icons (MIT), src/logos; VENDOR_LOGOS сопоставляет вендоров.
 Холст: в nodeDoc *{animation-timeline:auto!important} — scroll-анимации показывают конечное состояние.
+Рой запускается (2026-11-15): пустой холст, /new, «новый сайт…», ИЛИ «сделай/создай/build … сайт/страницу/лендинг…»
+  (SWARM_MAKE), когда цель — не страница (isPage: full и ≥3 section/header/footer/nav/main). Раньше просьба сделать сайт
+  при маленьком элементе на холсте (3D-слово, лого) уходила правкой этого элемента. e2e: «swarm: "make a site" over…».
+Холст: vh в коде элемента → px от высоты экрана страницы (canvasVh в nodeDoc; экспорт не трогается). Раньше
+  min-height:100vh раздувал фрейм до потолка 5000px. e2e: «canvas: 100vh means the screen height…».
+Правка большой страницы по частям (page-patch.js, 2026-11-15): выбранный full-элемент >5000 символов, который splitPage
+  делит на ≥3 блока, уходит модели с <!-- part N -->; она отвечает {"action":"patch"} с маркерами replace/after/before/remove/css,
+  applyPatch собирает страницу (обрезанный последний блок выкидывается). Раньше модель переписывала всю страницу, упиралась
+  в AI_MAX_TOKENS=8000 → «Could not apply» и 200+ с. Тесты: tests/unit/page-patch.test.js, e2e «edit: a big page takes a patch».
+Окно «AI keys» (2026-11-15): карточки по 3 в ряд в группах «Без ключа» (openconstructor AI, OVHcloud, LLM7) · «Бесплатные тарифы» ·
+  «Оплата по факту»; появление волной (.providers.intro), подсветка за курсором, при включении свет бежит по рамке (provOpening).
+  noKey-провайдеры (providers.js) включаются переключателем (store oc-keyless-on), без Authorization; optionalKey — поле ключа
+  для лимитов. freeIf: у SiliconFlow/Z.ai бесплатна только часть моделей (остальные не помечаются $0 — раньше Kimi K3.1 Pro
+  была «$0» и падала «balance insufficient»). Ошибки баланса → понятное сообщение. NVIDIA NIM, Kilo, Cloudflare не
+  добавлены: их API не пускает браузер (нет CORS), нужен прокси в worker.
+Рой на своём ключе: агенты идут очередью (p.lanes, по умолчанию 3, у Gonka 1), на 429/«too many» ждут и повторяют (до 3 раз);
+  если секций <2 — сборка одним ответом (кроме ошибок ключа/баланса). В чате под «Could not apply» — «Reason: …» (настоящая ошибка).
+ИИ и свежие факты (web-facts.js, 2026-11-15): needsWeb (текущее/новости/рейтинги/год/ИИ-модели) → ДО сборки: модель пишет
+  1–2 запроса (QUERY_PROMPT), /api/web ищет; для ИИ-тем ещё живой список моделей OpenRouter (aiModelsFacts). Всё уходит как
+  «FRESH FACTS» в одиночный ответ, планировщику и каждому агенту роя (buildSwarm facts). В системном промпте: память устарела.
+  worker: ddgSearch → ddgLite (lite.duckduckgo.com) → wikiSearch (html-версия DDG с Cloudflare часто пустая). ai-parse:
+  {"action":"reply"} + {"reply":"…"} показывается текстом (unwrapReply).
+Арт-направления (art-direction.js, 2026-11-15, по разбору Awwwards Sites of the Day): 8 направлений (wordmark, cinema, mixtype,
+  collage, product, serifnoir, specs, poster) = правила + общий CRAFT + свой hero, написанный с нуля (кода сайтов нет).
+  Планировщик роя выбирает "direction" (иначе pickDirection по словам бизнеса); всем агентам directionBrief, hero-агенту ещё
+  пример (каталожный ref для hero отключён); directionCSS (--serif/--mono/--condensed, .micro, .hair, ad-float/spin/marq) в CSS
+  страницы. Одиночный ответ (без роя) направление пока не получает. Просмотр: скрипт scratchpad/awww/heroes.mjs (не в репо).
+Кнопки без JS (interactive-kit.js, 2026-11-15): скриптов на страницах нет, поэтому вкладки/фильтры = .oc-tabs (radio+label,
+  затем .oc-panels; :has показывает панель), FAQ = details.oc-acc, тумблер = label.oc-toggle. INTERACTIVE_DOC в системном
+  промпте и sectionSystem; withInteractive() дописывает CSS после ответа. На холсте клики идут в страницу только в ▶ play
+  (.canvas.playing iframe pointer-events:auto) — одноразовый тост oc-play-hint.
+Иконки и логотипы (icon-tokens.js, 2026-11-15): <img src="icon:NAME"> → инлайн-SVG Lucide (lucide-static, алиасы/фаззи),
+  <img src="logo:BRAND"> → наш цветной логотип ИИ-вендора (VENDOR_LOGOS), иначе Simple Icons с jsDelivr (simple-icons@16.30.0,
+  моно currentColor), иначе монограмма. Первым шагом resolveMedia; ICONS_DOC в системном промпте и sectionSystem.
+Стоп и композер (2026-11-15): providers.js aiCancel.signal во всех fetch к моделям; runAI создаёт AbortController, событие
+  oc:stop (кнопка в InputBar: status=streaming пока #send disabled) → «Stopped», холст не трогается. send-button.tsx квадратный
+  (.oc-send/.oc-stop с пульсом), скругления композера/окна чата/пузырей уменьшены (конец studio.css).
+Exploring: после поиска runAI открывает 2 лучших результата целиком (/api/web?url=, шаг «exploring host»); правка страницы про
+  ИИ (AI_TOPIC в тексте страницы) всегда получает свежий список моделей; неизвестные цифры → «—». Графики — только инлайн-SVG.
+  Новая страница без роя тоже получает directionBrief. Экран: в #pageSize группы phones (iPhone 17 Pro Max…, Galaxy S26, Pixel 10)
+  и tablets (iPad, Galaxy Tab), CSS-вьюпорты; предпросмотр ▣ показывает выбранную модель.
 Агенты роя берут за основу компонент каталога: pickRef(kind) в studio.js (REF_KINDS → похожая полноширинная секция).
 Стройка рисует линии стыковки (build-stage.js drawLinks: швы между секциями, нити от курсоров к якорям).
 Плавающий чат (layout.js, по умолчанию на десктопе ≥900px): окно ответов поверх холста (тащить за шапку, угол — размер,

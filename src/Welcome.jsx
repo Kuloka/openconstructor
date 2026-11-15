@@ -11,6 +11,8 @@ import { openAuth, user as authUser } from '../auth.js';
 import { openDonate } from '../donate.js';
 import { track } from '../track.js';
 import { PROVIDERS } from '../providers.js';
+import { field, tilt } from './fx.js';
+import { swarmGlyph } from '../swarm-glyph.js';
 import './welcome.css';
 
 const Logo = ({ size = 28 }) => <span className="wl-logo" style={{ width: size, height: size }} dangerouslySetInnerHTML={{ __html: logoSvg }} />;
@@ -206,12 +208,29 @@ function OrbitHero(){
   );
 }
 
+// the hero's second line keeps changing (the same idea as the desktop app's sign-in screen)
+const ROTATE = ['with words and blocks', 'with Claude, GPT and Gemini', 'from a screenshot', 'in a few minutes'];
+function Rotator(){
+  const [i, setI] = useState(0);
+  useEffect(() => { if (matchMedia('(prefers-reduced-motion: reduce)').matches) return; const t = setInterval(() => setI(n => (n + 1) % ROTATE.length), 2800); return () => clearInterval(t); }, []);
+  return <span className="wl-title-line wl-rot"><span key={i} className="wl-accent-text wl-rot-word">{tr(ROTATE[i])}</span></span>;
+}
+
 export default function Welcome(){
   const shouldShow = () => location.hash === '#welcome' || !localStorage.getItem('oc-welcomed');
   const [open, setOpen] = useState(() => { try { return shouldShow(); } catch { return true; } });
   const [closing, setClosing] = useState(false);
   const [idea, setIdea] = useState('');
-  const scroller = useRef(null);
+  const scroller = useRef(null), fieldRef = useRef(null), swarmRef = useRef(null);
+
+  // the living background (a dot field that parts around the cursor), the swarm in the prompt, cards that lean
+  useEffect(() => {
+    if (!open || !fieldRef.current) return;
+    const f = field(fieldRef.current);
+    if (swarmRef.current && !swarmRef.current.firstChild) swarmRef.current.append(swarmGlyph());
+    const offs = [...(scroller.current?.querySelectorAll('.wl-card, .wl-app') || [])].map(el => tilt(el));
+    return () => { f.stop(); offs.forEach(off => off()); };
+  }, [open]);
 
   useEffect(() => {
     const reopen = e => { setClosing(false); setOpen(true); const to = e?.detail; setTimeout(() => { const el = to && document.getElementById(to); if (el) el.scrollIntoView(); else scroller.current?.scrollTo(0, 0); }, 60); };
@@ -238,6 +257,7 @@ export default function Welcome(){
   if (!open) return null;
   return (
     <div className={`wl${closing ? ' wl-out' : ''}`} ref={scroller} role="dialog" aria-label="Welcome to openconstructor">
+      <div className="wl-bg" aria-hidden="true"><div className="wl-aurora"><i /><i /><i /></div><canvas ref={fieldRef} /><div className="wl-grain" /></div>
       <header className="wl-nav">
         <div className="wl-brand"><Logo size={22} /><span><i>open</i>constructor</span></div>
         <nav>
@@ -258,12 +278,12 @@ export default function Welcome(){
         <div className="wl-badge"><span className="wl-dot" /><span>AI interface builder · public beta</span></div>
         <h1 className="wl-title">
           <span className="wl-title-line">Build interfaces</span>
-          <span className="wl-title-line wl-accent-text">with words and blocks</span>
+          <Rotator />
         </h1>
         <p className="wl-sub">A library of polished components, a free-form canvas and an AI assistant that lays out pages from a description. Export clean HTML and CSS.</p>
 
         <form className="wl-prompt" onSubmit={e => { e.preventDefault(); build(idea); }}>
-          <span className="wl-prompt-caret">›</span>
+          <span className="wl-prompt-swarm" ref={swarmRef} aria-hidden="true" />
           <input value={idea} onChange={e => setIdea(e.target.value)} placeholder="Describe what to build… e.g. a coffee shop landing page" aria-label="What to build" />
           <button type="submit" className="wl-btn primary" disabled={!idea.trim()}>Build ✦</button>
         </form>

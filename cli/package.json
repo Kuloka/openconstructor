@@ -1,7 +1,7 @@
 {
   "name": "openconstructor",
-  "version": "0.1.0",
-  "description": "openconstructor code in your terminal: describe an app, it is written to index.html + style.css + app.js and runs in your browser; errors go straight back to the AI.",
+  "version": "0.2.0",
+  "description": "openconstructor in your terminal and as an MCP server: describe an app and it runs in your browser, or let AI agents build pages from 700+ ready sections, live 3D and photos.",
   "type": "module",
   "bin": {
     "openconstructor": "bin.mjs"
@@ -9,6 +9,8 @@
   "files": [
     "bin.mjs",
     "ui.mjs",
+    "mcp.mjs",
+    "catalog.json.gz",
     "README.md"
   ],
   "engines": {
@@ -20,6 +22,8 @@
     "app-builder",
     "html",
     "live-reload",
+    "mcp",
+    "mcp-server",
     "openconstructor"
   ],
   "homepage": "https://openconstructor.pw",

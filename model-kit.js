@@ -167,15 +167,19 @@ export function buildModel(query){
   const group = new THREE.Group();
   const mat = modelMaterial(material, color);
   if (shape === 'ocmark') {
-    // the openconstructor mark (the folded C): five planes, the two folds set back a little
-    const planes = [[[17, 6], [42, 6], [31, 17], [17, 17]], [[6, 17], [17, 6], [17, 17]], [[6, 18.5], [17, 18.5], [17, 29.5], [6, 29.5]], [[6, 31], [17, 31], [17, 42]], [[17, 31], [31, 31], [42, 42], [17, 42]]];
-    planes.forEach((pts, i) => {
-      const fold = i === 1 || i === 3;
-      const sh = new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2((x - 24) / 12, (24 - y) / 12)));
-      const g = new THREE.ExtrudeGeometry(sh, { depth: fold ? 0.4 : 0.62, bevelEnabled: true, bevelSize: 0.06, bevelThickness: 0.08, bevelSegments: 8 });
-      const mesh = new THREE.Mesh(g, mat); mesh.position.z = fold ? -0.12 : 0; group.add(mesh);
-    });
-    group.rotation.set(-0.28, 0.72, 0.06);
+    // the openconstructor mark (the pixel cursor, public/favicon.svg): rounded voxels; the outline in the asked
+    // material and colour (lavender by default), the arrow's body in white of the same finish, standing a little proud
+    const CURSOR = ['o.......', 'oo......', 'ofo.....', 'offo....', 'offfo...', 'offffo..', 'offfffo.', 'offfoooo', 'ofoofo..', 'oo.ofo..', 'o...ofo.', '....ofo.', '.....oo.'];
+    const k = 0.24, cube = new RoundedBoxGeometry(k * 0.86, k * 0.86, k * 1.6, 4, k * 0.16);
+    const edge = color ? mat : modelMaterial(material, '#7b6cf6');
+    const body = modelMaterial(material === 'glass' ? 'glass' : material === 'neon' ? 'neon' : 'pearl', '#ffffff');
+    CURSOR.forEach((row, y) => [...row].forEach((ch, x) => {
+      if (ch === '.') return;
+      const mesh = new THREE.Mesh(cube, ch === 'f' ? body : edge);
+      mesh.position.set((x - 3.5) * k, (6 - y) * k, ch === 'f' ? k * 0.35 : 0);
+      group.add(mesh);
+    }));
+    group.rotation.set(-0.22, 0.5, 0.04);
   } else if (shape === 'shapes') {
     [['sphere', [-0.95, -0.35, 0.2], 0.62], ['torus', [0.75, 0.55, -0.3], 0.55], ['cube', [0.55, -0.8, 0.5], 0.42]].forEach(([s, p, k]) => {
       const mesh = new THREE.Mesh(modelGeometry(s), mat); mesh.position.set(...p); mesh.scale.setScalar(k); mesh.rotation.set(0.5, 0.6, 0.2); group.add(mesh);
