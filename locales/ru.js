@@ -1136,6 +1136,7 @@ export default {
   "from a screenshot": "по скриншоту",
   "in a few minutes": "за пару минут",
   // AI keys dialog as cards (studio.js renderProviders)
+  "Fix the overlapping parts": "Исправь наложения",
   "This model needs your own key for this service. Paste it in ⚙ AI keys, or pick a model marked $0.": "Этой модели нужен ваш ключ от этого сервиса. Вставьте его в ⚙ AI keys или выберите модель с пометкой $0.",
   "Stopped. The canvas stays as it was.": "Остановлено. Холст остался как был.",
   "Tabs and switches work in ▶ play mode (P), in preview and on the published site": "Вкладки и переключатели работают в режиме ▶ play (P), в предпросмотре и на опубликованном сайте",

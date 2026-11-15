@@ -13,6 +13,7 @@ import { startOpenRouter, finishOpenRouter } from './connect-openrouter.js';
 import { splitPage, numbered, applyPatch, PATCH_RULES } from './page-patch.js';
 import { INTERACTIVE_DOC, withInteractive } from './interactive-kit.js';
 import { resolveIcons, ICONS_DOC } from './icon-tokens.js';
+import { findOverlaps, LAYOUT_FIX } from './layout-check.js';
 import { PLANNER_DIRECTIONS, pickDirection, directionCSS, directionBrief } from './art-direction.js';
 import { needsWeb, AI_TOPIC, aiModelsFacts, resultsNote, parseQueries, QUERY_PROMPT } from './web-facts.js';
 import { parseScene, parseAnswer, firstJSON, looseJSON } from './ai-parse.js';
@@ -1845,6 +1846,17 @@ $('send').onclick = () => {
   runAI(request || (imgs.length ? 'Use the attached image' + (imgs.length > 1 ? 's' : '') : 'Use the attached file'), custom);
 };
 
+// The rendered element is checked for parts drawn on top of each other; if there are any, one automatic fix request follows
+async function layoutQA(id){
+  const f = nodes.get(id)?.querySelector('iframe'); if (!f) return;
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  for (let i = 0; i < 40 && !(f._loaded && f.contentDocument?.readyState === 'complete'); i++) await wait(150);
+  await wait(1200); // photos, live 3D and fonts settle
+  if ($('send').disabled || !items.some(x => x.id === id)) return;
+  let list = []; try { list = findOverlaps(f.contentDocument); } catch { return; }
+  if (!list.length) return;
+  runAI(t('Fix the overlapping parts'), { targetId: id, sameTurn: true, layoutFix: true, ask: LAYOUT_FIX(list) });
+}
 // One AI round-trip. `custom.user` replaces the default context (used by Fusion); `custom.place` positions a new element.
 // Is `next` a rewritten version of `prev` (most of its words are still there) rather than a new block?
 function isRewriteOf(prev, next){
@@ -2147,7 +2159,7 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
     const ask0 = custom.ask || request;
     const pageText = target && !target.scene ? (target.name || '') + ' ' + slimCode.replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').slice(0, 4000) : '';
     const searchToo = needsWeb(ask0), aboutAI = AI_TOPIC.test(ask0) || AI_TOPIC.test(pageText);
-    const fresh = !custom.user && !appMode && !links.length && (searchToo || aboutAI);
+    const fresh = !custom.user && !custom.layoutFix && !appMode && !links.length && (searchToo || aboutAI);
     if (fresh) {
       const ask = ask0;
       if (aboutAI) { try { const f = await stop.web('checking which AI models are current', () => aiModelsFacts()); if (f) webNote += '\n\n' + f; } catch {} }
@@ -2220,9 +2232,9 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
         try { const j = firstJSON(String(content).replace(/<think>[\s\S]*?<\/think>/gi, '')); data = j && looseJSON(j.json); } catch { data = null; }
         if (data && typeof data !== 'object') data = null;
       }
-      if (!data) throw Error('The model answered in an unexpected format');
-      artHue = Number.isFinite(+data.hue) ? +data.hue : 220;
-      result = { action: 'add', full: true, name: String(data.brand || 'Cinematic site').slice(0, 60) + ' · 3D site', code: cinePage(data), reply: String(data.reply || '') };
+      // no usable content twice: the site is built the ordinary way, in one answer
+      if (!data) { stop.step('the cinematic content came out garbled — building the site in one go'); result = await getResult(); }
+      else { artHue = Number.isFinite(+data.hue) ? +data.hue : 220; result = { action: 'add', full: true, name: String(data.brand || 'Cinematic site').slice(0, 60) + ' · 3D site', code: cinePage(data), reply: String(data.reply || '') }; }
     } else if (!appMode && !custom.user && !custom.ask && !custom.images?.length && !variantsOn && (!target || custom.swarm || (implicit && SWARM_NEW.test(request)) || (SWARM_MAKE.test(request) && !isPage(target))) && (custom.swarm || SWARM_RE.test(request)) && (result = await buildSwarm({ p, key, m, request, recent, system, stop, facts: webNote }))) {
       // a new page built by parallel agents (planner + one agent per section, see buildSwarm)
     } else if (variantsOn && !appMode && !custom.user && !custom.ask && !custom.images?.length) {
@@ -2298,6 +2310,8 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
     // on the canvas clicks go to selecting and moving, not into the page: say once how to try the switches
     if (!playing && /class=["'][^"']*\boc-(tabs|acc|toggle)\b/.test(result.code) && !store.get('oc-play-hint', false)) { store.set('oc-play-hint', true); toast(t('Tabs and switches work in ▶ play mode (P), in preview and on the published site')); }
     track('ai_ok');
+    // eyes: once the answer is drawn, look for overlapping parts and send them back to the model once (layout-check.js)
+    if (!appMode && !custom.layoutFix && !custom.user && lastAiId) { const id = lastAiId; setTimeout(() => layoutQA(id), 0); }
     if (p.kind === 'proxy' && !authUser && !nudged) signupNudge('first');
     else if (!custom.targetId) suggestNext();
   } catch (e) {

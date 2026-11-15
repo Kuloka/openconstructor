@@ -1131,6 +1131,7 @@ export default {
   "from a screenshot": "bir ekran görüntüsünden",
   "in a few minutes": "birkaç dakikada",
   // AI keys dialog as cards (studio.js renderProviders)
+  "Fix the overlapping parts": "Üst üste binenleri düzelt",
   "This model needs your own key for this service. Paste it in ⚙ AI keys, or pick a model marked $0.": "Bu model bu servis için kendi anahtarını istiyor. ⚙ AI keys bölümüne yapıştır ya da $0 işaretli bir model seç.",
   "Stopped. The canvas stays as it was.": "Durduruldu. Tuval olduğu gibi kaldı.",
   "Tabs and switches work in ▶ play mode (P), in preview and on the published site": "Sekmeler ve anahtarlar ▶ oynat modunda (P), önizlemede ve yayınlanan sitede çalışır",

@@ -7,8 +7,8 @@ export const aiCancel = { signal: null };
 export const PROVIDERS = [
   { id: 'oc', name: 'openconstructor AI', logo: '', base: '/api', free: true, keyUrl: '', hint: '', note: 'no key needed — 3 free tries a day without an account, 20 a day when signed in', kind: 'proxy', publicModels: true },
   { id: 'openrouter', name: 'OpenRouter', logo: 'openrouter', base: 'https://openrouter.ai/api/v1', free: true, keyUrl: 'https://openrouter.ai/keys', hint: 'sk-or-…', note: '300+ models in one key: Claude, GPT, Gemini and more — a dozen at no cost (Gemma 4, Nemotron), GPT-OSS from $0.02/M', publicModels: true },
-  { id: 'ovh', name: 'OVHcloud AI', logo: '', base: 'https://oai.endpoints.kepler.ai.cloud.ovh.net/v1', free: true, noKey: true, keyUrl: 'https://www.ovhcloud.com/en/public-cloud/ai-endpoints/catalog/', hint: '', note: 'no key, no sign-up: GPT-OSS 120B, Qwen 3.5 397B, Llama 3.3 70B; EU servers, 2 requests a minute per model', prefer: ['gpt-oss-120b', 'Qwen3.5-397B-A17B'] },
-  { id: 'llm7', name: 'LLM7', logo: '', base: 'https://api.llm7.io/v1', free: true, noKey: true, optionalKey: true, keyUrl: 'https://token.llm7.io', hint: '', note: 'no key needed: DeepSeek V4 Flash, GLM 5.3 Flash, MiniMax M2.7, Codestral free; with a key and balance also Claude, Gemini, DeepSeek Pro; small independent service', prefer: ['DeepSeek-V4-Flash-0731'] },
+  { id: 'ovh', name: 'OVHcloud AI', logo: 'ovh', base: 'https://oai.endpoints.kepler.ai.cloud.ovh.net/v1', free: true, noKey: true, keyUrl: 'https://www.ovhcloud.com/en/public-cloud/ai-endpoints/catalog/', hint: '', note: 'no key, no sign-up: GPT-OSS 120B, Qwen 3.5 397B, Llama 3.3 70B; EU servers, 2 requests a minute per model', prefer: ['gpt-oss-120b', 'Qwen3.5-397B-A17B'] },
+  { id: 'llm7', name: 'LLM7', logo: 'llm7', base: 'https://api.llm7.io/v1', free: true, noKey: true, optionalKey: true, keyUrl: 'https://token.llm7.io', hint: '', note: 'no key needed: DeepSeek V4 Flash, GLM 5.3 Flash, MiniMax M2.7, Codestral free; with a key and balance also Claude, Gemini, DeepSeek Pro; small independent service', prefer: ['DeepSeek-V4-Flash-0731'] },
   { id: 'gemini', name: 'Google Gemini', logo: 'gemini-color', base: 'https://generativelanguage.googleapis.com/v1beta/openai', free: true, keyUrl: 'https://aistudio.google.com/apikey', hint: 'AIza…', note: 'no-cost tier with Flash models, strong at layout', prefer: ['gemini-2.5-flash', 'gemini-flash-latest'] },
   { id: 'groq', name: 'Groq', logo: 'groq', base: 'https://api.groq.com/openai/v1', free: true, keyUrl: 'https://console.groq.com/keys', hint: 'gsk_…', note: 'no-cost plan with GPT-OSS 120B (fast) and Qwen 3.8 27B (best design, ~1 page a minute)', prefer: ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b'] },
   { id: 'cerebras', name: 'Cerebras', logo: 'cerebras-color', base: 'https://api.cerebras.ai/v1', free: true, keyUrl: 'https://cloud.cerebras.ai', hint: 'csk-…', note: 'fastest GPT-OSS; $5 trial credit (card required), then pay as you go', prefer: ['gpt-oss-120b'] },
@@ -17,15 +17,24 @@ export const PROVIDERS = [
   { id: 'siliconflow', name: 'SiliconFlow', logo: 'siliconcloud-color', base: 'https://api.siliconflow.com/v1', free: true, freeIf: /[1-9]b/i, keyUrl: 'https://cloud.siliconflow.com/account/ak', hint: 'sk-…', note: 'open models (Qwen, DeepSeek, GLM); a set of smaller ones free' },
   { id: 'cohere', name: 'Cohere', logo: 'cohere-color', base: 'https://api.cohere.ai/compatibility/v1', free: true, keyUrl: 'https://dashboard.cohere.com/api-keys', hint: '', note: 'free trial key (rate-limited, non-commercial): Command models' },
   { id: 'huggingface', name: 'Hugging Face', logo: 'huggingface-color', base: 'https://router.huggingface.co/v1', free: false, keyUrl: 'https://huggingface.co/settings/tokens', hint: 'hf_…', note: 'thousands of open models via Inference Providers; small free monthly credit' },
-  { id: 'llm7', name: 'LLM7', logo: '', base: 'https://api.llm7.io/v1', free: true, keyUrl: 'https://token.llm7.io', hint: '', note: 'free token by email; small independent service, best effort' },
+  { id: 'pollinations', name: 'Pollinations', logo: 'pollinations', base: 'https://gen.pollinations.ai/v1', free: true, keyUrl: 'https://enter.pollinations.ai/keys', hint: '', note: 'free key with a daily free allowance: GLM 5.3, GPT-6 Sol and Luna, Kimi K3.1 Pro, DeepSeek V4.1 Flash; Claude, Gemini and Grok spend paid credit', prefer: ['z-ai/glm-5.3', 'moonshotai/kimi-k3.1-pro'] },
+  { id: 'vercel', name: 'Vercel AI Gateway', logo: 'vercel', base: 'https://ai-gateway.vercel.sh/v1', free: true, keyUrl: 'https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai%2Fapi-keys', hint: '', note: '$5 of free credit every month on a Vercel account: 500+ models in one key — Claude, GPT, Gemini, Grok, DeepSeek' },
+  { id: 'scaleway', name: 'Scaleway', logo: 'scaleway', base: 'https://api.scaleway.ai/v1', free: true, keyUrl: 'https://console.scaleway.com/iam/api-keys', hint: '', note: 'first 1M tokens free, EU servers (Paris): Qwen, Llama, Mistral, DeepSeek, GPT-OSS' },
+  { id: 'alibaba', name: 'Alibaba Model Studio', logo: 'bailian-color', base: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1', free: true, keyUrl: 'https://www.alibabacloud.com/help/en/model-studio/get-api-key', hint: 'sk-…', note: 'the Qwen family first-hand; new accounts get a free token quota per model (Singapore region)' },
   { id: 'aion', name: 'Aion Labs', logo: 'aionlabs-color', base: 'https://api.aionlabs.ai/v1', free: true, keyUrl: 'https://www.aionlabs.ai/app/api-keys/', hint: '', note: 'free forever, no card: Aion 3.0 models; 20K tokens a day — enough for small edits' },
-  { id: 'gonka', name: 'Gonka', logo: '', base: 'https://proxy.gonkabroker.com/v1', free: true, keyUrl: 'https://app.gonkabroker.com/signup', hint: '', lanes: 1, note: 'free tokens after sign-up (phone number) for the model chosen in the Gonka dashboard — MiniMax M2.7 by default; DeepSeek V4 Flash and GLM 5.3 Flash too', prefer: ['MiniMaxAI/MiniMax-M2.7', 'deepseek-ai/DeepSeek-V4-Flash-0731'] },
-  { id: 'modelscope', name: 'ModelScope', logo: 'alibaba-color', base: 'https://api-inference.modelscope.cn/v1', free: true, keyUrl: 'https://modelscope.cn/my/myaccesstoken', hint: 'ms-…', note: '2,000 free requests a day of Qwen 3.5; needs an Alibaba Cloud account with real-name check (mainland China)' },
+  { id: 'gonka', name: 'Gonka', logo: 'gonka', base: 'https://proxy.gonkabroker.com/v1', free: true, keyUrl: 'https://app.gonkabroker.com/signup', hint: '', lanes: 1, note: 'free tokens after sign-up (phone number) for the model chosen in the Gonka dashboard — MiniMax M2.7 by default; DeepSeek V4 Flash and GLM 5.3 Flash too', prefer: ['MiniMaxAI/MiniMax-M2.7', 'deepseek-ai/DeepSeek-V4-Flash-0731'] },
+  { id: 'modelscope', name: 'ModelScope', logo: 'modelscope-color', base: 'https://api-inference.modelscope.cn/v1', free: true, keyUrl: 'https://modelscope.cn/my/myaccesstoken', hint: 'ms-…', note: '2,000 free requests a day of Qwen 3.5; needs an Alibaba Cloud account with real-name check (mainland China)' },
   { id: 'deepseek', name: 'DeepSeek', logo: 'deepseek-color', base: 'https://api.deepseek.com', free: false, keyUrl: 'https://platform.deepseek.com/api_keys', hint: 'sk-…', note: 'very low cost, strong at code' },
   { id: 'openai', name: 'OpenAI', logo: 'openai', base: 'https://api.openai.com/v1', free: false, keyUrl: 'https://platform.openai.com/api-keys', hint: 'sk-…', note: 'GPT models' },
   { id: 'anthropic', name: 'Anthropic', logo: 'claude-color', base: 'https://api.anthropic.com/v1', free: false, keyUrl: 'https://console.anthropic.com/settings/keys', hint: 'sk-ant-…', note: 'Claude, the strongest at layout', kind: 'anthropic' },
   { id: 'xai', name: 'xAI', logo: 'xai', base: 'https://api.x.ai/v1', free: false, keyUrl: 'https://console.x.ai', hint: 'xai-…', note: 'Grok models' },
   { id: 'together', name: 'Together AI', logo: 'together-color', base: 'https://api.together.xyz/v1', free: false, keyUrl: 'https://api.together.ai/settings/api-keys', hint: '', note: 'open models: Llama, Qwen, DeepSeek' },
+  { id: 'deepinfra', name: 'DeepInfra', logo: 'deepinfra-color', base: 'https://api.deepinfra.com/v1/openai', free: false, keyUrl: 'https://deepinfra.com/dash/api_keys', hint: '', note: 'open models at some of the lowest prices: DeepSeek, Qwen, GLM, Kimi, Llama' },
+  { id: 'fireworks', name: 'Fireworks AI', logo: 'fireworks-color', base: 'https://api.fireworks.ai/inference/v1', free: false, keyUrl: 'https://app.fireworks.ai/settings/users/api-keys', hint: 'fw_…', note: 'fast open models (GLM, Kimi, DeepSeek, Qwen); a small credit to try' },
+  { id: 'nebius', name: 'Nebius Token Factory', logo: 'nebius', base: 'https://api.tokenfactory.nebius.com/v1', free: false, keyUrl: 'https://tokenfactory.nebius.com/', hint: '', note: 'open models on EU servers, trial credit on sign-up' },
+  { id: 'novita', name: 'Novita AI', logo: 'novita-color', base: 'https://api.novita.ai/v3/openai', free: false, keyUrl: 'https://novita.ai/settings/key-management', hint: 'sk_…', note: 'cheap open models, trial credit on sign-up' },
+  { id: 'chutes', name: 'Chutes', logo: 'chutes', base: 'https://llm.chutes.ai/v1', free: false, keyUrl: 'https://chutes.ai/app/api', hint: 'cpk_…', note: 'decentralised GPUs (Bittensor): open models for cents' },
+  { id: 'hyperbolic', name: 'Hyperbolic', logo: 'hyperbolic-color', base: 'https://api.hyperbolic.xyz/v1', free: false, keyUrl: 'https://app.hyperbolic.xyz/settings', hint: '', note: 'open models pay as you go, small trial credit' },
 ];
 export const byId = id => PROVIDERS.find(p => p.id === id);
 
@@ -76,17 +85,25 @@ export async function listModels(p, key){
   catch (e) { if (!headers.Authorization) throw e; r = await fetch(url); }
   if (!r.ok) throw Error(await errorText(r));
   const data = await r.json();
-  let list = (data.data || data.models || []).map(m => ({
-    id: String(m.id || m.name).replace(/^models\//, ''),
-    name: m.display_name || m.name || m.id,
-    ctx: +(m.context_length || m.context_window?.tokens || m.context_window || m.max_context_length || m.inputTokenLimit || 0) || 0,
-    out: m.architecture?.output_modalities,
-    // OpenRouter: $ per token → $ per 1M tokens [input, output]; LLM7: already $ per 1M as { input, output }
-    price: m.pricing ? (m.pricing.prompt != null ? [+m.pricing.prompt * 1e6, +m.pricing.completion * 1e6] : m.pricing.input != null ? [+m.pricing.input, +m.pricing.output] : null) : null,
-    // tiered services (LLM7): "turbo" models are free for everyone, "pro" ones need a key with a paid balance
-    tiered: 'tier' in m, needKey: m.usage_based_only === true || m.tier === 'pro',
-  }));
-  list = list.filter(m => m.id && !NOT_CHAT.test(m.id));
+  // prices come per token (OpenRouter, Vercel) or per 1M tokens (LLM7, Chutes): tiny numbers are per token
+  const perM = v => { const n = +(v?.usd ?? v); return !Number.isFinite(n) ? NaN : n > 0 && n < 0.001 ? n * 1e6 : n; };
+  let list = (data.data || data.models || [])
+    // services that list images, video, speech and embeddings too (Vercel "type", Pollinations "category")
+    .filter(m => (!m.type || m.type === 'language' || m.type === 'chat' || m.type === 'model') && (!m.category || m.category === 'text') && m.community !== true)
+    .map(m => {
+      const pr = m.pricing || m.price;
+      const price = !pr || pr.currency === 'pollen' ? null : pr.prompt != null ? [perM(pr.prompt), perM(pr.completion)] : pr.input != null ? [perM(pr.input), perM(pr.output)] : null;
+      return {
+        id: String(m.id || m.name).replace(/^models\//, ''),
+        name: m.display_name || m.name || m.id,
+        ctx: +(m.context_length || m.context_window?.tokens || m.context_window || m.max_context_length || m.inputTokenLimit || 0) || 0,
+        out: m.architecture?.output_modalities,
+        price: price && price.every(Number.isFinite) ? price : null,
+        // tiered services: LLM7 "turbo" (free) vs "pro" (key + balance); Pollinations paid_only (paid credit) vs daily free allowance
+        tiered: 'tier' in m || 'paid_only' in m, needKey: m.usage_based_only === true || m.tier === 'pro' || m.paid_only === true,
+      };
+    });
+  list = list.filter(m => m.id && !NOT_CHAT.test(m.id) && !/^BAAI\/|bge-|e5-|-embedding|stable-diffusion|sdxl|flux/i.test(m.id));
   // without a key the key-only models would just answer "Missing API key"
   if (!key) list = list.filter(m => !m.needKey);
   // Paid models are shown too; skip router meta-models and variable-price entries (negative price)

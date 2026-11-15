@@ -598,3 +598,19 @@ scenario('stop: the stop button cancels the answer and leaves the canvas as it w
   assert.equal((await ed.items()).length, 0, 'nothing was added');
   assert.ok(await ed.until(`!document.querySelector('#react-composer .oc-stop')`, 3000), 'the send button is back');
 }, { routes: [{ match: u => u.includes('api.groq.com') && u.includes('/chat/'), handle: () => new Promise(r => setTimeout(() => r({ body: JSON.stringify({ choices: [{ message: { content: block('Late', '<div>late</div>') }, finish_reason: 'stop' }] }) }), 8000)) }] });
+
+// eyes: overlapping parts on the rendered page are found and sent back to the model once
+scenario('layout: overlapping parts are seen on the canvas and fixed automatically', async (ed, o) => {
+  const broken = '<section style="position:relative;padding:40px;background:#fff;color:#111;height:260px"><div style="position:relative"><select class="dev" style="width:400px;height:44px"><option>All models</option></select><label class="chk" style="position:absolute;left:10px;top:12px"><input type="checkbox" checked> Google</label></div><table style="margin-top:20px;width:600px"><tr><td>Gemini 4 Hydrogen</td><td>1049K</td></tr></table><svg class="chart" width="600" height="120" style="position:absolute;left:40px;top:100px" viewBox="0 0 600 120"><polyline points="0,100 200,40 400,60 600,10" fill="none" stroke="#36f"/><circle cx="200" cy="40" r="4"/><circle cx="400" cy="60" r="4"/></svg></section>';
+  const fixed = '<section style="padding:40px;background:#fff;color:#111"><label class="chk"><input type="checkbox" checked> Google</label><select class="dev" style="display:block;margin-top:12px;width:400px;height:44px"><option>All models</option></select><svg class="chart" width="600" height="120" viewBox="0 0 600 120" style="display:block;margin-top:20px"><polyline points="0,100 200,40 400,60 600,10" fill="none" stroke="#36f"/><circle cx="200" cy="40" r="4"/><circle cx="400" cy="60" r="4"/></svg><table style="margin-top:20px;width:600px"><tr><td>Gemini 4 Hydrogen</td><td>1049K</td></tr></table></section>';
+  let n = 0, asked = ''; const require_log = (k, b) => { const m = JSON.parse(b).messages; (globalThis.__calls ||= []).push(k + ' :: ' + m[0].content.slice(0, 60) + ' :: ' + m.at(-1).content.slice(-120)); };
+  o.reply = body => { n++; require_log(n, body); if (n === 1) return block('Board', broken, { full: true }); asked = JSON.stringify(JSON.parse(body).messages); return block('Board', fixed, { full: true, action: 'update' }); };
+  await ed.ask('a model board'); await ed.idle();
+  assert.ok(await ed.until(`[...document.querySelectorAll('.message.user')].some(m => /overlapping/i.test(m.textContent))`, 15000), 'the automatic fix was asked');
+  await ed.until(`!document.querySelector('.message.thinking:not(.folded)')`, 15000); await sleep(2500);
+  assert.match(asked, /LAYOUT BUGS/); assert.match(asked, /label\.chk[^"]*Google[^"]*overlaps|overlaps[^"]*label\.chk/, 'names the label');
+  assert.match(asked, /chart \/ drawing/, 'names the chart');
+  const list = await ed.items();
+  assert.equal(list.length, 1); assert.doesNotMatch(list[0].code, /position:absolute/, 'the fixed version is on the canvas');
+  assert.equal(n, 2, 'exactly one automatic round: ' + JSON.stringify(globalThis.__calls));
+});

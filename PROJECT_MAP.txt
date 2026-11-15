@@ -285,6 +285,19 @@ Exploring: после поиска runAI открывает 2 лучших ре�
   ИИ (AI_TOPIC в тексте страницы) всегда получает свежий список моделей; неизвестные цифры → «—». Графики — только инлайн-SVG.
   Новая страница без роя тоже получает directionBrief. Экран: в #pageSize группы phones (iPhone 17 Pro Max…, Galaxy S26, Pixel 10)
   и tablets (iPad, Galaxy Tab), CSS-вьюпорты; предпросмотр ▣ показывает выбранную модель.
+Провайдеры, разбор GitHub-списков (2026-11-15: mnfst, open-free-llm-api, freellm.net + CORS-проверка 26 API): добавлены
+  Pollinations (бесплатный ключ, дневной лимит; paid_only → платные, community скрыты; без ключа большие промпты не берёт),
+  Vercel AI Gateway ($5/мес), Scaleway (1M токенов), Alibaba Model Studio; платные DeepInfra, Fireworks, Nebius, Novita,
+  Chutes, Hyperbolic. Не добавлены (нет CORS): NVIDIA NIM, Kilo, Cloudflare, OpenCode Zen, Ollama Cloud, SambaNova,
+  GitHub Models; Glhf мёртв (526). listModels понимает цены за токен и за 1M, price.input.usd, type/category, paid_only.
+Глаза ИИ (layout-check.js, 2026-11-15): после ответа runAI → layoutQA(id) ждёт отрисовку и findOverlaps(iframe doc): видимые
+  тексты (рамка по буквам, без межстрочного запаса), контролы, SVG-графики; пары, где одно не внутри другого и пересечение
+  ≥25% меньшего. Если есть — один автозапрос «Fix the overlapping parts» (custom.layoutFix: без повторной проверки и без
+  веб-поиска). 8 эталонных hero проходят чисто; e2e «layout: overlapping parts…».
+Логотипы провайдеров (2026-11-15): src/logos из @lobehub/icons-static-svg@1.99.0 (pollinations, vercel, deepinfra, fireworks,
+  nebius, novita, chutes, hyperbolic, bailian, modelscope), OVH/Scaleway из simple-icons (fill=currentColor), LLM7 и Gonka —
+  их favicon PNG 64px внутри SVG. «Unexpected format»: ответ без кода и заголовка теперь показывается текстом; cine-режим
+  без JSON собирает сайт обычным ответом.
 Агенты роя берут за основу компонент каталога: pickRef(kind) в studio.js (REF_KINDS → похожая полноширинная секция).
 Стройка рисует линии стыковки (build-stage.js drawLinks: швы между секциями, нити от курсоров к якорям).
 Плавающий чат (layout.js, по умолчанию на десктопе ≥900px): окно ответов поверх холста (тащить за шапку, угол — размер,

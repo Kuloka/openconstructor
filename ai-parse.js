@@ -68,7 +68,8 @@ export function parseAnswer(content){
     if (cut) { try { return { action: 'add', name: (text.match(/"name"\s*:\s*"([^"]*)"/) || [])[1] || 'New element', code: looseJSON('"' + cut[1].replace(/\\+$/, '').replace(/"\s*,\s*"(reply|name|full|action)"[\s\S]*$/, '') + '"') }; } catch {} }
     // no JSON at all: accept plain HTML/CSS, or plain text as a chat reply
     const b = bare(); if (b) return b;
-    if (text && !/[{}<>]/.test(text)) return { action: 'reply', reply: text };
+    // no code and no header: whatever the model said is shown as its answer (better than an error — the retry already happened)
+    if (text) return { action: 'reply', reply: text };
     throw Error('The model answered in an unexpected format');
   }
   text = j.json;
