@@ -1133,6 +1133,7 @@ export default {
   "from a screenshot": "aus einem Screenshot",
   "in a few minutes": "in wenigen Minuten",
   // AI keys dialog as cards (studio.js renderProviders)
+  "This model needs your own key for this service. Paste it in ⚙ AI keys, or pick a model marked $0.": "Dieses Modell braucht deinen eigenen Schlüssel für diesen Dienst. Füge ihn unter ⚙ AI keys ein oder wähle ein Modell mit $0.",
   "Stopped. The canvas stays as it was.": "Gestoppt. Die Leinwand bleibt, wie sie war.",
   "Tabs and switches work in ▶ play mode (P), in preview and on the published site": "Tabs und Schalter funktionieren im ▶ Play-Modus (P), in der Vorschau und auf der veröffentlichten Seite",
   "Reason": "Grund",

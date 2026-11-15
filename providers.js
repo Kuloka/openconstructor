@@ -8,7 +8,7 @@ export const PROVIDERS = [
   { id: 'oc', name: 'openconstructor AI', logo: '', base: '/api', free: true, keyUrl: '', hint: '', note: 'no key needed — 3 free tries a day without an account, 20 a day when signed in', kind: 'proxy', publicModels: true },
   { id: 'openrouter', name: 'OpenRouter', logo: 'openrouter', base: 'https://openrouter.ai/api/v1', free: true, keyUrl: 'https://openrouter.ai/keys', hint: 'sk-or-…', note: '300+ models in one key: Claude, GPT, Gemini and more — a dozen at no cost (Gemma 4, Nemotron), GPT-OSS from $0.02/M', publicModels: true },
   { id: 'ovh', name: 'OVHcloud AI', logo: '', base: 'https://oai.endpoints.kepler.ai.cloud.ovh.net/v1', free: true, noKey: true, keyUrl: 'https://www.ovhcloud.com/en/public-cloud/ai-endpoints/catalog/', hint: '', note: 'no key, no sign-up: GPT-OSS 120B, Qwen 3.5 397B, Llama 3.3 70B; EU servers, 2 requests a minute per model', prefer: ['gpt-oss-120b', 'Qwen3.5-397B-A17B'] },
-  { id: 'llm7', name: 'LLM7', logo: '', base: 'https://api.llm7.io/v1', free: true, noKey: true, optionalKey: true, keyUrl: 'https://token.llm7.io', hint: '', note: 'no key needed: DeepSeek V4 Flash, GPT-OSS 20B, Codestral; a free token by email raises the limits; small independent service', prefer: ['DeepSeek-V4-Flash-0731'] },
+  { id: 'llm7', name: 'LLM7', logo: '', base: 'https://api.llm7.io/v1', free: true, noKey: true, optionalKey: true, keyUrl: 'https://token.llm7.io', hint: '', note: 'no key needed: DeepSeek V4 Flash, GLM 5.3 Flash, MiniMax M2.7, Codestral free; with a key and balance also Claude, Gemini, DeepSeek Pro; small independent service', prefer: ['DeepSeek-V4-Flash-0731'] },
   { id: 'gemini', name: 'Google Gemini', logo: 'gemini-color', base: 'https://generativelanguage.googleapis.com/v1beta/openai', free: true, keyUrl: 'https://aistudio.google.com/apikey', hint: 'AIza…', note: 'no-cost tier with Flash models, strong at layout', prefer: ['gemini-2.5-flash', 'gemini-flash-latest'] },
   { id: 'groq', name: 'Groq', logo: 'groq', base: 'https://api.groq.com/openai/v1', free: true, keyUrl: 'https://console.groq.com/keys', hint: 'gsk_…', note: 'no-cost plan with GPT-OSS 120B (fast) and Qwen 3.8 27B (best design, ~1 page a minute)', prefer: ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b'] },
   { id: 'cerebras', name: 'Cerebras', logo: 'cerebras-color', base: 'https://api.cerebras.ai/v1', free: true, keyUrl: 'https://cloud.cerebras.ai', hint: 'csk-…', note: 'fastest GPT-OSS; $5 trial credit (card required), then pay as you go', prefer: ['gpt-oss-120b'] },
@@ -69,18 +69,26 @@ export async function freeQuota(){
 export async function listModels(p, key){
   if (p.kind === 'proxy') return PROXY_MODELS.map(m => ({ ...m, ctx: 0, paid: false, price: null }));
   const headers = p.kind === 'anthropic' ? anthropicHeaders(key) : key ? { Authorization: 'Bearer ' + key } : {};
-  const r = await fetch(`${p.base}/models${p.kind === 'anthropic' ? '?limit=100' : ''}`, { headers });
+  const url = `${p.base}/models${p.kind === 'anthropic' ? '?limit=100' : ''}`;
+  // some services (LLM7) don't let the browser send a key to /models (CORS): the list is public there, ask without it
+  let r;
+  try { r = await fetch(url, { headers }); }
+  catch (e) { if (!headers.Authorization) throw e; r = await fetch(url); }
   if (!r.ok) throw Error(await errorText(r));
   const data = await r.json();
   let list = (data.data || data.models || []).map(m => ({
     id: String(m.id || m.name).replace(/^models\//, ''),
     name: m.display_name || m.name || m.id,
-    ctx: m.context_length || m.context_window || m.max_context_length || m.inputTokenLimit || 0,
+    ctx: +(m.context_length || m.context_window?.tokens || m.context_window || m.max_context_length || m.inputTokenLimit || 0) || 0,
     out: m.architecture?.output_modalities,
-    // OpenRouter returns prices in $ per token; convert to $ per 1M tokens [input, output]
-    price: m.pricing ? [+m.pricing.prompt * 1e6, +m.pricing.completion * 1e6] : null,
+    // OpenRouter: $ per token → $ per 1M tokens [input, output]; LLM7: already $ per 1M as { input, output }
+    price: m.pricing ? (m.pricing.prompt != null ? [+m.pricing.prompt * 1e6, +m.pricing.completion * 1e6] : m.pricing.input != null ? [+m.pricing.input, +m.pricing.output] : null) : null,
+    // tiered services (LLM7): "turbo" models are free for everyone, "pro" ones need a key with a paid balance
+    tiered: 'tier' in m, needKey: m.usage_based_only === true || m.tier === 'pro',
   }));
   list = list.filter(m => m.id && !NOT_CHAT.test(m.id));
+  // without a key the key-only models would just answer "Missing API key"
+  if (!key) list = list.filter(m => !m.needKey);
   // Paid models are shown too; skip router meta-models and variable-price entries (negative price)
   if (p.id === 'openrouter') list = list.filter(m => (!m.out || m.out.includes('text')) && !m.id.startsWith('openrouter/') && !(m.price && (m.price[0] < 0 || m.price[1] < 0)));
   if (p.id === 'gemini') list = list.filter(m => /gemini|gemma/i.test(m.id));
@@ -90,7 +98,7 @@ export async function listModels(p, key){
     const clean = String(m.name).replace(/\s*\(free\)\s*/i, '').replace(/^models\//, '').trim();
     const [vendor, ...rest] = clean.split(': ');
     // a service with only some models free (freeIf): the rest cost money even when the API sends no prices
-    const paid = !!(m.price && (m.price[0] > 0 || m.price[1] > 0)) || !!(p.freeIf && !p.freeIf.test(m.id));
+    const paid = m.tiered ? m.needKey : !!(m.price && (m.price[0] > 0 || m.price[1] > 0)) || !!(p.freeIf && !p.freeIf.test(m.id));
     return { id: m.id, name: rest.length ? rest.join(': ') : clean, vendor: rest.length ? vendor : '', ctx: m.ctx, paid, price: paid ? m.price : null };
   }).sort((a, b) => (a.paid - b.paid) || a.name.localeCompare(b.name));
 }

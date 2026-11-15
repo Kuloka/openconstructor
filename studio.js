@@ -2308,6 +2308,7 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
     setState('ai error', 'error'); $('chatStatus').textContent = 'Error: ' + e.message;
     // a paid model with an empty account says so in many ways: point to the $0 models instead of "try again"
     if (/balance|insufficient|credit|billing|payment|quota|top.?up|402/i.test(e.message) && p.kind !== 'proxy') message('This model costs money and your account with this service has no balance. Pick a model marked $0 in the list, or top up the account.', 'assistant');
+    else if (/missing api key|api key (is )?required|no api key/i.test(e.message) && p.kind !== 'proxy') message('This model needs your own key for this service. Paste it in ⚙ AI keys, or pick a model marked $0.', 'assistant');
     else message(t('Could not apply the response. Try again or pick another model.') + (e.message ? '\n\n' + t('Reason') + ': ' + String(e.message).slice(0, 240) : ''), 'assistant');
   }
   finally { window.removeEventListener('oc:stop', onStop); if (aiCancel.signal === cancel.signal) aiCancel.signal = null; $('send').disabled = false; window.dispatchEvent(new CustomEvent('oc:ai-idle')); }
