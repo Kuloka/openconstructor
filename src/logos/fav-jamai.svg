@@ -1,0 +1,25 @@
+<svg width="4413" height="4413" viewBox="0 0 4413 4413" fill="none" xmlns="http://www.w3.org/2000/svg">
+<circle cx="2206.5" cy="2206.5" r="2206.5" fill="white"/>
+<path d="M1955.96 2918.13C2120.22 2919.25 2252.48 3053.32 2251.36 3217.58L2249.34 3515L1837.38 3512.2C1673.11 3511.08 1540.86 3377.02 1541.97 3212.76L1544 2915.33L1955.96 2918.13Z" fill="url(#fav-jamai-paint0_linear_303_12)"/>
+<path d="M2252.87 1274.36V1866.77H1923.4C1596.23 1866.77 1331 1601.54 1331 1274.36V1274.36L2252.87 1274.36Z" fill="url(#fav-jamai-paint1_linear_303_12)"/>
+<path d="M2798.43 1189.04V979.217C2798.43 934.915 2762.52 899.002 2718.21 899.002H2166.6C2006.42 899.002 1876.56 1028.85 1876.56 1189.04V1189.04H2798.43Z" fill="url(#fav-jamai-paint2_linear_303_12)"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M2334.13 2217.99C2334.49 3238.82 2334.06 3161.09 2339.64 3195.21C2363.79 3342.76 2481.98 3465.97 2629.18 3497.04C2668.55 3505.34 2662.63 3505.16 2884.52 3505.16H3082.01V2566.98C3082.01 1575.19 3082.21 1620.26 3077.63 1590.67C3051.41 1421.21 2908.13 1289.5 2736.15 1276.76C2729.58 1276.27 2636.36 1275.81 2528.99 1275.74L2333.79 1275.61L2334.13 2217.99ZM2731.92 1620.38C2813.8 1636.15 2856.22 1729.68 2814.19 1801.78C2772.89 1872.65 2675.89 1884.24 2620.11 1824.97C2608.43 1812.55 2609.2 1813.53 2603.17 1803.48C2560.19 1731.98 2603.8 1633.24 2684.02 1620.39C2686.41 1620 2690.81 1619.31 2693.79 1618.85C2701.71 1617.62 2721.76 1618.43 2731.92 1620.38Z" fill="url(#fav-jamai-paint3_linear_303_12)"/>
+<defs>
+<linearGradient id="fav-jamai-paint0_linear_303_12" x1="3083.89" y1="1978.86" x2="3070.58" y2="3528.37" gradientUnits="userSpaceOnUse">
+<stop stop-color="#A35569"/>
+<stop offset="1" stop-color="#734672"/>
+</linearGradient>
+<linearGradient id="fav-jamai-paint1_linear_303_12" x1="1331" y1="1866.91" x2="2806.29" y2="914.115" gradientUnits="userSpaceOnUse">
+<stop stop-color="#FF8D59"/>
+<stop offset="1" stop-color="#FF7970"/>
+</linearGradient>
+<linearGradient id="fav-jamai-paint2_linear_303_12" x1="1379.41" y1="1891.73" x2="2792.96" y2="1899.22" gradientUnits="userSpaceOnUse">
+<stop stop-color="#FF8D59"/>
+<stop offset="1" stop-color="#FF7970"/>
+</linearGradient>
+<linearGradient id="fav-jamai-paint3_linear_303_12" x1="2333.79" y1="2743.48" x2="3884.76" y2="1274.88" gradientUnits="userSpaceOnUse">
+<stop stop-color="#A35569"/>
+<stop offset="1" stop-color="#734672"/>
+</linearGradient>
+</defs>
+</svg>

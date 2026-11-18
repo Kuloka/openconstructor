@@ -592,6 +592,56 @@ const json = (status, data, headers = {}) => new Response(JSON.stringify(data), 
 });
 const fail = (status, message, headers) => json(status, { error: { message } }, headers);
 
+// AI services whose API the browser can't call directly (no CORS): the editor talks to them through
+// /api/relay/<id>/models and /api/relay/<id>/chat/completions. Only these hosts and these two paths;
+// the user's key passes through untouched and is never stored or logged. Same list as `relay: true` in providers.js.
+const RELAY = {
+  kilo: 'https://api.kilo.ai/api/gateway',
+  nvidia: 'https://integrate.api.nvidia.com/v1',
+  sambanova: 'https://api.sambanova.ai/v1',
+  ollama: 'https://ollama.com/v1',
+  itera: 'https://api.iteracompute.com/v1',
+  freeinference: 'https://freeinference.org/v1',
+  llmkiwi: 'https://api.llm.kiwi/v1',
+  simplellm: 'https://api.simplellm.eu/v1',
+  avian: 'https://api.avian.io/v1',
+  friendli: 'https://api.friendli.ai/serverless/v1',
+  hpcai: 'https://api.hpc-ai.com/inference/v1',
+  stepfun: 'https://api.stepfun.ai/v1',
+  tencent: 'https://tokenhub.tencentmaas.com/v1',
+  vlmrun: 'https://gateway.vlm.run/v1/openai',
+  meldport: 'https://api.meldport.com/v1',
+  router9: 'https://api.router9.com/v1',
+  blockrun: 'https://api.blockrun.ai/v1',
+  plugsky: 'https://plugsky.com/v1',
+  clod: 'https://api.clod.io/v1',
+};
+async function relay(request, id, path){
+  const base = RELAY[id];
+  if (!base) return fail(404, 'Unknown service');
+  const method = path === 'models' ? 'GET' : 'POST';
+  if (request.method !== method) return fail(405, 'Method not allowed', { Allow: method });
+  // only the editor itself: a browser on another site sends its own Origin
+  const origin = request.headers.get('Origin');
+  if (origin) { let h = ''; try { h = new URL(origin).hostname; } catch {} if (!isMainHost(h)) return fail(403, 'Not allowed'); }
+  const headers = { Accept: request.headers.get('Accept') || 'application/json', 'User-Agent': 'openconstructor' };
+  const auth = request.headers.get('Authorization');
+  if (auth && /^Bearer\s+\S{8,400}$/i.test(auth)) headers.Authorization = auth;
+  let body;
+  if (method === 'POST') {
+    body = await request.text();
+    if (body.length > 4_000_000) return fail(413, 'Request too large');
+    headers['Content-Type'] = 'application/json';
+  }
+  let r;
+  try { r = await fetch(`${base}/${path}`, { method, headers, body, signal: request.signal }); }
+  catch (e) { return fail(502, `${id} did not answer: ${String(e?.message || e).slice(0, 120)}`); }
+  // the answer streams straight back; nothing from the service's own cookies or caching comes along
+  const out = new Headers({ 'Cache-Control': 'no-store' });
+  for (const k of ['Content-Type', 'Retry-After', 'X-RateLimit-Remaining', 'X-RateLimit-Reset']) { const v = r.headers.get(k); if (v) out.set(k, v); }
+  return new Response(r.body, { status: r.status, headers: out });
+}
+
 function bearer(request){
   const m = /^Bearer\s+(\S+)$/i.exec(request.headers.get('Authorization') || '');
   return m && m[1].split('.').length === 3 ? m[1] : null;
@@ -1079,6 +1129,8 @@ async function route(request, env, ctx){
     if (url.pathname === '/api/domain') return domainApi(request, env, ctx, url);
     if (url.pathname === '/api/ai' || url.pathname === '/api/ai/') return aiChat(request, env);
     if (url.pathname === '/api/ai/quota') return aiQuota(request, env);
+    const rm = /^\/api\/relay\/([a-z0-9-]+)\/(models|chat\/completions)$/.exec(url.pathname);
+    if (rm) return relay(request, rm[1], rm[2]);
     if (url.pathname === '/api/image') return image(request, env, url);
     if (url.pathname === '/api/photo') return request.method === 'GET' ? photo(request, env, ctx, url) : fail(405, 'Method not allowed', { Allow: 'GET' });
     if (url.pathname === '/api/sync') return request.method === 'POST' ? syncPut(request, env) : fail(405, 'Method not allowed', { Allow: 'POST' });

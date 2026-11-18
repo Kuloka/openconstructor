@@ -135,7 +135,10 @@ scenario('brand kit + make it better', async (ed, o) => {
   await ed.ev(`([...document.querySelectorAll('#ctxMenu [data-i]')].find(b => b.textContent.includes('make it better')).click(), 1)`);
   await ed.until(`JSON.parse(localStorage.getItem('form-canvas-v3'))[0]?.name === 'Better'`);
   assert.equal((await ed.items()).length, 1);
-  assert.ok(ed.posts.at(-1).includes('BRAND KIT') && ed.posts.at(-1).includes('DESIGN REVIEW'));
+  // the design review goes out with the brand kit; its own wording ("Current element") must not start a web search
+  const review = ed.posts.find(p => p.includes('DESIGN REVIEW') && !p.includes('You write web search'));
+  assert.ok(review && review.includes('BRAND KIT'), 'review request carries the brand kit');
+  assert.ok(!ed.posts.some(p => p.includes('You write web search')), 'no web search for "make it better"');
 });
 
 scenario('export: the static site .zip downloads', async (ed) => {
@@ -316,6 +319,81 @@ scenario('apps: the welcome screen opens a ready-made app on a new page', async 
   assert.match(it.code, /qz-app/);
   assert.equal(await ed.ev(`document.getElementById('appToggle').getAttribute('aria-pressed')`), 'true');
 }, { connect: false });
+
+// the AI keys dialog is a plain list with a search box and a filter; keyless services list only their free models
+scenario('keys: search and filter the services, a keyless service lists its free models', async (ed) => {
+  await ed.ev(`(document.getElementById('settingsButton').click(), 1)`); await sleep(300);
+  const rows = () => ed.ev(`[...document.querySelectorAll('#providers .prov[data-prov]')].map(r => r.dataset.prov)`);
+  assert.ok((await rows()).length > 80, 'all services are listed');
+  await ed.ev(`(() => { const i = document.getElementById('provSearch'); i.value = 'kilo'; i.dispatchEvent(new Event('input', { bubbles: true })); return 1; })()`);
+  assert.deepEqual(await rows(), ['kilo']);
+  await ed.ev(`(() => { const i = document.getElementById('provSearch'); i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('#provFilter [data-f=nokey]').click(); return 1; })()`);
+  const nokey = await rows();
+  assert.ok(nokey.includes('kilo') && nokey.includes('ovh') && !nokey.includes('groq'), 'the filter keeps only keyless services');
+  await ed.ev(`(document.querySelector('#provFilter [data-f=on]').click(), 1)`);
+  assert.deepEqual(await rows(), ['groq'], '"On" shows only what is switched on');
+  // no lights: the old cursor spotlight / border sweep are gone
+  assert.equal(await ed.ev(`getComputedStyle(document.querySelector('#providers .prov'), '::before').content`), 'none');
+}, { routes: [{ match: u => u.includes('/api/relay/kilo/models'), handle: () => ({ body: JSON.stringify({ data: [{ id: 'nvidia/nemotron-3.5-super-vl:free', name: 'NVIDIA: Nemotron 3.5 Super (free)' }, { id: 'anthropic/claude-opus-5.5', name: 'Anthropic: Claude Opus 5.5' }] }) }) }] });
+
+scenario('keys: a keyless relay service shows only its free models without a key', async (ed) => {
+  await ed.ev(`(document.getElementById('settingsButton').click(), 1)`); await sleep(300);
+  await ed.ev(`(document.querySelector('#providers [data-switch=kilo]').click(), 1)`);
+  assert.ok(await ed.until(`/1 /.test(document.querySelector('#providers [data-prov=kilo] .prov-st.ok')?.textContent || '')`), 'one free model, the paid one is hidden');
+}, { routes: [{ match: u => u.includes('/api/relay/kilo/models'), handle: () => ({ body: JSON.stringify({ data: [{ id: 'nvidia/nemotron-3.5-super-vl:free', name: 'NVIDIA: Nemotron 3.5 Super (free)' }, { id: 'anthropic/claude-opus-5.5', name: 'Anthropic: Claude Opus 5.5' }] }) }) }] });
+
+// plain chat mode: opened from the mode switch, the whole conversation goes to the model, the answer streams in,
+// the conversation is remembered, nothing lands on the canvas, Build brings the editor back
+scenario('plain chat: mode switch, streamed answer, history, back to Build', async (ed, o) => {
+  o.reply = () => ({ sse: ['Hello', ' there', '!\n\n- one\n- two'].map(c => ({ choices: [{ delta: { content: c } }] })).concat([{ choices: [{ delta: {}, finish_reason: 'stop' }] }]) });
+  await ed.ev(`(document.querySelector('.oc-modes.in-editor [data-mode=chat]').click(), 1)`); await sleep(300);
+  assert.equal(await ed.ev(`!document.getElementById('chatWorkspace').classList.contains('hidden')`), true, 'chat is open');
+  assert.equal(await ed.ev(`location.hash`), '#chat');
+  assert.match(await ed.ev(`document.querySelector('.och-model-btn').textContent`), /llama/i, 'the connected model is picked');
+  const send = text => ed.ev(`(() => { const t = document.querySelector('.och-compose textarea'); t.value = ${JSON.stringify(text)}; document.querySelector('.och-compose').requestSubmit(); return 1; })()`);
+  await send('hi');
+  assert.ok(await ed.until(`!document.querySelector('.och-msg.live') && !!document.querySelector('.och-msg.ai li')`), 'the answer streamed in with Markdown');
+  assert.match(await ed.ev(`document.querySelector('.och-msg.ai .och-text').textContent`), /Hello there!/);
+  await send('and again');
+  assert.ok(await ed.until(`document.querySelectorAll('.och-msg.ai').length === 2 && !document.querySelector('.och-msg.live')`));
+  const body = JSON.parse(ed.posts.at(-1));
+  assert.deepEqual(body.messages.filter(m => m.role !== 'system').map(m => m.role), ['user', 'assistant', 'user'], 'the history goes along');
+  const saved = await ed.ev(`JSON.parse(localStorage.getItem('oc-chats'))`);
+  assert.equal(saved.length, 1); assert.equal(saved[0].title, 'hi'); assert.equal(saved[0].messages.length, 4);
+  assert.equal((await ed.items()).length, 0, 'nothing on the canvas');
+  await ed.ev(`(document.querySelector('.oc-modes.in-chat [data-mode=build]').click(), 1)`); await sleep(200);
+  assert.equal(await ed.ev(`document.getElementById('chatWorkspace').classList.contains('hidden') && location.hash === ''`), true, 'back to the editor');
+  assert.equal(await ed.ev(`document.querySelector('.oc-modes.in-editor [data-mode=build]').getAttribute('aria-pressed')`), 'true');
+});
+
+// "who is X, look it up" in the chat: the model writes a query from the conversation, the web is searched,
+// the answer gets the results, and the sources show under it
+scenario('plain chat: searches the web when asked, shows sources', async (ed, o) => {
+  o.reply = body => /You write web search queries/.test(body) ? '["Kuloka developer github"]' : 'Kuloka is a developer on [GitHub](https://github.com/Kuloka).';
+  await ed.ev(`(window.__webCalls = [], window.__origFetch = window.fetch, window.fetch = (u, o) => { if (String(u).startsWith('/api/web')) { window.__webCalls.push(String(u)); return Promise.resolve(new Response(JSON.stringify({ results: [{ title: 'Kuloka · GitHub', url: 'https://github.com/Kuloka', snippet: 'openconstructor author' }] }), { headers: { 'Content-Type': 'application/json' } })); } return window.__origFetch(u, o); }, 1)`);
+  await ed.ev(`(document.querySelector('.oc-modes.in-editor [data-mode=chat]').click(), 1)`); await sleep(400);
+  await ed.ev(`(() => { const t = document.querySelector('.och-compose textarea'); t.value = 'кто такой Kuloka, поищи'; document.querySelector('.och-compose').requestSubmit(); return 1; })()`);
+  assert.ok(await ed.until(`!document.querySelector('.och-msg.live') && !!document.querySelector('.och-sources a')`, 12000), 'sources under the answer');
+  assert.match((await ed.ev(`window.__webCalls`))[0], /Kuloka%20developer%20github/, 'the model-written query was searched');
+  assert.match(ed.posts.at(-1), /Web results for/, 'the answer request carries the results');
+  assert.match(await ed.ev(`document.querySelector('.och-sources a').href`), /github\.com\/Kuloka/);
+  // a plain question does not search
+  await ed.ev(`(() => { const t = document.querySelector('.och-compose textarea'); t.value = 'привет'; document.querySelector('.och-compose').requestSubmit(); return 1; })()`);
+  assert.ok(await ed.until(`document.querySelectorAll('.och-msg.ai').length === 2 && !document.querySelector('.och-msg.live')`));
+  assert.equal((await ed.ev(`window.__webCalls`)).length, 1, 'no search for a greeting');
+});
+
+// the welcome screen's prompt in "Chat" mode opens the chat with the question already asked
+scenario('plain chat: started from the welcome screen prompt', async (ed, o) => {
+  o.reply = () => ({ sse: [{ choices: [{ delta: { content: 'Hi from chat' } }] }] });
+  await ed.ev(`(document.getElementById('homeBtn').click(), 1)`); await sleep(900);
+  await ed.ev(`([...document.querySelectorAll('.wl-hero-modes button')][2].click(), 1)`); await sleep(200);
+  assert.equal(await ed.ev(`document.querySelector('.wl-prompt button[type=submit]').textContent`), 'Send');
+  await ed.ev(`(() => { const i = document.querySelector('.wl-prompt input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, 'hello'); i.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('.wl-prompt button[type=submit]').click(); return 1; })()`);
+  assert.ok(await ed.until(`!document.getElementById('chatWorkspace').classList.contains('hidden') && /Hi from chat/.test(document.querySelector('.och-msg.ai')?.textContent || '')`), 'the chat opened and answered');
+  assert.equal(await ed.ev(`document.querySelector('.och-bubble').textContent`), 'hello');
+  assert.equal((await ed.items()).length, 0, 'nothing on the canvas');
+});
 
 // openconstructor code: the chat moves into the workspace, a new app shows in the live preview,
 // the next request edits that app (not the page on the canvas), the preview width is adjustable

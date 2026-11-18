@@ -30,11 +30,21 @@ export async function aiModelsFacts(fetchFn = fetch){
 // one search answer from /api/web → a block of text for the prompt
 export const resultsNote = (q, d) => `Web results for "${q}" (searched ${new Date().toISOString().slice(0, 10)}):\n` + ((d.results || []).slice(0, 6).map((r, i) => `${i + 1}. ${r.title} — ${r.url}\n   ${r.snippet}`).join('\n') || 'nothing found') + (d.pages || []).map(pg => `\n\nPage ${pg.url}${pg.title ? ' — ' + pg.title : ''}:\n${pg.text}`).join('');
 
-// the queries: the model writes them (it knows what to look for); the request itself when that fails
+// A search query from the request itself: the build words ("make a site about…", "with charts") are dropped, only the
+// topic stays, plus month and year — "создай сайт про AI LLM leaderboard с графиками" → "AI LLM leaderboard November 2026".
+const FILLER = /^(созда\p{L}*|сдела\p{L}*|сверста\p{L}*|нарисуй|напиши|построй|собери|хочу|нужн\p{L}*|пожалуйста|please|make|create|build|design|generate|write|need|want|a|an|the|сайт\p{L}*|страниц\p{L}*|лендинг\p{L}*|landing|page|site|website|web|section|секци\p{L}*|блок\p{L}*|про|о|об|для|с|со|и|в|на|по|из|к|как|that|with|for|about|of|and|on|in|to|граф\p{L}*|диаграмм\p{L}*|charts?|graphs?|линейн\p{L}*|стрелочн\p{L}*|красив\p{L}*|современн\p{L}*|т[её]мн\p{L}*|светл\p{L}*|modern|beautiful|dark|light|stylish|стильн\p{L}*|котор\p{L}*|где|чтобы|был\p{L}*|его|её|их|мне|me|my|our|наш\p{L}*|текущ\p{L}*|актуальн\p{L}*|current|latest)$/iu;
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+export function keywordQuery(text, now = new Date()){
+  const words = String(text || '').replace(/[«»"“”„()[\],.!?:;]+/g, ' ').split(/\s+/).filter(w => w && !FILLER.test(w));
+  const topic = words.slice(0, 7).join(' ').trim() || String(text || '').slice(0, 60);
+  return `${topic} ${MONTHS[now.getMonth()]} ${now.getFullYear()}`.trim();
+}
+
+// the queries: the model writes them (it knows what to look for); keywords of the request when that fails
 export function parseQueries(text, fallback){
   const raw = String(text || '').replace(/<think>[\s\S]*?<\/think>/gi, '');
   const m = raw.match(/\[[\s\S]*?\]/);
-  try { const list = JSON.parse(m[0]).map(s => String(s).trim()).filter(s => s.length > 2).slice(0, 2); if (list.length) return list; } catch {}
-  return [String(fallback).slice(0, 150)];
+  try { const list = JSON.parse(m[0]).map(s => String(s).trim()).filter(s => s.length > 2 && s.length < 120).slice(0, 2); if (list.length) return list; } catch {}
+  return [keywordQuery(fallback)];
 }
 export const QUERY_PROMPT = `You write web search queries. Reply with ONLY a JSON array of 1–2 short English search queries (3–8 words) that find today's facts the request needs — include the month and year when freshness matters. Today is ${new Date().toISOString().slice(0, 10)}.`;

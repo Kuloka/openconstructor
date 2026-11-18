@@ -11,11 +11,11 @@ import { PRESETS as BG_PRESETS, DEFAULT_SPEC as BG_DEFAULT, toCSS as bgCSS, lumi
 import logoSvg from './src/logo.svg?raw';
 import { startOpenRouter, finishOpenRouter } from './connect-openrouter.js';
 import { splitPage, numbered, applyPatch, PATCH_RULES } from './page-patch.js';
-import { INTERACTIVE_DOC, withInteractive } from './interactive-kit.js';
+import { INTERACTIVE_DOC, withInteractive, wirePage } from './interactive-kit.js';
 import { resolveIcons, ICONS_DOC } from './icon-tokens.js';
 import { findOverlaps, LAYOUT_FIX } from './layout-check.js';
 import { PLANNER_DIRECTIONS, pickDirection, directionCSS, directionBrief } from './art-direction.js';
-import { needsWeb, AI_TOPIC, aiModelsFacts, resultsNote, parseQueries, QUERY_PROMPT } from './web-facts.js';
+import { needsWeb, AI_TOPIC, aiModelsFacts, resultsNote, parseQueries, keywordQuery, QUERY_PROMPT } from './web-facts.js';
 import { parseScene, parseAnswer, firstJSON, looseJSON } from './ai-parse.js';
 import { MD_RE, md } from './markdown.js';
 import { initChatUI, toBottom, typeText, retype, message, thinking } from './chat-ui.js';
@@ -535,7 +535,7 @@ async function recolorAll(mode){
 function improve(id){
   const x = items.find(i => i.id === id); if (!x || x.scene) return;
   select(id); window.dispatchEvent(new CustomEvent('oc:open-chat'));
-  runAI(`✦ ${t('Make it better')}: ${x.name}`, { targetId: id, ask: IMPROVE });
+  runAI(`✦ ${t('Make it better')}: ${x.name}`, { targetId: id, ask: IMPROVE, noWeb: true });
 }
 function editWithAI(id){ const x = items.find(i => i.id === id); if (!x) return; select(id); window.dispatchEvent(new CustomEvent('oc:open-chat')); prefillPrompt(`Change "${x.name}": `); }
 function scrollToItem(id){ const el = nodes.get(id); if (!el) return; canvas.scrollTo({ left: STAGE_PAD + el.offsetLeft * zoom - 80, top: STAGE_PAD + el.offsetTop * zoom - 80, behavior: 'smooth' }); }
@@ -1156,7 +1156,8 @@ function hasApps(){
 const OC3D = 'https://openconstructor.pw/oc3d.js';
 function buildHTML(){
   let html = buildPageHTML();
-  if (hasApps()) html = withAppHead(html);
+  // dead buttons and links (href="#", <button> outside a form) → the matching section or a pop-up request form
+  html = hasApps() ? withAppHead(html) : wirePage(html);
   // live 3D objects: the runtime (three.js inside, no network) — without it they stay still pictures
   if (/<canvas[^>]+data-oc-model=/.test(html)) html = html.replace(/<\/head>/i, '<style>:where(canvas[data-oc-model]){display:inline-block;width:640px;vertical-align:middle}</style></head>').replace(/<\/body>/i, `<script src="${OC3D}" defer></script></body>`);
   return html;
@@ -1276,7 +1277,7 @@ function setState(text, kind = ''){
 const logoFiles = import.meta.glob('./src/logos/*.svg', { query: '?raw', import: 'default', eager: true });
 const logo = name => logoFiles[`./src/logos/${name}.svg`] || '';
 // Pick the model logo from its name (Llama → Meta, Qwen → Qwen…), otherwise use the provider logo
-const VENDOR_LOGOS = [[/llama|meta-/i, 'meta-color'], [/gemma/i, 'gemma-color'], [/gemini|google/i, 'gemini-color'], [/qwen|qwq/i, 'qwen-color'], [/mistral|mixtral|codestral|devstral|magistral|ministral|pixtral/i, 'mistral-color'], [/deepseek/i, 'deepseek-color'], [/claude/i, 'claude-color'], [/gpt|^o\d|openai|chatgpt/i, 'openai'], [/grok|x-ai/i, 'xai'], [/kimi|moonshot/i, 'kimi-color'], [/nemotron|nvidia/i, 'nvidia-color'], [/glm|z-ai|zhipu/i, 'zai'], [/minimax/i, 'minimax-color'], [/phi-|microsoft/i, 'microsoft-color'], [/cohere|command|north/i, 'cohere-color'], [/hermes|nous/i, 'nousresearch'], [/liquid|lfm/i, 'liquid'], [/arcee/i, 'arcee-color'], [/dots/i, 'dotsstudio'], [/ernie|baidu|wenxin/i, 'baidu-color'], [/bytedance|seed-|doubao/i, 'bytedance-color'], [/stepfun|step-/i, 'stepfun-color'], [/perplexity|sonar/i, 'perplexity-color'], [/amazon|nova-/i, 'nova-color'], [/ibm|granite/i, 'ibm'], [/inflection/i, 'inflection'], [/reka/i, 'reka'], [/upstage|solar/i, 'upstage-color'], [/aion/i, 'aionlabs-color'], [/kwaipilot|kat-/i, 'kwaipilot-color'], [/longcat|meituan/i, 'longcat-color'], [/morph/i, 'morph-color'], [/allenai|olmo|molmo/i, 'ai2-color'], [/tencent|hunyuan/i, 'tencent-color'], [/alibaba|tongyi/i, 'alibaba-color'], [/inception|mercury/i, 'inception'], [/ai21|jamba/i, 'ai21'], [/hugging/i, 'huggingface-color'], [/moonshot/i, 'moonshot']];
+const VENDOR_LOGOS = [[/llama|meta-/i, 'meta-color'], [/gemma/i, 'gemma-color'], [/gemini|google/i, 'gemini-color'], [/qwen|qwq/i, 'qwen-color'], [/mistral|mixtral|codestral|devstral|magistral|ministral|pixtral/i, 'mistral-color'], [/deepseek/i, 'deepseek-color'], [/claude/i, 'claude-color'], [/gpt|^o\d|openai|chatgpt/i, 'openai'], [/grok|x-ai/i, 'xai'], [/kimi|moonshot/i, 'kimi-color'], [/nemotron|nvidia/i, 'nvidia-color'], [/glm|z-ai|zhipu/i, 'zai'], [/minimax/i, 'minimax-color'], [/phi-|microsoft/i, 'microsoft-color'], [/cohere|command|north/i, 'cohere-color'], [/hermes|nous/i, 'nousresearch'], [/liquid|lfm/i, 'liquid'], [/arcee/i, 'arcee-color'], [/dots/i, 'dotsstudio'], [/ernie|baidu|wenxin/i, 'baidu-color'], [/bytedance|seed-|doubao/i, 'bytedance-color'], [/stepfun|step-/i, 'stepfun-color'], [/perplexity|sonar/i, 'perplexity-color'], [/amazon|nova-/i, 'nova-color'], [/ibm|granite/i, 'ibm'], [/inflection/i, 'inflection'], [/reka/i, 'reka'], [/upstage|solar/i, 'upstage-color'], [/aion/i, 'aionlabs-color'], [/kwaipilot|kat-/i, 'kwaipilot-color'], [/longcat|meituan/i, 'longcat-color'], [/morph/i, 'morph-color'], [/allenai|olmo|molmo/i, 'ai2-color'], [/tencent|hunyuan|^hyd/i, 'tencent-color'], [/alibaba|tongyi/i, 'alibaba-color'], [/inception|mercury/i, 'inception'], [/ai21|jamba/i, 'ai21'], [/hugging/i, 'huggingface-color'], [/moonshot/i, 'moonshot']];
 function modelLogo(m){
   if (m.pid === 'oc') return `<span class="model-logo">${logoSvg}</span>`;
   const hit = VENDOR_LOGOS.find(([re]) => re.test(`${m.id} ${m.name} ${m.vendor || ''}`));
@@ -1488,6 +1489,7 @@ function renderPicker(){
   picker.querySelector('.model-list').innerHTML = groups || '<div class="model-empty">nothing found</div>';
   const connected = PROVIDERS.filter(pr => active(pr.id)).length, total = PROVIDERS.filter(pr => pr.kind !== 'proxy').length;
   picker.querySelector('.model-add').textContent = `+ connect your own keys (${connected} of ${total})`;
+  window.dispatchEvent(new CustomEvent('oc:models'));
 }
 function toggleMenu(open = menu.classList.contains('hidden')){
   menu.classList.toggle('hidden', !open); trigger.setAttribute('aria-expanded', open);
@@ -1523,51 +1525,61 @@ function autoPick(){
 }
 function loadModels(){ PROVIDERS.forEach(loadProvider); }
 
-// "AI keys" dialog: every service is a row with a round switch — on opens the key field, off forgets the key
+// "AI keys" dialog: a plain list — one row per service (logo · name · note · switch), grouped no key · free · paid,
+// with a search box and a filter. Switching a service on opens its key field under the row.
 const provOpen = new Set();
 const provLogo = p => p.kind === 'proxy' || logo(p.logo) ? providerLogo(p) : `<span class="model-logo letter">${escapeHTML(p.name[0])}</span>`;
-const provOpening = new Set(); // switched on just now: its card plays the border light and the key field slides in
+let provQuery = '', provFilter = 'all';
+const provMatch = p => {
+  const on = p.kind === 'proxy' || active(p.id) || provOpen.has(p.id);
+  if (provFilter === 'nokey' && !(p.kind === 'proxy' || p.noKey)) return false;
+  if (provFilter === 'free' && !p.free) return false;
+  if (provFilter === 'paid' && p.free) return false;
+  if (provFilter === 'on' && !on) return false;
+  if (!provQuery) return true;
+  const hay = (p.name + ' ' + p.id + ' ' + p.note + ' ' + (modelsBy[p.id] || []).map(m => m.id).join(' ')).toLowerCase();
+  return provQuery.split(/\s+/).every(w => hay.includes(w));
+};
 function renderProviders(){
   const box = $('providers'); if (!box) return;
   const focused = document.activeElement?.dataset?.key;
-  let i = 0;
-  const status = p => { const k = keys[p.id] || ''; return !k && !p.noKey ? '' : !active(p.id) ? '' : loading[p.id] ? `<span class="prov-st wait">${escapeHTML(t('checking…'))}</span>` : modelErr[p.id] ? `<span class="prov-st err" title="${escapeHTML(modelErr[p.id])}">✗ ${escapeHTML(String(modelErr[p.id]).slice(0, 90))}</span>` : `<span class="prov-st ok">${(modelsBy[p.id] || []).length} ${escapeHTML(t('models in the list'))}</span>`; };
-  const card = p => {
+  const status = p => { const k = keys[p.id] || ''; return !k && !p.noKey ? '' : !active(p.id) ? '' : loading[p.id] ? `<span class="prov-st wait">${escapeHTML(t('checking…'))}</span>` : modelErr[p.id] ? `<span class="prov-st err" title="${escapeHTML(modelErr[p.id])}">${escapeHTML(String(modelErr[p.id]).slice(0, 90))}</span>` : `<span class="prov-st ok">${(modelsBy[p.id] || []).length} ${escapeHTML(t('models in the list'))}</span>`; };
+  const row = p => {
     const k = keys[p.id] || '', on = active(p.id) || (!p.noKey && provOpen.has(p.id));
-    const tag = p.noKey ? `<span class="prov-tag nokey">${escapeHTML(t('no key'))}</span>` : p.free ? `<span class="prov-tag free">${escapeHTML(t('free tier'))}</span>` : `<span class="prov-tag">${escapeHTML(t('pay per use'))}</span>`;
-    if (p.kind === 'proxy') return `<div class="prov on prov-free" style="--i:${i++}"><div class="prov-top">${provLogo(p)}</div><div class="prov-name">${escapeHTML(p.name)}<span class="prov-tag free">$0</span></div><div class="prov-note">${escapeHTML(p.note)}</div><div class="prov-key">${authUser ? `<span class="prov-st ok">${escapeHTML(t('signed in'))}${quota ? ` · ${quota.used}/${quota.limit} ${escapeHTML(t('used today'))}` : ''}</span>` : `<button class="btn primary" type="button" data-free-signin>${escapeHTML(t('sign in for 20 a day'))}</button>`}</div></div>`;
-    const keyBox = p.noKey ? (on ? `<div class="prov-key">${p.optionalKey ? `<input type="password" data-key="${p.id}" value="${escapeHTML(k)}" placeholder="${escapeHTML(t('optional key — higher limits'))}" autocomplete="off" spellcheck="false">` : ''}${status(p)}</div>` : '')
+    const tags = (p.noKey ? `<span class="prov-tag nokey">${escapeHTML(t('no key'))}</span>` : p.free ? `<span class="prov-tag free">${escapeHTML(t('free tier'))}</span>` : '') + (p.relay ? `<span class="prov-tag" title="${escapeHTML(t('its API does not accept browsers, so requests go through our server; nothing is stored'))}">relay</span>` : '');
+    if (p.kind === 'proxy') return `<div class="prov on prov-free"><div class="prov-row">${provLogo(p)}<div class="prov-main"><div class="prov-name">${escapeHTML(p.name)}<span class="prov-tag free">$0</span></div><div class="prov-note">${escapeHTML(p.note)}</div></div><div class="prov-side">${authUser ? `<span class="prov-st ok">${escapeHTML(t('signed in'))}${quota ? ` · ${quota.used}/${quota.limit} ${escapeHTML(t('used today'))}` : ''}</span>` : `<button class="btn primary" type="button" data-free-signin>${escapeHTML(t('sign in for 20 a day'))}</button>`}</div></div></div>`;
+    const keyBox = p.noKey ? (on && (p.optionalKey || status(p)) ? `<div class="prov-key">${p.optionalKey ? `<input type="password" data-key="${p.id}" value="${escapeHTML(k)}" placeholder="${escapeHTML(t('optional key — higher limits'))}" autocomplete="off" spellcheck="false">` : ''}${status(p)}</div>` : '')
       : on ? `<div class="prov-key"><input type="password" data-key="${p.id}" value="${escapeHTML(k)}" placeholder="${escapeHTML(t('Paste your key') + (p.hint ? ' · ' + p.hint : ''))}" autocomplete="off" spellcheck="false"><div class="prov-btns">${p.id === 'openrouter' && !k ? `<button type="button" class="btn primary" data-or-connect>${escapeHTML(t('Sign in with OpenRouter'))}</button>` : ''}<a class="btn" href="${p.keyUrl}" target="_blank" rel="noreferrer">${escapeHTML(t('get a key'))} ↗</a>${k ? `<button type="button" class="btn" data-forget="${p.id}">${escapeHTML(t('remove key'))}</button>` : ''}</div>${status(p)}</div>`
-      : k ? `<div class="prov-saved">${escapeHTML(t('key saved · switched off'))}</div>` : '';
-    return `<div class="prov${on ? ' on' : ''}${provOpening.has(p.id) ? ' opening' : ''}" data-prov="${p.id}" style="--i:${i++}"><div class="prov-top">${provLogo(p)}<button type="button" class="switch" role="switch" aria-checked="${on}" data-switch="${p.id}" aria-label="${escapeHTML(p.name)}"><i></i></button></div><div class="prov-name">${escapeHTML(p.name)}${tag}</div><div class="prov-note">${escapeHTML(p.note)}</div>${keyBox}</div>`;
+      : '';
+    const saved = !on && k ? `<span class="prov-saved">${escapeHTML(t('key saved · switched off'))}</span>` : '';
+    return `<div class="prov${on ? ' on' : ''}" data-prov="${p.id}"><div class="prov-row">${provLogo(p)}<div class="prov-main"><div class="prov-name">${escapeHTML(p.name)}${tags}</div><div class="prov-note">${escapeHTML(p.note)}</div></div><div class="prov-side">${saved}<button type="button" class="switch" role="switch" aria-checked="${on}" data-switch="${p.id}" aria-label="${escapeHTML(p.name)}"><i></i></button></div></div>${keyBox}</div>`;
   };
-  const free = PROVIDERS.find(p => p.kind === 'proxy');
   const groups = [
-    [t('No key needed'), t('switch on and go'), PROVIDERS.filter(p => p.kind === 'proxy' || p.noKey)],
-    [t('Free tiers'), t('a free key from the service'), PROVIDERS.filter(p => p.kind !== 'proxy' && !p.noKey && p.free)],
-    [t('Pay as you go'), t('your own account, cents per page'), PROVIDERS.filter(p => p.kind !== 'proxy' && !p.free)],
-  ];
-  box.innerHTML = groups.filter(g => g[2].length).map(([title, sub, list]) => `<section class="prov-group"><h3>${escapeHTML(title)} <span>· ${escapeHTML(sub)}</span></h3><div class="prov-grid">${list.map(card).join('')}</div></section>`).join('');
+    [t('No key needed'), PROVIDERS.filter(p => p.kind === 'proxy' || p.noKey)],
+    [t('Free tiers'), PROVIDERS.filter(p => p.kind !== 'proxy' && !p.noKey && p.free)],
+    [t('Pay as you go'), PROVIDERS.filter(p => p.kind !== 'proxy' && !p.free)],
+  ].map(([a, list]) => [a, list.filter(provMatch)]);
+  const html = groups.filter(g => g[1].length).map(([title, list]) => `<section class="prov-group"><h3>${escapeHTML(title)} <span>${list.length}</span></h3><div class="prov-list">${list.map(row).join('')}</div></section>`).join('');
+  box.innerHTML = html || `<p class="prov-empty">${escapeHTML(t('Nothing found'))}</p>`;
+  const sb = $('provSearch'); if (sb) sb.placeholder = `${t('Search')} ${PROVIDERS.length} ${t('services and models')}`;
   if (focused) { const el = box.querySelector(`[data-key="${focused}"]`); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }
 }
-const openingFx = pid => { provOpening.add(pid); setTimeout(() => { provOpening.delete(pid); $('providers')?.querySelector(`[data-prov="${pid}"]`)?.classList.remove('opening'); }, 1200); };
-// the spotlight on the card under the cursor
-$('providers')?.addEventListener('pointermove', e => { const c = e.target.closest('.prov'); if (!c) return; const r = c.getBoundingClientRect(); c.style.setProperty('--mx', `${e.clientX - r.left}px`); c.style.setProperty('--my', `${e.clientY - r.top}px`); }, { passive: true });
+$('provSearch')?.addEventListener('input', e => { provQuery = e.target.value.trim().toLowerCase(); renderProviders(); });
+$('provFilter')?.addEventListener('click', e => { const b = e.target.closest('[data-f]'); if (!b) return; provFilter = b.dataset.f; $('provFilter').querySelectorAll('[data-f]').forEach(x => x.setAttribute('aria-checked', String(x === b))); renderProviders(); });
 // openSettings('openrouter') opens the dialog with that service switched on and its key field focused
 function openSettings(pid){
   $('rememberKeys').checked = remember; if (pid && byId(pid) && byId(pid).kind !== 'proxy') provOpen.add(pid);
-  if (pid && byId(pid)?.kind !== 'proxy') openingFx(pid);
+  // a service asked for by name must be visible: clear the search and the filter
+  if (pid) { provQuery = ''; provFilter = 'all'; if ($('provSearch')) $('provSearch').value = ''; $('provFilter')?.querySelectorAll('[data-f]').forEach(x => x.setAttribute('aria-checked', String(x.dataset.f === 'all'))); }
   renderProviders(); showModal('settings');
-  const box = $('providers'); box.classList.remove('intro'); void box.offsetWidth; box.classList.add('intro'); setTimeout(() => box.classList.remove('intro'), 1400);
-  if (pid) requestAnimationFrame(() => { const row = $('providers').querySelector(`[data-prov="${pid}"]`); row?.scrollIntoView({ block: 'center' }); row?.querySelector('input')?.focus(); });
+  if (pid) requestAnimationFrame(() => { const r = $('providers').querySelector(`[data-prov="${pid}"]`); r?.scrollIntoView({ block: 'center' }); r?.querySelector('input')?.focus(); });
 }
 $('providers').addEventListener('click', e => {
   const fg = e.target.closest('[data-forget]');
   if (fg) { const pid = fg.dataset.forget; delete keys[pid]; keysOff.delete(pid); saveOff(); saveKeys(); loadProvider(byId(pid)); renderStart(); return; }
   const sw = e.target.closest('[data-switch]'); if (!sw) return;
   const pid = sw.dataset.switch, on = sw.getAttribute('aria-checked') === 'true';
-  if (byId(pid)?.noKey) { if (on) keyless.delete(pid); else { keyless.add(pid); openingFx(pid); } store.set('oc-keyless-on', [...keyless]); loadProvider(byId(pid)); renderStart(); renderProviders(); return; }
-  if (!on) openingFx(pid);
+  if (byId(pid)?.noKey) { if (on) keyless.delete(pid); else keyless.add(pid); store.set('oc-keyless-on', [...keyless]); loadProvider(byId(pid)); renderStart(); renderProviders(); return; }
   // off keeps the key (only its models leave the list); on brings them back without typing it again
   if (on) { provOpen.delete(pid); if (keys[pid]) { keysOff.add(pid); saveOff(); loadProvider(byId(pid)); renderStart(); } renderProviders(); }
   else { provOpen.add(pid); if (keysOff.delete(pid)) { saveOff(); if (keys[pid]) { loadProvider(byId(pid)); renderStart(); } } renderProviders(); if (!keys[pid]) $('providers').querySelector(`[data-key="${pid}"]`)?.focus(); }
@@ -1972,6 +1984,8 @@ function pickRef(kind, used){
   return pick;
 }
 async function buildSwarm({ p, key, m, request, recent, system, stop, facts = '' }){
+  // a service that allows only a couple of requests a minute (OVH: 2) cannot feed a planner + one agent per section — one answer builds the page
+  if (p.rpm && p.rpm < 6 && !myAgents.some(a => a.on && a.model)) return null;
   const mine = myAgents.filter(a => a.on && (a.role || a.name)).map(a => ({ ...a, kind: agentSlug(a.name), model: a.model && allModels().find(x => x.key === a.model && usable(x.pid)) || null }));
   const free = p.kind === 'proxy';
   // the free AI allows a planner + 9 calls per request; the user's agents on their own keys don't count
@@ -2035,7 +2049,7 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}.`;
   // free tiers on your own key often allow only 1–3 requests at once: agents queue up there, a "too many requests" waits and retries
   const lanes = free ? secs.length : Math.min(secs.length, p.lanes || 3);
   const busy = err => err?.status === 429 || /rate.?limit|too many|concurren|overload|capacity|busy/i.test(String(err?.message || ''));
-  const run = async s => { for (let tryN = 0; ; tryN++) { try { return await one(s); } catch (err) { if (!busy(err) || tryN >= 3) throw err; stop.step(`agent ${s.i + 1} waits: the service is busy`); await new Promise(r => setTimeout(r, 2500 * (tryN + 1))); } } };
+  const run = async s => { for (let tryN = 0; ; tryN++) { try { return await one(s); } catch (err) { if (!busy(err) || tryN >= 3) throw err; const wait = Math.min(60, err.retryAfter || 3 * (tryN + 1)); stop.step(`agent ${s.i + 1} waits ${wait}s: the service allows only so many requests at once`); await new Promise(r => setTimeout(r, wait * 1000)); } } };
   const done = new Array(secs.length); let next = 0;
   await Promise.all(Array.from({ length: lanes }, async () => { while (next < secs.length) { const s = secs[next++]; try { done[s.i] = { status: 'fulfilled', value: await run(s) }; } catch (reason) { done[s.i] = { status: 'rejected', reason }; } } }));
   const signin = done.find(x => x.status === 'rejected' && x.reason?.code === 'signin');
@@ -2159,12 +2173,12 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
     const ask0 = custom.ask || request;
     const pageText = target && !target.scene ? (target.name || '') + ' ' + slimCode.replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').slice(0, 4000) : '';
     const searchToo = needsWeb(ask0), aboutAI = AI_TOPIC.test(ask0) || AI_TOPIC.test(pageText);
-    const fresh = !custom.user && !custom.layoutFix && !appMode && !links.length && (searchToo || aboutAI);
+    const fresh = !custom.user && !custom.layoutFix && !custom.noWeb && !appMode && !links.length && (searchToo || aboutAI);
     if (fresh) {
       const ask = ask0;
       if (aboutAI) { try { const f = await stop.web('checking which AI models are current', () => aiModelsFacts()); if (f) webNote += '\n\n' + f; } catch {} }
       let qs = [];
-      if (searchToo) { qs = [ask.slice(0, 150)]; try { qs = parseQueries(await chat(p, key, m.id, QUERY_PROMPT, 'Request: ' + ask), ask); } catch {} }
+      if (searchToo) { qs = [keywordQuery(ask)]; try { qs = parseQueries(await chat(p, key, m.id, QUERY_PROMPT, 'Request: ' + ask), ask); } catch {} }
       const found = [];
       for (const q of qs) {
         const one = async () => { const d = await stop.web(`searching the web: “${q.slice(0, 60)}”`, () => webGet('q=' + encodeURIComponent(q))); webNote += '\n\n' + resultsNote(q, d); found.push(...(d.results || [])); };
@@ -2445,6 +2459,14 @@ export const studio = {
   setAppMode: (on, quiet) => setAppMode(on, quiet),
   appMode: () => appOn,
   setCodeFocus: id => { codeFocus = id; },
+  // for the plain chat (chat.js): the models that can answer right now, the key of a service, the keys dialog
+  chatModels: () => allModels().filter(x => x.id !== 'openrouter/free' && usable(x.pid)).map(x => {
+    const p = byId(x.pid);
+    return { key: x.key, pid: x.pid, id: x.id, name: x.name, vendor: x.vendor || '', provider: p?.name || x.pid, free: isFree(x, p), logo: modelLogo(x) };
+  }),
+  modelKey: () => currentModel,
+  keyFor: pid => keys[pid] || '',
+  openKeys: pid => openSettings(pid),
   // a ready-made app from apps.js, placed on the canvas
   addApp(id){
     const ex = APP_EXAMPLES.find(x => x.id === id); if (!ex) return;

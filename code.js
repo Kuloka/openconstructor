@@ -46,7 +46,7 @@ root.className = 'cw hidden'; root.id = 'codeWorkspace';
 root.setAttribute('role', 'dialog'); root.setAttribute('aria-label', 'openconstructor code');
 root.innerHTML = `
 <header class="cw-bar">
-  <button class="cw-brand" type="button" data-cw="close" title="${esc(t('Back to the editor'))}"><span class="oc-logo tiny" aria-hidden="true"></span><span class="cw-word" data-no-i18n><i>open</i>constructor</span><b>code</b></button>
+  <button class="cw-brand" type="button" data-cw="home" title="${esc(t('Home'))}"><span class="oc-logo tiny" aria-hidden="true"></span><span class="cw-word" data-no-i18n><i>open</i>constructor</span><b>code</b></button>
   <div class="cw-title"><span class="cw-name" id="cwName"></span><span class="cw-diff" id="cwDiff"></span></div>
   <div class="cw-actions">
     <div class="cw-layout" role="group" aria-label="${esc(t('Layout'))}">
@@ -361,6 +361,7 @@ export function openCode({ prompt = '', appId = null } = {}){
     studio.setAppMode(true, true);
     takeChat(); root.classList.remove('hidden'); document.body.classList.add('cw-open'); swapIntro(true);
     if (location.hash !== '#code') history.replaceState(null, '', location.pathname + location.search + '#code');
+    window.dispatchEvent(new CustomEvent('oc:mode'));
   }
   pickFocus(appId);
   render(); requestAnimationFrame(size);
@@ -372,6 +373,7 @@ export function closeCode(){
   isOpen = false; studio.setCodeFocus(undefined); studio.setAppMode(prevAppMode, true);
   swapIntro(false); giveChat(); root.classList.add('hidden'); document.body.classList.remove('cw-open');
   if (location.hash === '#code') history.replaceState(null, '', location.pathname + location.search);
+  window.dispatchEvent(new CustomEvent('oc:mode'));
 }
 export const codeOpen = () => isOpen;
 if (import.meta.env?.DEV) window.__ocCode = { openCode, closeCode };
@@ -396,6 +398,7 @@ root.addEventListener('click', e => {
   if (b.dataset.idea) { if (!ui.chat) { ui.chat = true; save(); size(); } return prefillPrompt(t(b.dataset.idea)); }
   const a = b.dataset.cw;
   if (a === 'close') closeCode();
+  if (a === 'home') window.dispatchEvent(new CustomEvent('oc:welcome')); // the logo: the start screen, Code closes under it
   if (a === 'new') { setFocus(null); if (!ui.chat) ui.chat = true; render(); requestAnimationFrame(() => document.querySelector('#react-composer textarea')?.focus()); }
   if (a === 'canvas') closeCode();
   if (a === 'reload') { lastDoc = ''; bug = null; showBug(); render(); }
@@ -519,12 +522,5 @@ addEventListener('oc:generated', () => {
   render(); postChange();
 });
 
-// Entry points: a "code" button in the editor's top menu, and links to /#code
-const menu = document.querySelector('.tb-menu');
-if (menu) {
-  const btn = Object.assign(document.createElement('button'), { type: 'button', className: 'tb-code', innerHTML: `<span aria-hidden="true">&lt;/&gt;</span> code` });
-  btn.title = t('openconstructor code: build working mini-apps with a live preview');
-  btn.onclick = () => openCode();
-  menu.prepend(btn);
-}
+// Entry points: the mode switch at the top (modes.js, button .tb-code), and links to /#code
 if (location.hash === '#code') { try { localStorage.setItem('oc-welcomed', '1'); } catch {} setTimeout(() => openCode(), 300); }

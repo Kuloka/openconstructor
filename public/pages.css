@@ -1,7 +1,6 @@
 :root { color-scheme: dark; --accent: #6f60f2; --accent-2: #a79dff; --bg: #0a0a0b; --panel: #151515; --line: #262626; --text: #d4d4d4; --head: #f2f2f2; --muted: #8a8a8a; }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.75 system-ui, -apple-system, "Segoe UI", sans-serif; }
-body::before { content: ""; position: fixed; inset: -20vh -10vw auto auto; width: 70vw; height: 70vh; pointer-events: none; background: radial-gradient(closest-side, rgba(255, 255, 255, .14), transparent); z-index: -1; }
 a { color: var(--accent-2); }
 .top { display: flex; align-items: center; justify-content: space-between; gap: 16px; max-width: 880px; margin: 0 auto; padding: 18px 20px; }
 .home { display: inline-flex; align-items: center; gap: 9px; color: var(--head); text-decoration: none; font: 600 15px ui-monospace, Consolas, monospace; }

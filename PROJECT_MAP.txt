@@ -2,7 +2,7 @@ openconstructor — карта проекта
 ==============================
 Зачем этот файл: чтобы ИИ-помощник (и люди) не перечитывали весь код в каждой сессии.
 Читать его ПЕРВЫМ, потом открывать только нужные места. Обновлять, когда меняется структура.
-Последнее обновление: 2026-11-15
+Последнее обновление: 2026-11-18
 
 КАК УСТРОЕНО В ДВУХ СЛОВАХ
 --------------------------
@@ -57,6 +57,30 @@ code.js + code.css — экран «openconstructor code» (кнопка «</> c
   Стиль: терминальный, акцент из var(--accent) (лаванда #6f60f2), без эмодзи и градиентов. openCode({ prompt, appId }), closeCode().
   Запросы к ИИ здесь меняют только приложение в фокусе: studio.setCodeFocus(id) → runAI берёт его как target
   (null = сделать новое; undefined = обычный режим холста).
+РЕЖИМЫ (2026-11-16): modes.js — переключатель «Build · Code · Chat» (.oc-modes) в шапке редактора (.in-editor),
+  экрана Code (.in-code) и чата (.in-chat); go(mode) — с View Transition. Кнопка Code имеет класс .tb-code (e2e). Событие oc:mode.
+  В шапке редактора modes.js переносит имя проекта (.tb-center) к лого, а .tb-menu прячет в выпадающее «Ещё» (.tb-more).
+  Стартовый экран: шапка = лого · Конструктор/Код/Чат по центру (.wl-modes) · «Ещё» (.wl-more: разделы, галерея, GitHub, язык) + регистрация.
+  Тур (tour.js) не запускается поверх Чата/Кода.
+  ПЕРЕХОДЫ: стартовый экран .wl z-index 115 (выше Чата/Кода 110). close(after) вызывает after СРАЗУ (режим открывается под ним),
+  потом экран тает — конструктор не мелькает. Лого в Чате/Коде шлёт oc:welcome; modes.js через 450 мс закрывает режим под экраном.
+  Hero стартового экрана: переключатель .wl-hero-modes (HERO_MODES в Welcome.jsx) над полем — Конструктор (prefillPrompt),
+  Код (openCode({prompt})), Чат (chat.js startChat(text): открывает чат и сразу задаёт вопрос). e2e: "started from the welcome".
+  «Думает» в чате = тот же рой (swarmGlyph) + слова MOODS, что в чате редактора. Токены чата не идут в счётчик редактора.
+ПОИСК В ЧАТЕ (chat.js): сам включается по ASKS_WEB/needsWeb (кто такой, найди, поищи, посмотри, новости…) или кнопкой «Поиск»
+  (oc-chat-web = всегда). Запрос пишет модель по последним 6 сообщениям (QUERY_PROMPT), запасной — keywordQuery; /api/web;
+  результаты в system (WEB_RULES), под ответом чипы «Источники» (reply.sources). e2e: "searches the web".
+pill.js — круглый переключатель с «ползунком» (.pill-thumb скользит пружиной под выбранной кнопкой; {hover:true} — следует за курсором).
+  Стоит на всех .oc-modes, .wl-hero-modes и .wl-modes (шапка стартового экрана). В чате лого .och-brand → стартовый экран (oc:welcome).
+ВЕБ-ПОИСК: встроенные промпты со словами вроде «Current element» ловятся NEEDS_WEB — для них runAI({ noWeb: true }) (так у «Make it better»).
+ВЕБ-ПОИСК: web-facts.js keywordQuery() — запасной запрос из ключевых слов (без «создай сайт про…», + месяц и год);
+  если по запросу модели ничего не нашлось, runAI повторяет поиск по keywordQuery.
+chat.js + chat.css — обычный чат без холста (адрес /#chat, openChat/closeChat). Слева беседы (localStorage 'oc-chats'),
+  выбор модели внизу в поле ввода (меню открывается вверх), пустой чат = заголовок + поле по центру + подсказки; своя модель 'oc-chat-model', модели/ключи берёт из studio.chatModels()/keyFor()/openKeys(); studio шлёт oc:models
+  после renderPicker. Запрос — providers.js converse(p,key,model,system,history,onDelta,signal), последние 40 сообщений.
+  Стиль: Geist, моно только для кода. e2e: "plain chat".
+ШРИФТ РЕДАКТОРА (2026-11-16): body = var(--sans) Geist; моно (var(--mono)) — код, пути, kbd, мелкие метки. Слой «Product typography» в конце studio.css.
+ПРОВАЙДЕР Coarena (coarena.ai/api/v1, ключ coa_…, CORS открыт): 18 моделей бесплатно (Claude, GPT-6, Gemini 4, Grok…), 30 запр/мин, 2 параллельно (lanes: 2).
 apps.js — мини-приложения: APP_CSP, APP_SHIM (localStorage в изолированном окне), appDoc, appPreview,
   withAppHead (метка <meta name="oc-app">), APP_RULES (правила для ИИ), APP_EXAMPLES (4 готовых приложения).
 worker.js (~1000) — сервер. Маршруты в конце файла ("async fetch"):
@@ -126,10 +150,26 @@ scene3d.js — 3D из JSON (Three.js); renderModel(query) — объекты д
 contrast.js — чинит нечитаемый текст (не применяется к приложениям). track.js — счётчики воронки
   (список событий в track.js И в supabase/events.sql — новые события требуют SQL).
 presets*.js — каталог: 535 видимых компонентов (presets-ui.js: 40 маленьких UI-компонентов × 5 стилей = 200, кодом THEMES × TYPES) + 200 скрытых секций presets-v4.js (25 типов × 8 стилей, hidden:true — только образцы для агентов роя, в панели не показываются); categories.js — разделы каталога.
+src/Welcome.jsx + src/welcome.css — стартовый экран. ПЕРЕДЕЛАН 2026-11-17 (welcome.css переписан одним слоем, старые наслоения убраны):
+  порядок: шапка → герой (по центру: бейдж, заголовок + Rotator, подзаголовок, переключатель .wl-hero-modes, поле .wl-prompt, чипы)
+  → СЦЕНА Stage (.wl-stage): окно редактора, где 3 ИИ-курсора (AGENTS: Шапка/Главный экран/Преимущества) собирают страницу по фазам
+    0 сброс · 1 план · 2 рамки блоков · 3 шапка · 4 печать заголовка · 5 кнопки · 6–8 карточки · 9 готово (выделение + «Страница готова») · 10 затухание;
+    примеры SHOWS по кругу; ТЕКСТ ИЗ ПОЛЯ ГЕРОЯ (режим Build) СРАЗУ СТАНОВИТСЯ ЗАГОЛОВКОМ собираемой страницы. Страница светлая, размеры в cqw
+    (container-type на .st-page). Цикл стоит, пока сцена не видна; под reduced motion — сразу фаза 9. tiltIn (home-fx.js) кладёт сцену при прокрутке.
+  → Stats (числа считаются: countUp в home-fx.js, [data-count]) → Modes (#wl-how, бенто: Конструктор/Код/Чат с CSS-анимациями bv-*)
+  → AppsSection (#wl-apps, живые приложения, как было) → Models (OrbitHero перенесён сюда из героя) → Export (вкладки HTML/React/Vue/Roblox,
+    подсветка hl(), автосмена каждые 3.6 с) → Templates (#wl-templates, две бегущие ленты .wl-marquee, пауза при наведении) → CTA (пиксельное лого, PIXEL_LOGO)
+  Тексты сцены — через tr() внутри data-no-i18n (иначе DOM-переводчик ловит недопечатанные строки). Новые строки переведены в locales/ru.js.
+  Снимки для проверки: скрипты в scratchpad (shot.mjs/done.mjs), не в репо.
+  Проверено 2026-11-18 на 390/768/1440: нет горизонтальной прокрутки; .wl-models на узком экране = minmax(0,1fr) (иначе орбита распирала колонку).
+(старое описание ниже — история)
 src/Welcome.jsx + src/welcome.css — стартовый экран: hero.
   Над заголовком крупное лого (.wl-mark): при загрузке плоскости буквы складываются по очереди.
   Стиль стартового экрана: шрифт Geist (Google Fonts) для текста, JetBrains Mono только для мелких акцентов
   (бейдж, надзаголовки, поле ввода, демо); эффекты React Bits сняты. Слой стилей «Product typography» в конце welcome.css, раздел Apps (живые приложения), шаги, шаблоны.
+ЭФФЕКТЫ ГЛАВНОЙ (2026-11-16, урезаны 2026-11-18 — см. МИНИМАЛИЗМ): src/home-fx.js — reveal (секции/карточки проявляются при
+  прокрутке, классы .wl-rv/.wl-in, линия между шагами), tiltIn (демо-окно ложится из 3D-наклона). Луч по рамке поля (::before,
+  @property --wl-beam), перелив .wl-accent-text/.wl-shine, каркас с бликом в демо, финальный блок .wl-cta. Всё выключено при reduced motion.
 src/templates.js — шаблоны страниц. i18n.js + locales/{ru,de,es,tr}.js — переводы: ключ = английский текст.
 public/ — статические SEO-страницы, галерея, плагин Roblox (public/roblox/).
 supabase/*.sql — схема БД (запускается вручную в Supabase SQL editor).
@@ -231,7 +271,7 @@ e2e: "swarm". thinking() отдаёт стройку через stop.stage().
 на ней проходил AA), --on-accent #fff, --ai #9d92ff (курсоры/«думаю»); светлая тема «светлая студия»: акцент #6152ea,
 нейтрали с лёгким фиолетовым оттенком. Стартовый экран: --wl-accent #6f60f2, --wl-accent-text #a79dff для мелкого текста.
 SEO-страницы (public/pages.css) — тот же акцент. og.png ещё старый.
-Живой фон стартового экрана (2026-11-15): src/fx.js (field — точки расступаются вокруг курсора, tilt — наклон карточек),
+(УБРАНО 2026-11-18, см. МИНИМАЛИЗМ) Живой фон стартового экрана (2026-11-15): src/fx.js (field — точки расступаются вокруг курсора, tilt — наклон карточек),
   .wl-bg (аврора + зерно + canvas) за всем содержимым, сменяющаяся 2-я строка заголовка (Rotator, ROTATE), рой в строке
   запроса (.wl-prompt-swarm), бегущая подсветка по краю строки запроса и блик на главных кнопках. Тот же визуал — в desktop/ui.
 Стартовый экран: герой с орбитами (Welcome.jsx OrbitHero): 3D-лого public/hero-mark.webp (scene3d renderModel
@@ -253,12 +293,12 @@ Hugging Face, LLM7 (все с CORS). Логотипы — LobeHub Icons (MIT), s
   делит на ≥3 блока, уходит модели с <!-- part N -->; она отвечает {"action":"patch"} с маркерами replace/after/before/remove/css,
   applyPatch собирает страницу (обрезанный последний блок выкидывается). Раньше модель переписывала всю страницу, упиралась
   в AI_MAX_TOKENS=8000 → «Could not apply» и 200+ с. Тесты: tests/unit/page-patch.test.js, e2e «edit: a big page takes a patch».
-Окно «AI keys» (2026-11-15): карточки по 3 в ряд в группах «Без ключа» (openconstructor AI, OVHcloud, LLM7) · «Бесплатные тарифы» ·
+(ВИД УСТАРЕЛ, см. ОКНО КЛЮЧЕЙ 2026-11-18) Окно «AI keys» (2026-11-15): карточки по 3 в ряд в группах «Без ключа» (openconstructor AI, OVHcloud, LLM7) · «Бесплатные тарифы» ·
   «Оплата по факту»; появление волной (.providers.intro), подсветка за курсором, при включении свет бежит по рамке (provOpening).
   noKey-провайдеры (providers.js) включаются переключателем (store oc-keyless-on), без Authorization; optionalKey — поле ключа
   для лимитов. freeIf: у SiliconFlow/Z.ai бесплатна только часть моделей (остальные не помечаются $0 — раньше Kimi K3.1 Pro
-  была «$0» и падала «balance insufficient»). Ошибки баланса → понятное сообщение. NVIDIA NIM, Kilo, Cloudflare не
-  добавлены: их API не пускает браузер (нет CORS), нужен прокси в worker.
+  была «$0» и падала «balance insufficient»). Ошибки баланса → понятное сообщение. API без CORS теперь идут
+  через прокси воркера (ПРОКСИ /api/relay, 2026-11-18).
 Рой на своём ключе: агенты идут очередью (p.lanes, по умолчанию 3, у Gonka 1), на 429/«too many» ждут и повторяют (до 3 раз);
   если секций <2 — сборка одним ответом (кроме ошибок ключа/баланса). В чате под «Could not apply» — «Reason: …» (настоящая ошибка).
 ИИ и свежие факты (web-facts.js, 2026-11-15): needsWeb (текущее/новости/рейтинги/год/ИИ-модели) → ДО сборки: модель пишет
@@ -306,3 +346,48 @@ Exploring: после поиска runAI открывает 2 лучших ре�
 Плашка ввода (layout.js + studio.css «Liquid-glass»): одна стеклянная плашка, модель справа у кнопки отправки; шторка .fc-grab сверху
 (клик или потянуть вниз) прячет её, остаётся .fc-mini «Ask AI /» (клик или клавиша / возвращает), L.fcHidden.
 Окно чата, вытащенное за край холста, прячется в край (L.edge left|right, язычок .edge-tab выдвигает обратно); закрытие анимировано.
+МИНИМАЛИЗМ (2026-11-18, просьба пользователя «убери светяшки»): НИКАКИХ свечений — ни света за курсором, ни авроры, ни лучей по рамке,
+  ни цветных ореолов (box-shadow 0 0 Npx цветом, drop-shadow-ореолы), ни переливающегося текста, ни blur-появлений. Стартовый экран:
+  .wl-bg — просто фон, src/fx.js (field/tilt) больше не используется, glow() удалён из home-fx.js, главная кнопка .wl-btn.primary —
+  плоская белая, .wl-accent-text — приглушённый текст. Редактор: «думает» без бегущей рамки и перелива, точки без ореолов.
+ОКНО КЛЮЧЕЙ (2026-11-18): список строк (.prov > .prov-row: лого 28px · имя + теги · заметка в одну строку · тумблер), группы
+  Без ключа / Бесплатные тарифы / Оплата по факту со счётчиком, сверху поиск #provSearch (по имени, заметке и id моделей) и фильтр
+  #provFilter (All · No key · Free · Paid · On). Без анимаций. Тег relay — сервис идёт через наш прокси. e2e: «keys: …».
+ПРОВАЙДЕРЫ (2026-11-18): 123 штуки (третий заход: Codestral, Arli AI, Poe, Glama, NanoGPT, Eden AI, Atlas Cloud, GMI Cloud, AkashML, Infermatic, DigitalOcean, Vultr — все пускают браузер напрямую; новых бесплатных без ключа нет, анонимного OpenRouter нет — 401) (было 31; второй заход — по коду tashfeenahmed/freellmapi, server/src/providers/*.ts). Источники: mvalentsev/awesome-free-ai-coding (configs/README — базовые URL),
+  amardeeplakshkar/awesome-free-llm-apis, freellmpool. Каждый проверен: preflight с Origin + GET /models без ключа + POST без ключа
+  (скрипт в scratchpad, не в репо). Без ключа реально отвечают: OVH, LLM7, Kilo Gateway (через relay, ~200 запр/час, 12 :free моделей),
+  Pollinations Open (text.pollinations.ai/openai — модель openai-fast), Free.ai (только qwen7b, остальное в /models — чужой
+  каталог OpenRouter), AI Horde (волонтёры; anonKey '0000000000' — подставляется, если ключа нет; hide: — скрыть RP/uncensored модели).
+  Отброшены ещё и «бесплатный Claude» перепродавцы (FreeModel, Kenari, Bynara, AINative, xKiro). OpenCode Zen без ключа — «только внутри приложения OpenCode», не
+  добавлен. Отброшены серые перепродавцы (navy, electronhub, naga, zukijourney) и «uncensored»-сервисы. freeIf у агрегаторов = /free/i
+  (бесплатные модели помечены :free / -free); у noKey+freeIf без ключа список режется до бесплатных (listModels).
+ПРОКСИ /api/relay/<id>/(models|chat/completions) (worker.js RELAY + relay()): для API без CORS (kilo, nvidia, sambanova, ollama, itera,
+  freeinference, llmkiwi, simplellm, avian, friendli, hpcai, stepfun, tencent, vlmrun, meldport, router9, blockrun, plugsky, clod). Только эти хосты и 2 пути, Origin должен быть
+  нашим (isMainHost), ключ Bearer проходит насквозь, куки не уходят и не возвращаются, ответ стримится. В providers.js такие
+  сервисы: relay: true, base '/api/relay/<id>'. ВНИМАНИЕ: в npm run dev /api проксируется на живой воркер — relay заработает
+  локально только после deploy. Тест: tests/unit/relay.test.js (там же проверка, что у каждого relay-провайдера есть маршрут).
+ОРБИТА МОДЕЛЕЙ (раздел Models на главной, OrbitHero в Welcome.jsx): ORBIT_INFO[лого] = [вендор, семейство, id провайдеров] — СПИСОК
+  РУЧНОЙ, при добавлении провайдера дописывать туда (бесплатные/без ключа первыми). Карточка: до 10 лого + «+N», ниже все имена.
+  Кнопка Code в переключателе режимов: .tb-code красилась в белый поверх белого ползунка — правило .oc-modes.pill .tb-code в chat.css.
+
+ПРОПАДАЛ EXPORT (2026-11-18): скрытая плашка «Ask AI» (.fc-mini) стояла на 90px ниже экрана → страница прокручивалась от focus() и верхняя панель уезжала. Теперь скрытая плашка в пределах экрана (12px + visibility:hidden), а layout.js возвращает window.scroll в 0 — редактор никогда не прокручивается как страница (главная крутится своим .wl).
+
+МЁРТВЫЕ КНОПКИ НА САЙТАХ ИИ (2026-11-18): interactive-kit.js wirePage() — в buildHTML (Preview, Export HTML/zip, Publish), по всей странице сразу (ссылка в шапке находит раздел в другом блоке). href="#"/пусто/javascript:/несуществующий #id и <button> вне формы → по тексту: раздел той же «семьи» (FAMILIES: pricing, menu, about, contact…), «Подробнее» → следующий раздел, действия (Заказать/Записаться/Купить/Связаться) → секция с формой страницы, иначе всплывающая форма .oc-modal (:target, без JS; на /p/ worker formsWork шлёт её автору). <button> → <a class="oc-btn" role="button">, CSS-селекторы button расширяются :is(button,a:where(.oc-btn)). Кнопки без букв (→, ☰, иконки) и страницы со <script> (мини-приложения) не трогаются. Код блоков не меняется — только собранный HTML. На холсте каждый блок в своём iframe, поэтому проверять кнопки — в Preview. Тесты: tests/unit/wire-controls.test.js.
+
+ВИЗУАЛЬНЫЙ ПРОХОД ПО РЕВЬЮ CODEX (18.11.2026)
+- Codex (codex exec -m gpt-6.1-terra -s read-only, скриншоты через -i a.png,b.png и промпт через stdin "-") дал 11 пунктов; орбиту моделей НЕ трогали (пользователь просил её).
+- Редактор: стартовый экран пустого холста центрируется в свободном месте: layout.js clampFloat пишет --fl-left/--fl-right на .workspace, studio.css (конец файла) отступы .canvas-empty + 150px снизу под composer; без ореола у composer при фокусе.
+- Главная (src/welcome.css): --wl-faint светлее (#85858f), placeholder светлее, disabled-кнопка тёмная а не полупрозрачная, заголовки меньше и без градиента, prompt без blur/тени (одна рамка, r=14), чипы-примеры r=8, меньше вертикальных отступов, без пульсирующих колец и прыгающей подсказки; на мобильном короткий placeholder (до «…») и компактнее hero/чипы.
+- Цифры: «120+ AI providers», «100+ others» в карточке Chat.
+
+ИКОНКИ ВСЕХ ПРОВАЙДЕРОВ + СТРАНИЦА /top-ai (18.11.2026)
+- 47 провайдеров без логотипа получили src/logos/fav-<id>.svg: официальный favicon с их сайта (SVG как есть, растр ужат до PNG 64px внутри <svg><image>), Vultr — Simple Icons (CC0), Speka/FreeInference/stdcompute — монограммы (иконок нет нигде). Тёмные (aihorde, edenai, meganova, zro) перерисованы светлыми на тёмной плашке.
+- ВАЖНО: логотипы вставляются инлайном (studio.js logo() id не префиксует). <style> внутри svg красит ВСЁ приложение (fav-llmtr залил все иконки). tests/unit/logos.test.js запрещает <style>/<script>/on*=, и проверяет что у каждого провайдера есть файл. id внутри fav-* префиксованы.
+- /top-ai (public/top-ai.html) генерится scripts/gen-top-ai.cjs — цифры вручную из Arena text/WebDev, Artificial Analysis, OpenRouter rankings (даты на странице). Обновлять: поправить массивы в скрипте и запустить node scripts/gen-top-ai.cjs. Ссылки: More на главной, кнопка в секции моделей, guide-links в index.html, nav ai-models/gallery, sitemap.
+- pages.css: убрано светящееся пятно body::before на всех справочных страницах.
+
+ЖИВОЙ ТЕСТ DEEPSEEK (18.11.2026)
+- LLM7 перевёл все DeepSeek в pro (без ключа их нет) — note/prefer LLM7 поправлены, llm7 в орбите DeepSeek/MiniMax перенесён в конец. Бесплатно без ключа DeepSeek V4.1 Flash есть у OVH.
+- БАГ: командная сборка (buildSwarm) на OVH (2 запроса/мин) слала 8 параллельных запросов → шторм 429, вечное «думает». Фикс: у провайдера поле rpm (ovh rpm: 2), при rpm<6 buildSwarm возвращает null → страница одним ответом; повтор после 429 ждёт Retry-After (до 60с), e.retryAfter в providers.js.
+- wireControls: ссылка с текстом-телефоном/почтой → tel:/mailto: (ИИ ставил им #order).
+- Итог: DeepSeek на OVH собрал лендинг кофейни за 109 с, все ссылки живые, без горизонтального скролла на 390px.
