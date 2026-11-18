@@ -22,7 +22,7 @@
 .th-swatch:hover em { opacity: 1; }
 
 .th-select { width: 100%; height: 28px; }
-.theme-panel .bg-tabs button[aria-checked="true"] { color: var(--accent); }
+.theme-panel .bg-tabs button[aria-checked="true"] { color: var(--accent-text); }
 .theme-panel [data-reset] { margin-top: 2px; }
 .th-hint { margin-top: 8px; color: var(--subtle); font-size: 10.5px; line-height: 1.45; }
 

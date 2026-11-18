@@ -39,12 +39,17 @@ export function parseScene(content){
   if (!scene || !Array.isArray(scene.objects) || !scene.objects.length) throw Error('The 3D scene is empty');
   return { ...h, action: 'scene3d', scene };
 }
+// some models put the answer in a second JSON object after the header ({"reply":"Привет!"}): show only its text
+function unwrapReply(body){
+  if (!/^\{[\s\S]*\}$/.test(body)) return body;
+  try { const o = looseJSON(body); const text = o && (o.reply ?? o.answer ?? o.text ?? o.message); return typeof text === 'string' && text.trim() ? text.trim() : body; } catch { return body; }
+}
 export function parseAnswer(content){
   const raw = String(content).replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
   // a chat answer: {"action":"reply"} header, then free Markdown (which may contain code — it is not a component)
   if (raw.startsWith('{')) {
     const j = firstJSON(raw);
-    if (j) { try { const h = looseJSON(j.json); if (/^(reply|answer|chat)$/i.test(String(h.action || ''))) return { action: 'reply', reply: raw.slice(j.end).trim() || String(h.reply || '') }; } catch {} }
+    if (j) { try { const h = looseJSON(j.json); if (/^(reply|answer|chat)$/i.test(String(h.action || ''))) return { action: 'reply', reply: unwrapReply(raw.slice(j.end).trim()) || String(h.reply || '') }; } catch {} }
   }
   const fence = raw.match(/```(?:html|HTML)?[ \t]*\r?\n([\s\S]*?)(?:\r?\n```|$)/);
   if (fence && /<[a-z!]/i.test(fence[1])) {
@@ -63,7 +68,8 @@ export function parseAnswer(content){
     if (cut) { try { return { action: 'add', name: (text.match(/"name"\s*:\s*"([^"]*)"/) || [])[1] || 'New element', code: looseJSON('"' + cut[1].replace(/\\+$/, '').replace(/"\s*,\s*"(reply|name|full|action)"[\s\S]*$/, '') + '"') }; } catch {} }
     // no JSON at all: accept plain HTML/CSS, or plain text as a chat reply
     const b = bare(); if (b) return b;
-    if (text && !/[{}<>]/.test(text)) return { action: 'reply', reply: text };
+    // no code and no header: whatever the model said is shown as its answer (better than an error — the retry already happened)
+    if (text) return { action: 'reply', reply: text };
     throw Error('The model answered in an unexpected format');
   }
   text = j.json;

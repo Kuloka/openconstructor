@@ -80,7 +80,8 @@ function end(){
 
 window.addEventListener('oc:welcome-closed', () => {
   let seen = false; try { seen = !!localStorage.getItem('oc-toured'); } catch {}
-  if (!seen) setTimeout(startTour, 350);
+  // the tour shows the editor: not over the Chat or Code modes (it waits for the next time the editor opens)
+  if (!seen) setTimeout(() => { if (!document.body.matches('.och-open, .cw-open')) startTour(); }, 350);
 });
 window.addEventListener('oc:tour', startTour);
 document.addEventListener('keydown', e => {

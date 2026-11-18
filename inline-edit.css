@@ -5,7 +5,7 @@
 
 .ins-panel { position: fixed; z-index: 66; width: 248px; padding: 10px 12px 12px; background: var(--panel-2); border: 1px solid var(--border-2); border-top: 2px solid var(--accent); border-radius: 6px; box-shadow: 0 20px 50px #000c; animation: pop-in .16s var(--ease-out, ease-out); }
 .ins-head { display: flex; align-items: center; gap: 8px; }
-.ins-title { color: var(--accent); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; }
+.ins-title { color: var(--accent-text); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; }
 .ins-tag { flex: 1; overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .ins-hint { margin: 6px 0 10px; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .ins-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 8px; }
@@ -30,7 +30,7 @@
 .ins-media .btn:first-child { flex: 1; }
 .ins-anim { margin-bottom: 8px; padding: 8px; border: 1px solid var(--border); border-radius: 5px; background: var(--panel); }
 .ins-anim-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 11px; }
-.ins-anim-head b { overflow: hidden; color: var(--accent); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.ins-anim-head b { overflow: hidden; color: var(--accent-text); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .ins-anim-head span { color: var(--subtle); }
 .ins-pause { display: flex; align-items: center; gap: 3px; margin-left: auto; color: var(--muted); cursor: pointer; }
 .ins-pause input { accent-color: var(--accent); }

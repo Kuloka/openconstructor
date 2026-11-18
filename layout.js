@@ -39,6 +39,8 @@ dock.prepend(grab);
 const setTuck = on => { L.fcHidden = on; dock.classList.toggle('tucked', on); mini.classList.toggle('on', on); save(); if (!on) setTimeout(() => dock.querySelector('textarea')?.focus(), 380); };
 grab.onclick = () => setTuck(true);
 mini.onclick = () => setTuck(false);
+// the editor never scrolls as a page; focus() or a stray element below the fold must not push the top bar (and Export) off screen
+addEventListener('scroll', () => { if (scrollX || scrollY) scrollTo(0, 0); }, { passive: true });
 grab.addEventListener('pointerdown', e => {
   const y0 = e.clientY; grab.setPointerCapture(e.pointerId);
   const mv = ev => { const dy = Math.max(0, ev.clientY - y0); dock.style.translate = `0 ${dy}px`; if (dy > 40) { up(); setTuck(true); } };
@@ -60,10 +62,13 @@ chat.append(tab);
 function unEdge(){ if (!L.edge) return; const r = workspace.getBoundingClientRect(); L.fx = L.edge === 'left' ? r.left + 16 : r.right - L.fw - 16; L.edge = null; apply(); }
 const floating = () => L.float && innerWidth >= 900 && !document.body.classList.contains('mobile') && !document.body.classList.contains('chat-in-code');
 function clampFloat(loose){
-  const r = workspace.getBoundingClientRect();
+  // the panel floats over the canvas, never over the canvas toolbar / screen tabs above it
+  const w = workspace.getBoundingClientRect(), top = workspace.querySelector('.canvas-wrap')?.getBoundingClientRect().top ?? w.top;
+  const r = { left: w.left, right: w.right, width: w.width, bottom: w.bottom, top, height: w.bottom - top };
   if (L.edge && !loose) {
     L.fh = Math.min(Math.max(260, L.fh), Math.max(260, r.height - 24)); L.fy = Math.min(Math.max(r.top + 8, L.fy ?? r.top + 20), r.bottom - 120);
     Object.assign(chat.style, { left: (L.edge === 'left' ? r.left - L.fw + 30 : r.right - 30) + 'px', top: L.fy + 'px', width: L.fw + 'px', height: L.fh + 'px' });
+    workspace.style.setProperty('--fl-right', '0px'); workspace.style.setProperty('--fl-left', '0px');
     return;
   }
   L.fw = Math.min(Math.max(300, L.fw), Math.max(300, r.width - 24)); L.fh = Math.min(Math.max(260, L.fh), Math.max(260, r.height - 24));
@@ -71,6 +76,10 @@ function clampFloat(loose){
   if (!loose) { L.fx = Math.min(Math.max(r.left + 8, L.fx), r.right - L.fw - 8); }
   L.fy = Math.min(Math.max(r.top + 8, L.fy), r.bottom - 60);
   Object.assign(chat.style, { left: L.fx + 'px', top: L.fy + 'px', width: L.fw + 'px', height: L.fh + 'px' });
+  // the empty-canvas start screen centres in the space the panel leaves free, instead of hiding under it
+  const onRight = L.fx + L.fw / 2 > r.left + r.width / 2;
+  workspace.style.setProperty('--fl-right', onRight ? Math.max(0, r.right - L.fx + 16) + 'px' : '0px');
+  workspace.style.setProperty('--fl-left', onRight ? '0px' : Math.max(0, L.fx + L.fw - r.left + 16) + 'px');
 }
 function placeComposer(on){
   if (on && dock.parentNode !== workspace) { workspace.append(dock, mini); composerBits().forEach(b => dock.append(b)); dock.classList.toggle('tucked', !!L.fcHidden); mini.classList.toggle('on', !!L.fcHidden); }

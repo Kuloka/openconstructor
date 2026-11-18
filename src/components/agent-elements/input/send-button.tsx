@@ -5,14 +5,15 @@ export type SendButtonProps = {
   state: "idle" | "typing" | "streaming";
 };
 
+// Square send / stop button: while the AI works it turns into "stop" (click → the answer is cancelled)
 export function SendButton({ state }: SendButtonProps) {
   const isStreaming = state === "streaming";
   const isTyping = state === "typing";
 
   if (isStreaming) {
     return (
-      <div className="size-7 rounded-full bg-foreground flex items-center justify-center cursor-pointer">
-        <IconPlayerStopFilled className="size-4 text-background" />
+      <div className="oc-send oc-stop size-8 rounded-[8px] flex items-center justify-center cursor-pointer" title="Stop" aria-label="Stop" role="button">
+        <IconPlayerStopFilled className="size-3.5" />
       </div>
     );
   }
@@ -20,11 +21,12 @@ export function SendButton({ state }: SendButtonProps) {
   return (
     <div
       className={cn(
-        "size-7 rounded-full flex items-center justify-center",
+        "oc-send size-8 rounded-[8px] flex items-center justify-center",
         isTyping
           ? "bg-an-send-button-bg cursor-pointer"
           : "bg-muted cursor-default",
       )}
+      title="Send"
     >
       <IconArrowUp
         className={cn(

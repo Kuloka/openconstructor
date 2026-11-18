@@ -9,15 +9,23 @@ import {CATEGORIES} from './categories.js';
 import { TARGETS } from './export-targets.js'; // the converters themselves (exporters.js) load on first export
 import { PRESETS as BG_PRESETS, DEFAULT_SPEC as BG_DEFAULT, toCSS as bgCSS, luminance as bgLum, mountBackgroundEditor } from './background.js';
 import logoSvg from './src/logo.svg?raw';
+import { startOpenRouter, finishOpenRouter } from './connect-openrouter.js';
+import { splitPage, numbered, applyPatch, PATCH_RULES } from './page-patch.js';
+import { INTERACTIVE_DOC, withInteractive, wirePage } from './interactive-kit.js';
+import { resolveIcons, ICONS_DOC } from './icon-tokens.js';
+import { findOverlaps, LAYOUT_FIX } from './layout-check.js';
+import { PLANNER_DIRECTIONS, pickDirection, directionCSS, directionBrief } from './art-direction.js';
+import { needsWeb, AI_TOPIC, aiModelsFacts, resultsNote, parseQueries, keywordQuery, QUERY_PROMPT } from './web-facts.js';
 import { parseScene, parseAnswer, firstJSON, looseJSON } from './ai-parse.js';
 import { MD_RE, md } from './markdown.js';
 import { initChatUI, toBottom, typeText, retype, message, thinking } from './chat-ui.js';
 import { fixContrast as fixContrastIn } from './contrast.js';
 const fixContrast = (code, full) => fixContrastIn(code, full, { light: isLightPage(), w: page.w, h: page.h, nodeDoc });
-import { PROVIDERS, byId, listModels, chat, freeQuota, aiTurn, tokensTurn } from './providers.js';
+import { PROVIDERS, byId, listModels, chat, freeQuota, aiTurn, aiCancel, tokensTurn } from './providers.js';
 import { signOut, user as authUser, openAuth } from './auth.js';
 import './donate.js';
 import { appDoc, withAppHead, APP_RULES, APP_EXAMPLES, appReference } from './apps.js';
+import { SYSTEMS, systemCSS, sectionSystem, requestLang, PLANNER_SYSTEMS } from './swarm-kit.js';
 import './tour.js';
 
 const $ = id => document.getElementById(id);
@@ -69,13 +77,17 @@ function previewDoc(code, wide){
   return `<!doctype html><html><head>${CSP}<meta name="viewport" content="width=device-width,initial-scale=1"><style>${body}button{white-space:nowrap}</style></head><body>${code}</body></html>`;
 }
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+// On the canvas a frame is exactly as tall as its content, so 100vh there means "as tall as myself": a hero with
+// min-height:100vh grew with its frame up to the cap (a 5000 px page with the content floating in the middle).
+// The canvas reads vh from the page's screen height instead, the way a real browser window would; exports keep vh.
+const canvasVh = code => String(code).replace(/(^|[\s:(,+*/-])(\d*\.?\d+)[sdl]?vh\b/g, (all, pre, n) => `${pre}${+(n * (page.h || 900) / 100).toFixed(2)}px`);
 function nodeDoc(item){
   if (item.app) return appDoc(item.code, { full: item.full, w: page.w, pad: PAD, color: isLightPage() ? '#18181b' : '#eee', theme: page.themeCss || '' });
   const root = item.full ? `width:${page.w}px;padding:0` : `width:max-content;max-width:${page.w - 2 * PAD}px;padding:${PAD}px`;
   // <base target=_blank> + no allow-popups in the sandbox = links never navigate the canvas frame away
   // scroll-driven effects (animation-timeline:view()) never scroll inside a canvas frame as tall as the page:
   // they would freeze half-way (faded, shifted headings), so on the canvas they show their final state
-  return `<!doctype html><html><head>${CSP}<base target="_blank"><meta name="color-scheme" content="dark"><style>*{animation-timeline:auto!important}:where(canvas[data-oc-model]){display:inline-block;width:640px;vertical-align:middle}:root{color-scheme:dark}html,body{margin:0;background:transparent;color:${isLightPage() ? '#18181b' : '#eee'};font-family:system-ui;overflow:hidden}button{white-space:nowrap}#__root{display:inline-block;box-sizing:border-box;${root}}</style>${page.themeCss ? `<style id="__theme">${page.themeCss}</style>` : ''}</head><body><div id="__root">${item.code}</div></body></html>`;
+  return `<!doctype html><html><head>${CSP}<base target="_blank"><meta name="color-scheme" content="dark"><style>*{animation-timeline:auto!important}:where(canvas[data-oc-model]){display:inline-block;width:640px;vertical-align:middle}:root{color-scheme:dark}html,body{margin:0;background:transparent;color:${isLightPage() ? '#18181b' : '#eee'};font-family:system-ui;overflow:hidden}button{white-space:nowrap}#__root{display:inline-block;box-sizing:border-box;${root}}</style>${page.themeCss ? `<style id="__theme">${page.themeCss}</style>` : ''}</head><body><div id="__root">${canvasVh(item.code)}</div></body></html>`;
 }
 
 // Animated components (typewriter, expanding bars…) change size while they play, so the frame
@@ -523,7 +535,7 @@ async function recolorAll(mode){
 function improve(id){
   const x = items.find(i => i.id === id); if (!x || x.scene) return;
   select(id); window.dispatchEvent(new CustomEvent('oc:open-chat'));
-  runAI(`✦ ${t('Make it better')}: ${x.name}`, { targetId: id, ask: IMPROVE });
+  runAI(`✦ ${t('Make it better')}: ${x.name}`, { targetId: id, ask: IMPROVE, noWeb: true });
 }
 function editWithAI(id){ const x = items.find(i => i.id === id); if (!x) return; select(id); window.dispatchEvent(new CustomEvent('oc:open-chat')); prefillPrompt(`Change "${x.name}": `); }
 function scrollToItem(id){ const el = nodes.get(id); if (!el) return; canvas.scrollTo({ left: STAGE_PAD + el.offsetLeft * zoom - 80, top: STAGE_PAD + el.offsetTop * zoom - 80, behavior: 'smooth' }); }
@@ -1144,7 +1156,8 @@ function hasApps(){
 const OC3D = 'https://openconstructor.pw/oc3d.js';
 function buildHTML(){
   let html = buildPageHTML();
-  if (hasApps()) html = withAppHead(html);
+  // dead buttons and links (href="#", <button> outside a form) → the matching section or a pop-up request form
+  html = hasApps() ? withAppHead(html) : wirePage(html);
   // live 3D objects: the runtime (three.js inside, no network) — without it they stay still pictures
   if (/<canvas[^>]+data-oc-model=/.test(html)) html = html.replace(/<\/head>/i, '<style>:where(canvas[data-oc-model]){display:inline-block;width:640px;vertical-align:middle}</style></head>').replace(/<\/body>/i, `<script src="${OC3D}" defer></script></body>`);
   return html;
@@ -1184,7 +1197,9 @@ html,body{margin:0}body{min-height:100vh;background:${page.bg};background-attach
 function openDevicePreview(){
   if (!items.length) { setState('nothing to preview: the page is empty', 'warn'); return; }
   const html = buildHTML();
-  const devices = [{ name: 'phone', w: 390, h: 844 }, { name: 'tablet', w: 834, h: 1112 }, { name: 'desktop', w: 1440, h: 900 }];
+  // a phone or tablet model picked as the page size (iPhone 17 Pro, iPad Air…) stands in for the generic one
+  const model = $('pageSize')?.selectedOptions?.[0]?.closest('optgroup')?.label, modelName = $('pageSize')?.selectedOptions?.[0]?.textContent.split(' · ')[0];
+  const devices = [model === 'phones' ? { name: modelName, w: page.w, h: page.h } : { name: 'phone', w: 390, h: 844 }, model === 'tablets' ? { name: modelName, w: page.w, h: page.h } : { name: 'tablet', w: 834, h: 1112 }, { name: 'desktop', w: 1440, h: 900 }];
   let m = $('previewModal');
   if (!m) { m = document.createElement('div'); m.className = 'modal hidden'; m.id = 'previewModal'; document.body.append(m); m.onclick = e => { if (e.target === m || e.target.closest('[data-close]')) m.classList.add('hidden'); }; }
   const stack = isStack();
@@ -1262,7 +1277,7 @@ function setState(text, kind = ''){
 const logoFiles = import.meta.glob('./src/logos/*.svg', { query: '?raw', import: 'default', eager: true });
 const logo = name => logoFiles[`./src/logos/${name}.svg`] || '';
 // Pick the model logo from its name (Llama → Meta, Qwen → Qwen…), otherwise use the provider logo
-const VENDOR_LOGOS = [[/llama|meta-/i, 'meta-color'], [/gemma/i, 'gemma-color'], [/gemini|google/i, 'gemini-color'], [/qwen|qwq/i, 'qwen-color'], [/mistral|mixtral|codestral|devstral|magistral|ministral|pixtral/i, 'mistral-color'], [/deepseek/i, 'deepseek-color'], [/claude/i, 'claude-color'], [/gpt|^o\d|openai|chatgpt/i, 'openai'], [/grok|x-ai/i, 'xai'], [/kimi|moonshot/i, 'kimi-color'], [/nemotron|nvidia/i, 'nvidia-color'], [/glm|z-ai|zhipu/i, 'zai'], [/minimax/i, 'minimax-color'], [/phi-|microsoft/i, 'microsoft-color'], [/cohere|command|north/i, 'cohere-color'], [/hermes|nous/i, 'nousresearch'], [/liquid|lfm/i, 'liquid'], [/arcee/i, 'arcee-color'], [/dots/i, 'dotsstudio'], [/ernie|baidu|wenxin/i, 'baidu-color'], [/bytedance|seed-|doubao/i, 'bytedance-color'], [/stepfun|step-/i, 'stepfun-color'], [/perplexity|sonar/i, 'perplexity-color'], [/amazon|nova-/i, 'nova-color'], [/ibm|granite/i, 'ibm'], [/inflection/i, 'inflection'], [/reka/i, 'reka'], [/upstage|solar/i, 'upstage-color'], [/aion/i, 'aionlabs-color'], [/kwaipilot|kat-/i, 'kwaipilot-color'], [/longcat|meituan/i, 'longcat-color'], [/morph/i, 'morph-color'], [/allenai|olmo|molmo/i, 'ai2-color'], [/tencent|hunyuan/i, 'tencent-color'], [/alibaba|tongyi/i, 'alibaba-color'], [/inception|mercury/i, 'inception'], [/ai21|jamba/i, 'ai21'], [/hugging/i, 'huggingface-color'], [/moonshot/i, 'moonshot']];
+const VENDOR_LOGOS = [[/llama|meta-/i, 'meta-color'], [/gemma/i, 'gemma-color'], [/gemini|google/i, 'gemini-color'], [/qwen|qwq/i, 'qwen-color'], [/mistral|mixtral|codestral|devstral|magistral|ministral|pixtral/i, 'mistral-color'], [/deepseek/i, 'deepseek-color'], [/claude/i, 'claude-color'], [/gpt|^o\d|openai|chatgpt/i, 'openai'], [/grok|x-ai/i, 'xai'], [/kimi|moonshot/i, 'kimi-color'], [/nemotron|nvidia/i, 'nvidia-color'], [/glm|z-ai|zhipu/i, 'zai'], [/minimax/i, 'minimax-color'], [/phi-|microsoft/i, 'microsoft-color'], [/cohere|command|north/i, 'cohere-color'], [/hermes|nous/i, 'nousresearch'], [/liquid|lfm/i, 'liquid'], [/arcee/i, 'arcee-color'], [/dots/i, 'dotsstudio'], [/ernie|baidu|wenxin/i, 'baidu-color'], [/bytedance|seed-|doubao/i, 'bytedance-color'], [/stepfun|step-/i, 'stepfun-color'], [/perplexity|sonar/i, 'perplexity-color'], [/amazon|nova-/i, 'nova-color'], [/ibm|granite/i, 'ibm'], [/inflection/i, 'inflection'], [/reka/i, 'reka'], [/upstage|solar/i, 'upstage-color'], [/aion/i, 'aionlabs-color'], [/kwaipilot|kat-/i, 'kwaipilot-color'], [/longcat|meituan/i, 'longcat-color'], [/morph/i, 'morph-color'], [/allenai|olmo|molmo/i, 'ai2-color'], [/tencent|hunyuan|^hyd/i, 'tencent-color'], [/alibaba|tongyi/i, 'alibaba-color'], [/inception|mercury/i, 'inception'], [/ai21|jamba/i, 'ai21'], [/hugging/i, 'huggingface-color'], [/moonshot/i, 'moonshot']];
 function modelLogo(m){
   if (m.pid === 'oc') return `<span class="model-logo">${logoSvg}</span>`;
   const hit = VENDOR_LOGOS.find(([re]) => re.test(`${m.id} ${m.name} ${m.vendor || ''}`));
@@ -1284,7 +1299,9 @@ const SESSION_KEYS = 'oc-keys-session';
 // switched off in the "AI keys" dialog: the key stays saved, the service's models leave the list until it's switched on
 const keysOff = new Set(store.get('oc-keys-off', []));
 const saveOff = () => store.set('oc-keys-off', [...keysOff]);
-const active = pid => !!keys[pid] && !keysOff.has(pid);
+// services that need no key (OVHcloud's anonymous tier) are simply switched on or off
+const keyless = new Set(store.get('oc-keyless-on', []));
+const active = pid => byId(pid)?.noKey ? keyless.has(pid) : !!keys[pid] && !keysOff.has(pid);
 function saveKeys(){
   store.set('oc-keys-remember', remember);
   if (remember) {
@@ -1472,6 +1489,7 @@ function renderPicker(){
   picker.querySelector('.model-list').innerHTML = groups || '<div class="model-empty">nothing found</div>';
   const connected = PROVIDERS.filter(pr => active(pr.id)).length, total = PROVIDERS.filter(pr => pr.kind !== 'proxy').length;
   picker.querySelector('.model-add').textContent = `+ connect your own keys (${connected} of ${total})`;
+  window.dispatchEvent(new CustomEvent('oc:models'));
 }
 function toggleMenu(open = menu.classList.contains('hidden')){
   menu.classList.toggle('hidden', !open); trigger.setAttribute('aria-expanded', open);
@@ -1507,32 +1525,61 @@ function autoPick(){
 }
 function loadModels(){ PROVIDERS.forEach(loadProvider); }
 
-// "AI keys" dialog: every service is a row with a round switch — on opens the key field, off forgets the key
+// "AI keys" dialog: a plain list — one row per service (logo · name · note · switch), grouped no key · free · paid,
+// with a search box and a filter. Switching a service on opens its key field under the row.
 const provOpen = new Set();
 const provLogo = p => p.kind === 'proxy' || logo(p.logo) ? providerLogo(p) : `<span class="model-logo letter">${escapeHTML(p.name[0])}</span>`;
+let provQuery = '', provFilter = 'all';
+const provMatch = p => {
+  const on = p.kind === 'proxy' || active(p.id) || provOpen.has(p.id);
+  if (provFilter === 'nokey' && !(p.kind === 'proxy' || p.noKey)) return false;
+  if (provFilter === 'free' && !p.free) return false;
+  if (provFilter === 'paid' && p.free) return false;
+  if (provFilter === 'on' && !on) return false;
+  if (!provQuery) return true;
+  const hay = (p.name + ' ' + p.id + ' ' + p.note + ' ' + (modelsBy[p.id] || []).map(m => m.id).join(' ')).toLowerCase();
+  return provQuery.split(/\s+/).every(w => hay.includes(w));
+};
 function renderProviders(){
   const box = $('providers'); if (!box) return;
   const focused = document.activeElement?.dataset?.key;
-  box.innerHTML = PROVIDERS.map(p => {
-    if (p.kind === 'proxy') return `<div class="prov on prov-free">${provLogo(p)}<div class="prov-info"><div class="prov-name">${escapeHTML(p.name)}<span class="model-free">$0</span></div><div class="prov-note">${escapeHTML(p.note)}</div></div>${authUser ? `<span class="prov-st ok">✓ signed in${quota ? ` · ${quota.used}/${quota.limit} used today` : ''}</span>` : '<button class="btn primary" type="button" data-free-signin>sign in for 20 a day</button>'}</div>`;
-    const k = keys[p.id] || '', on = active(p.id) || provOpen.has(p.id);
-    const st = !k ? '' : keysOff.has(p.id) ? '' : loading[p.id] ? '<span class="prov-st">checking…</span>' : modelErr[p.id] ? `<span class="prov-st err" title="${escapeHTML(modelErr[p.id])}">✗ ${escapeHTML(String(modelErr[p.id]).slice(0, 60))}</span>` : `<span class="prov-st ok">✓ ${(modelsBy[p.id] || []).length} models</span>`;
-    return `<div class="prov${on ? ' on' : ''}" data-prov="${p.id}">${provLogo(p)}<div class="prov-info"><div class="prov-name">${escapeHTML(p.name)}${p.free ? '<span class="model-free">free tier</span>' : ''}</div><div class="prov-note">${escapeHTML(p.note)}</div></div><button type="button" class="switch" role="switch" aria-checked="${on}" data-switch="${p.id}" aria-label="${escapeHTML(p.name)}"><i></i></button>`
-      + (on ? `<div class="prov-key"><input type="password" data-key="${p.id}" value="${escapeHTML(k)}" placeholder="${escapeHTML(t('Paste your key') + (p.hint ? ' · ' + p.hint : ''))}" autocomplete="off" spellcheck="false"><a class="btn" href="${p.keyUrl}" target="_blank" rel="noreferrer">${escapeHTML(t('get a key'))} ↗</a>${k ? `<button type="button" class="btn" data-forget="${p.id}">${escapeHTML(t('remove key'))}</button>` : ''}${st}</div>` : k ? `<div class="prov-key prov-saved">${escapeHTML(t('key saved · switched off'))}</div>` : '') + '</div>';
-  }).join('');
+  const status = p => { const k = keys[p.id] || ''; return !k && !p.noKey ? '' : !active(p.id) ? '' : loading[p.id] ? `<span class="prov-st wait">${escapeHTML(t('checking…'))}</span>` : modelErr[p.id] ? `<span class="prov-st err" title="${escapeHTML(modelErr[p.id])}">${escapeHTML(String(modelErr[p.id]).slice(0, 90))}</span>` : `<span class="prov-st ok">${(modelsBy[p.id] || []).length} ${escapeHTML(t('models in the list'))}</span>`; };
+  const row = p => {
+    const k = keys[p.id] || '', on = active(p.id) || (!p.noKey && provOpen.has(p.id));
+    const tags = (p.noKey ? `<span class="prov-tag nokey">${escapeHTML(t('no key'))}</span>` : p.free ? `<span class="prov-tag free">${escapeHTML(t('free tier'))}</span>` : '') + (p.relay ? `<span class="prov-tag" title="${escapeHTML(t('its API does not accept browsers, so requests go through our server; nothing is stored'))}">relay</span>` : '');
+    if (p.kind === 'proxy') return `<div class="prov on prov-free"><div class="prov-row">${provLogo(p)}<div class="prov-main"><div class="prov-name">${escapeHTML(p.name)}<span class="prov-tag free">$0</span></div><div class="prov-note">${escapeHTML(p.note)}</div></div><div class="prov-side">${authUser ? `<span class="prov-st ok">${escapeHTML(t('signed in'))}${quota ? ` · ${quota.used}/${quota.limit} ${escapeHTML(t('used today'))}` : ''}</span>` : `<button class="btn primary" type="button" data-free-signin>${escapeHTML(t('sign in for 20 a day'))}</button>`}</div></div></div>`;
+    const keyBox = p.noKey ? (on && (p.optionalKey || status(p)) ? `<div class="prov-key">${p.optionalKey ? `<input type="password" data-key="${p.id}" value="${escapeHTML(k)}" placeholder="${escapeHTML(t('optional key — higher limits'))}" autocomplete="off" spellcheck="false">` : ''}${status(p)}</div>` : '')
+      : on ? `<div class="prov-key"><input type="password" data-key="${p.id}" value="${escapeHTML(k)}" placeholder="${escapeHTML(t('Paste your key') + (p.hint ? ' · ' + p.hint : ''))}" autocomplete="off" spellcheck="false"><div class="prov-btns">${p.id === 'openrouter' && !k ? `<button type="button" class="btn primary" data-or-connect>${escapeHTML(t('Sign in with OpenRouter'))}</button>` : ''}<a class="btn" href="${p.keyUrl}" target="_blank" rel="noreferrer">${escapeHTML(t('get a key'))} ↗</a>${k ? `<button type="button" class="btn" data-forget="${p.id}">${escapeHTML(t('remove key'))}</button>` : ''}</div>${status(p)}</div>`
+      : '';
+    const saved = !on && k ? `<span class="prov-saved">${escapeHTML(t('key saved · switched off'))}</span>` : '';
+    return `<div class="prov${on ? ' on' : ''}" data-prov="${p.id}"><div class="prov-row">${provLogo(p)}<div class="prov-main"><div class="prov-name">${escapeHTML(p.name)}${tags}</div><div class="prov-note">${escapeHTML(p.note)}</div></div><div class="prov-side">${saved}<button type="button" class="switch" role="switch" aria-checked="${on}" data-switch="${p.id}" aria-label="${escapeHTML(p.name)}"><i></i></button></div></div>${keyBox}</div>`;
+  };
+  const groups = [
+    [t('No key needed'), PROVIDERS.filter(p => p.kind === 'proxy' || p.noKey)],
+    [t('Free tiers'), PROVIDERS.filter(p => p.kind !== 'proxy' && !p.noKey && p.free)],
+    [t('Pay as you go'), PROVIDERS.filter(p => p.kind !== 'proxy' && !p.free)],
+  ].map(([a, list]) => [a, list.filter(provMatch)]);
+  const html = groups.filter(g => g[1].length).map(([title, list]) => `<section class="prov-group"><h3>${escapeHTML(title)} <span>${list.length}</span></h3><div class="prov-list">${list.map(row).join('')}</div></section>`).join('');
+  box.innerHTML = html || `<p class="prov-empty">${escapeHTML(t('Nothing found'))}</p>`;
+  const sb = $('provSearch'); if (sb) sb.placeholder = `${t('Search')} ${PROVIDERS.length} ${t('services and models')}`;
   if (focused) { const el = box.querySelector(`[data-key="${focused}"]`); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }
 }
+$('provSearch')?.addEventListener('input', e => { provQuery = e.target.value.trim().toLowerCase(); renderProviders(); });
+$('provFilter')?.addEventListener('click', e => { const b = e.target.closest('[data-f]'); if (!b) return; provFilter = b.dataset.f; $('provFilter').querySelectorAll('[data-f]').forEach(x => x.setAttribute('aria-checked', String(x === b))); renderProviders(); });
 // openSettings('openrouter') opens the dialog with that service switched on and its key field focused
 function openSettings(pid){
   $('rememberKeys').checked = remember; if (pid && byId(pid) && byId(pid).kind !== 'proxy') provOpen.add(pid);
+  // a service asked for by name must be visible: clear the search and the filter
+  if (pid) { provQuery = ''; provFilter = 'all'; if ($('provSearch')) $('provSearch').value = ''; $('provFilter')?.querySelectorAll('[data-f]').forEach(x => x.setAttribute('aria-checked', String(x.dataset.f === 'all'))); }
   renderProviders(); showModal('settings');
-  if (pid) requestAnimationFrame(() => { const row = $('providers').querySelector(`[data-prov="${pid}"]`); row?.scrollIntoView({ block: 'center' }); row?.querySelector('input')?.focus(); });
+  if (pid) requestAnimationFrame(() => { const r = $('providers').querySelector(`[data-prov="${pid}"]`); r?.scrollIntoView({ block: 'center' }); r?.querySelector('input')?.focus(); });
 }
 $('providers').addEventListener('click', e => {
   const fg = e.target.closest('[data-forget]');
   if (fg) { const pid = fg.dataset.forget; delete keys[pid]; keysOff.delete(pid); saveOff(); saveKeys(); loadProvider(byId(pid)); renderStart(); return; }
   const sw = e.target.closest('[data-switch]'); if (!sw) return;
   const pid = sw.dataset.switch, on = sw.getAttribute('aria-checked') === 'true';
+  if (byId(pid)?.noKey) { if (on) keyless.delete(pid); else keyless.add(pid); store.set('oc-keyless-on', [...keyless]); loadProvider(byId(pid)); renderStart(); renderProviders(); return; }
   // off keeps the key (only its models leave the list); on brings them back without typing it again
   if (on) { provOpen.delete(pid); if (keys[pid]) { keysOff.add(pid); saveOff(); loadProvider(byId(pid)); renderStart(); } renderProviders(); }
   else { provOpen.add(pid); if (keysOff.delete(pid)) { saveOff(); if (keys[pid]) { loadProvider(byId(pid)); renderStart(); } } renderProviders(); if (!keys[pid]) $('providers').querySelector(`[data-key="${pid}"]`)?.focus(); }
@@ -1544,6 +1591,8 @@ function renderStart(){
 }
 $('emptyStart')?.addEventListener('click', e => { const b = e.target.closest('[data-start-key]'); if (b) openSettings(b.dataset.startKey); else if (e.target.closest('[data-start-keys]')) openSettings('openrouter'); });
 $('providers').addEventListener('click', e => { if (e.target.closest('[data-free-signin]')) { $('settings').classList.add('hidden'); openAuth('signup'); } });
+// one click instead of a key: OpenRouter sign-in (connect-openrouter.js), the page comes back with the key
+document.addEventListener('click', e => { if (e.target.closest('[data-or-connect]')) startOpenRouter().catch(err => toast(String(err.message || err), 'error')); });
 $('providers').addEventListener('change', e => {
   const pid = e.target.dataset.key; if (!pid) return;
   const v = e.target.value.trim();
@@ -1662,6 +1711,8 @@ function unModel(code){
   });
 }
 async function resolveMedia(code, attachments = [], onPhotos, kept = [], onArt, onModels){
+  // icon:NAME and logo:BRAND pictures become inline SVG (icon-tokens.js): Lucide icons, our AI-vendor logos, Simple Icons
+  code = await resolveIcons(code, { lucide: () => import('lucide-static/icon-nodes.json').then(m => m.default || m), vendor: name => { const hit = VENDOR_LOGOS.find(([re]) => re.test(name)); return hit ? logo(hit[1]) : ''; } });
   // <img src="model:…"> becomes a LIVE 3D object: <canvas data-oc-model="…"> rendered in real time (model-kit.js,
   // oc3d.js on published pages); its still picture is the canvas background until WebGL starts or where scripts are off
   let lives = 0;
@@ -1807,6 +1858,17 @@ $('send').onclick = () => {
   runAI(request || (imgs.length ? 'Use the attached image' + (imgs.length > 1 ? 's' : '') : 'Use the attached file'), custom);
 };
 
+// The rendered element is checked for parts drawn on top of each other; if there are any, one automatic fix request follows
+async function layoutQA(id){
+  const f = nodes.get(id)?.querySelector('iframe'); if (!f) return;
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  for (let i = 0; i < 40 && !(f._loaded && f.contentDocument?.readyState === 'complete'); i++) await wait(150);
+  await wait(1200); // photos, live 3D and fonts settle
+  if ($('send').disabled || !items.some(x => x.id === id)) return;
+  let list = []; try { list = findOverlaps(f.contentDocument); } catch { return; }
+  if (!list.length) return;
+  runAI(t('Fix the overlapping parts'), { targetId: id, sameTurn: true, layoutFix: true, ask: LAYOUT_FIX(list) });
+}
 // One AI round-trip. `custom.user` replaces the default context (used by Fusion); `custom.place` positions a new element.
 // Is `next` a rewritten version of `prev` (most of its words are still there) rather than a new block?
 function isRewriteOf(prev, next){
@@ -1895,6 +1957,10 @@ function signupNudge(why){
 const SWARM_RE = /сайт|site|page|страниц|лендинг|landing|портфолио|portfolio|магазин|shop|store|блог|blog|homepage|главн/i;
 // with a page already on the canvas only an explicit "new page" request starts a swarm (anything else is an edit)
 const SWARM_NEW = /нов(ый|ую|ая|ое)|new|ещ[её] од|another|с нуля|from scratch|другой сайт|second site/i;
+// "make a site about…" also starts one when what is on the canvas isn't a page yet (a logo, a button, a 3D word):
+// otherwise the whole site request turns into an edit of that one small element
+const SWARM_MAKE = /(сдела|созда|собери|собрать|построй|сгенерир|нарисуй|запили|make|build|create|generate|design)\S*[\s\S]{0,60}(сайт|site|лендинг|landing|страниц|page|портфолио|portfolio|магазин|shop|store|блог|blog)/i;
+const isPage = it => !!it?.full && (String(it.code).match(/<(section|header|footer|nav|main)\b/gi) || []).length >= 3;
 const sectionCode = text => {
   let s = String(text || '').replace(/<think>[\s\S]*?(<\/think>|$)/gi, '');
   const f = s.match(/```(?:html)?\s*\n([\s\S]*?)(```|$)/i);
@@ -1917,7 +1983,9 @@ function pickRef(kind, used){
   if (pick) used.add(pick.name);
   return pick;
 }
-async function buildSwarm({ p, key, m, request, recent, system, stop }){
+async function buildSwarm({ p, key, m, request, recent, system, stop, facts = '' }){
+  // a service that allows only a couple of requests a minute (OVH: 2) cannot feed a planner + one agent per section — one answer builds the page
+  if (p.rpm && p.rpm < 6 && !myAgents.some(a => a.on && a.model)) return null;
   const mine = myAgents.filter(a => a.on && (a.role || a.name)).map(a => ({ ...a, kind: agentSlug(a.name), model: a.model && allModels().find(x => x.key === a.model && usable(x.pid)) || null }));
   const free = p.kind === 'proxy';
   // the free AI allows a planner + 9 calls per request; the user's agents on their own keys don't count
@@ -1925,65 +1993,86 @@ async function buildSwarm({ p, key, m, request, recent, system, stop }){
   const SWARM_MIN = Math.min(5, SWARM_MAX);
   stop.step('planning the page');
   const plan = `You are the lead designer of a team that builds ONE web page in parallel: you plan it, then each designer writes one section at the same time. Reply with ONLY one JSON object, no markdown fences:
-{"name":"short page name","reply":"one short friendly line to the user, in the language of the request","css":"…","sections":[{"kind":"header","brief":"…"}]}
+{"name":"short page name","reply":"one short friendly line to the user, in the language of the request","system":"…","direction":"…","accent":"#rrggbb","sections":[{"kind":"header","brief":"…","alt":false}]}
 - sections: ${SWARM_MIN}–${SWARM_MAX} in page order, a header first and a footer last; pick what this kind of business really needs (a café: menu with real prices, hours, address, booking; a SaaS: value, how it works, product, pricing, FAQ; a portfolio: work first). "kind" is one lowercase word (header, hero, features, menu, pricing, gallery, testimonials, faq, cta, contact, footer…). "brief" (English, 1–3 sentences) says exactly what the section shows: layout idea, real-sounding texts, names, numbers and prices in the language of the request, which photo: or model: pictures to use — specific enough that a designer can build it without seeing the others.${mine.length ? `
 - The user's own agents build these sections at the same time — do NOT plan them, leave room for them: ${mine.map(a => `"${a.kind}" (${a.role || a.name})`).join('; ')}.` : ''}
-- css: the shared design system as compact CSS (under 2000 characters), every selector starting with .pg: CSS variables on .pg (--bg, --surface, --text, --muted, --line, --accent, --accent-text, --radius, --font), .pg{background:var(--bg);color:var(--text);font-family:var(--font)}, .pg .wrap{max-width:1160px;margin:0 auto;padding:0 28px}, type scale for .pg h1/.pg h2/.pg h3/.pg p, .pg .btn and .pg .btn-ghost (≥44px tall, hover and focus-visible), .pg .eyebrow, a @media (max-width:760px) block. One accent colour, refined neutrals, a ${isLightPage() ? 'light' : 'dark'} page unless the request asks otherwise. No section-specific styles.
+- system: the design system that fits this business best, one id of: ${PLANNER_SYSTEMS}. Do NOT write CSS — the system already has fonts, type scale, spacing, buttons, cards and grids. accent: one #rrggbb accent colour that suits the brand, or null to keep the system's own.
+- direction: the art direction — how award-winning sites (Awwwards Site of the Day level) would stage THIS business; one id of: ${PLANNER_DIRECTIONS}. Pick by the business and its mood, not by habit; write the briefs so every section follows it (the hero's signature idea in particular).
+- every section gets "alt": true|false — true gives it the surface background; alternate so neighbours differ (header and hero false).
 ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}.`;
   let data = null;
   for (let attempt = 0; attempt < 2 && !data; attempt++) {
-    const content = await chat(p, key, m.id, plan, (recent ? 'Conversation so far (for context):\n' + recent + '\n\n' : '') + 'Request: ' + request + (attempt ? '\n\nIMPORTANT: reply with ONLY the JSON object.' : ''), [], null);
+    const content = await chat(p, key, m.id, plan, (recent ? 'Conversation so far (for context):\n' + recent + '\n\n' : '') + 'Request: ' + request + facts.slice(0, 9000) + (attempt ? '\n\nIMPORTANT: reply with ONLY the JSON object.' : ''), [], null);
     try { const j = firstJSON(String(content).replace(/<think>[\s\S]*?<\/think>/gi, '')); data = j && looseJSON(j.json); } catch { data = null; }
     if (!data || !Array.isArray(data.sections) || data.sections.length < 2) data = null;
   }
   if (!data) { stop.step('the plan came out garbled — building it in one go'); return null; }
   // the stage belongs to the swarm only once there is a plan (otherwise the single answer plays it as usual)
   const stage = stop.stage();
-  let secs = data.sections.slice(0, SWARM_MAX).map(s => ({ kind: String(s?.kind || 'section').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 20) || 'section', brief: String(s?.brief || '').slice(0, 900) }));
+  let secs = data.sections.slice(0, SWARM_MAX).map(s => ({ kind: String(s?.kind || 'section').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 20) || 'section', brief: String(s?.brief || '').slice(0, 900), alt: s?.alt === true }));
   // the user's agents go in before the closing CTA / contact / footer
   if (mine.length) {
     let at = secs.length; while (at > 1 && /footer|contact|cta|newsletter/.test(secs[at - 1].kind)) at--;
     secs.splice(at, 0, ...mine.map(a => ({ kind: a.kind, brief: (a.role || a.name).slice(0, 400), own: a })));
   }
   secs = secs.map((s, i) => ({ ...s, i }));
-  const css = String(data.css || '').replace(/<\/?style[^>]*>/gi, '').slice(0, 6000);
-  stage?.swarm(css, secs.map(s => s.kind));
+  // a hand-made design system (swarm-kit.js); the brand colour wins over the planner's accent. Plans with raw css still work.
+  const css = SYSTEMS[data.system] || !data.css ? systemCSS(SYSTEMS[data.system] ? data.system : 'product', (page.brand?.on !== false && page.brand?.primary) || data.accent) : String(data.css).replace(/<\/?style[^>]*>/gi, '').slice(0, 6000);
+  const lang = requestLang(request);
+  // the art direction: shared display fonts and helpers go into the page CSS, its rules to every agent (art-direction.js)
+  const dir = pickDirection(String(data.direction || ''), request);
+  const pageCSS = css + '\n' + directionCSS();
+  stage?.swarm(pageCSS, secs.map(s => s.kind));
+  stop.step('art direction: ' + dir);
   stop.step(`${secs.length} agents are building the sections at once: ${secs.map(s => s.kind).join(', ')}`);
   const outline = secs.map(s => `${s.i + 1}. ${s.kind} — ${s.brief}`).join('\n');
   await presetsReady.catch(() => {});
-  const used = new Set(); secs.forEach(s => { s.ref = pickRef(s.own ? s.kind + ' ' + s.brief : s.kind, used); });
+  const used = new Set(); secs.forEach(s => { s.ref = !s.own && /hero|intro|banner/.test(s.kind) ? null : pickRef(s.own ? s.kind + ' ' + s.brief : s.kind, used); }); // the hero follows the direction's own example
   if (mine.length) stop.step('your agents: ' + mine.map(a => a.name + (a.model ? ' (' + (a.model.name || a.model.id) + ')' : '')).join(', '));
   const refs = secs.filter(s => s.ref).map(s => `${s.kind} ← «${s.ref.name}»`);
   if (refs.length) stop.step('starting from library components: ' + refs.join(', '));
   const one = async s => {
     const n = s.i + 1, tag = s.kind === 'header' ? 'header' : s.kind === 'footer' ? 'footer' : 'section';
-    const base = s.ref ? `\n\nLIBRARY COMPONENT to build from — «${s.ref.name}» from the openconstructor catalog. Use it as the base: keep its layout idea, structure and craft details (spacing, hover states, icons, motion), but restyle it with the shared design system variables, rename every class to the .s${n} prefix and replace all texts and pictures with this page's content:\n\`\`\`html\n${s.ref.code}\n\`\`\`` : '';
-    const ask = `Page request: ${request}\n\nThe page plan (other designers build the other sections at the same time):\n${outline}\n\nShared design system — already on the page inside the wrapper .pg; use its variables and classes (.wrap, .btn, .btn-ghost, .eyebrow), do NOT redefine them:\n\`\`\`css\n${css}\n\`\`\`\n\nYOUR PART: section ${n} of ${secs.length} — ${s.kind}: ${s.brief}\n\nSECTION MODE (this overrides the answer format above — no JSON header line): reply with ONLY one \`\`\`html block: first ONE <style> where every selector starts with .s${n} (e.g. .s${n} .grid{…}), then ONE <${tag} class="s${n}">…</${tag}> element, full width, its content inside <div class="wrap">. Give it an explicit background from the shared variables (alternate var(--bg) and var(--surface) with the neighbours for rhythm) and an explicit text colour. Texts in the language of the request.${base}`;
+    const base = s.ref ? `\n\nLAYOUT INSPIRATION — «${s.ref.name}» from the openconstructor catalog. Borrow only its layout idea and craft details; rebuild it with the READY CLASSES and the shared variables (drop its own fonts, colours and container styles) and write every text in ${lang} for this business:\n\`\`\`html\n${s.ref.code}\n\`\`\`` : '';
+    const ask = `Page request: ${request}${facts ? '\n\n' + facts.slice(0, 5000).trim() : ''}\n\nThe page plan (other designers build the other sections at the same time):\n${outline}\n\nThe page is wrapped in .pg, which already holds the design system (fonts, type scale, colours, the ready classes) — do not redefine it.\n\nYOUR PART: section ${n} of ${secs.length} — ${s.kind}: ${s.brief}\n\nReply with ONLY one \`\`\`html block: an optional <style> where every selector starts with .s${n} (only for what the ready classes do not cover), then ONE <${tag} class="s${n}${tag === 'header' ? '' : ' sec'}${s.alt ? ' alt' : ''}">…</${tag}> element${tag === 'header' ? ' (a top bar: brand + nav + one button, give .s' + n + ' padding:20px 0)' : ''} with its content inside <div class="wrap">. All visible text in ${lang}.${s.own ? '' : directionBrief(dir, s.kind)}${base}`;
     for (let attempt = 0; attempt < 2; attempt++) {
       let acc = '';
       try {
         const own = s.own?.model, ap = own ? byId(own.pid) : p;
-        const content = await chat(ap, own ? keys[own.pid] : key, own ? own.id : m.id, system, ask, [], piece => { acc += piece || ''; stage?.part(s.i, acc); });
+        const content = await chat(ap, own ? keys[own.pid] : key, own ? own.id : m.id, sectionSystem(lang), ask, [], piece => { acc += piece || ''; stage?.part(s.i, acc); });
         const code = sectionCode(typeof content === 'string' && content.trim() ? content : acc);
         if (/<(section|header|footer|div)\b/i.test(code)) { stage?.part(s.i, '```html\n' + code, true); return code; }
       } catch (err) { if (err.code === 'signin' || err.status === 401 || attempt) throw err; }
     }
     return '';
   };
-  const done = await Promise.allSettled(secs.map(one));
+  // free tiers on your own key often allow only 1–3 requests at once: agents queue up there, a "too many requests" waits and retries
+  const lanes = free ? secs.length : Math.min(secs.length, p.lanes || 3);
+  const busy = err => err?.status === 429 || /rate.?limit|too many|concurren|overload|capacity|busy/i.test(String(err?.message || ''));
+  const run = async s => { for (let tryN = 0; ; tryN++) { try { return await one(s); } catch (err) { if (!busy(err) || tryN >= 3) throw err; const wait = Math.min(60, err.retryAfter || 3 * (tryN + 1)); stop.step(`agent ${s.i + 1} waits ${wait}s: the service allows only so many requests at once`); await new Promise(r => setTimeout(r, wait * 1000)); } } };
+  const done = new Array(secs.length); let next = 0;
+  await Promise.all(Array.from({ length: lanes }, async () => { while (next < secs.length) { const s = secs[next++]; try { done[s.i] = { status: 'fulfilled', value: await run(s) }; } catch (reason) { done[s.i] = { status: 'rejected', reason }; } } }));
   const signin = done.find(x => x.status === 'rejected' && x.reason?.code === 'signin');
   if (signin) throw signin.reason;
   const codes = done.map(x => x.status === 'fulfilled' ? x.value : '').filter(Boolean);
-  if (codes.length < 2) throw done.find(x => x.status === 'rejected')?.reason || Error('The agents could not build the sections');
-  return { action: 'add', full: true, name: String(data.name || 'New page').slice(0, 60), reply: String(data.reply || `Done — ${codes.length} agents built the page section by section.`), code: `<style>${css}</style><div class="pg">${codes.join('\n')}</div>` };
+  if (codes.length < 2) {
+    const why = done.find(x => x.status === 'rejected')?.reason;
+    // a key or balance problem fails the single answer too (with its own message); anything else gets one more chance in one go
+    if (why && (why.status === 401 || why.status === 402 || /balance|insufficient|credit|invalid api key|unauthor/i.test(String(why.message)))) throw why;
+    stop.step('the agents could not finish — building the page in one go'); return null;
+  }
+  return { action: 'add', full: true, name: String(data.name || 'New page').slice(0, 60), reply: String(data.reply || `Done — ${codes.length} agents built the page section by section.`), code: `<style>${pageCSS}</style><div class="pg">${codes.join('\n')}</div>` };
 }
 
 async function runAI(request, custom = {}){
   const m = current(), p = byId(m.pid), key = keys[m.pid];
   if (!p) { $('chatStatus').textContent = 'Pick a model from the list below the input.'; return; }
   // the free AI works signed out too (a few tries a day); the server says when it's time to sign in
-  if (p.kind !== 'proxy' && !key) { $('chatStatus').textContent = `Add a ${p.name} key to use this model.`; openSettings(); return; }
+  if (!usable(m.pid)) { $('chatStatus').textContent = `Add a ${p.name} key to use this model.`; openSettings(); return; }
   track('ai_send'); tokensTurn();
+  // the composer's stop button (oc:stop) cancels every request of this turn, the swarm agents included
+  const cancel = new AbortController(); aiCancel.signal = cancel.signal;
+  const onStop = () => cancel.abort(); window.addEventListener('oc:stop', onStop);
   // What a change request applies to: the selection, else the page being worked on (the last element the AI
   // built or the only full-width section), so 'make the photos bigger' edits it instead of adding a new page
   const fulls = items.filter(x => x.full);
@@ -2018,9 +2107,11 @@ Rules:
 - Page: ${page.w}×${page.h}px, ${isLightPage() ? 'light' : 'dark'} background. If the user asks for a website, landing page, page or section, set "full": true and build a complete full-width layout (header, hero, content blocks, footer) with a root element of width:100%. For a standalone component (button, card, form), set "full": false, width up to 360px.
 - Language: write "reply" in the language of the user's message; if unclear, in ${AI_LANG[lang]}. Texts on the page you build go in the language the user writes in (or the language they ask for).
 - Colors: text must always be clearly readable. Give the root element (and every section that changes the background) an explicit background AND an explicit text color — never rely on inherited color. Dark text on light backgrounds, light text on dark ones; never white or near-white text on a white or light background, or dark text on a dark one.
+- ${INTERACTIVE_DOC.split('\n').join('\n  ')}
+- ${ICONS_DOC.split('\n').join('\n  ')}
 - Forms (contact, sign-up, newsletter, order): use a real <form> with a submit button and give every field a short name attribute (name="email", name="message") — on a published page the messages reach the page's author.
 ${appMode ? APP_RULES + '\n- No external links or fonts. Icons as inline SVG.' : '- Self-contained HTML and CSS only: one <style> plus markup. No JavaScript, external links or fonts. Icons as inline SVG.'}
-- Real photos make pages feel finished: for websites, landing pages, heroes, product/menu cards, galleries, team and testimonials use photos — <img src="photo:2-4 English words" alt="…"> sized by CSS with object-fit:cover, or background-image:url('photo:2-4 English words'). Append ?portrait or ?square for tall or square slots (photo:barista portrait?portrait). Describe what should be in the picture (photo:latte art cup, photo:cozy cafe interior). Never write http image URLs. Small UI components (buttons, inputs, toggles) need no photos.${custom.attachNote || ''}
+- Real photos make pages feel finished: for websites, landing pages, heroes, product/menu cards, galleries, team and testimonials use photos — <img src="photo:2-4 English words" alt="…"> sized by CSS with object-fit:cover, or background-image:url('photo:2-4 English words'). Append ?portrait or ?square for tall or square slots (photo:barista portrait?portrait). Describe what should be in the picture with concrete nouns, the subject first (photo:latte art cup, photo:espresso coffee cup, photo:croissant pastry plate, photo:cozy cafe interior); avoid words with a second meaning (write "espresso coffee cup", not "espresso shot"; "burger meal", not "burger joint"); every photo on a page gets its own words. Never write http image URLs. Small UI components (buttons, inputs, toggles) need no photos.${custom.attachNote || ''}
 - Cinematic / 3D websites: when the user asks for a 3D, immersive, cinematic, futuristic, neon, luxury or "premium/award-winning" website, page or landing, build HTML (NOT scene3d) in this style:
   · near-black background (#03050a–#0a0a0f), light text; ONE neon accent (electric blue #4d8dff, violet, cyan or magenta) used for glow: box-shadow 0 0 20px/60px/140px in the accent, text-shadow, radial-gradient light pools behind objects;
   · huge tight headlines: font-size clamp(44px,8vw,112px), line-height .95, letter-spacing -0.045em, weight 600, a second half of the sentence in a muted grey (Immersive experiences. <span>Lasting impressions.</span>); tiny uppercase labels above with letter-spacing .3em;
@@ -2040,6 +2131,7 @@ ${appMode ? APP_RULES + '\n- No external links or fonts. Icons as inline SVG.' :
 shapes: text (text "D", height = letter size in meters, depth, bevel — real 3D type for letters, numbers, words, logos), box (size [w,h,d], rounded), sphere (radius), cylinder (radius or radiusTop/radiusBottom, height, sides), cone (radius, height), torus (radius, tube, arc°), capsule (radius, length), plane (size [w,h]), icosahedron/dodecahedron/octahedron/tetrahedron (radius, detail), ring (inner, outer), lathe (points [[r,y],…] profile — vases, cups, bottles), extrude (points [[x,y],…] outline + depth, bevel — swords, stars, logos), group (children only).
 Each object: name, position [x,y,z] in meters (y up, ground at y=0, a chair is ~0.9 m tall), rotation [x,y,z] in degrees, scale, color "#hex", metalness 0-1, roughness 0-1, emissive "#hex" + emissiveIntensity for glow, opacity, flat:true for a low-poly look, animate {"spin":[0,45,0] deg/s, "bob":0.05, "pulse":0.05}, children (positions relative to the parent).
 Build recognizable things from MANY well-placed parts (a chair = seat + backrest + 4 legs; a character = body, head, eyes, arms, legs), with a coherent palette. Omit "camera" to auto-frame. Leave background null to sit on the page. For a change to a 3D Current element, return the WHOLE updated scene.
+- Your memory of the world is out of date (model names, versions, prices, news, who leads what): never present remembered facts as current. When "FRESH FACTS" or "Web results" are given, take every real name, number and date from them.
 - Internet: you can look things up on the web. When the request needs facts you may not know or that change (news, current events, prices, a real company, product, person, place or website, library docs, "find", "search", "latest", "today"), and the message has no "Web results" for it yet, reply with ONLY line 1: {"action":"search","query":"short web search query"} and nothing else — the results come back to you. Never search for things you can make up (design ideas, sample texts, generic content). When "Web results" are given, base your answer on them.
 - Do not style html or body; use unique class names with a shared prefix.
 - Understand the job first (silently, do not write the plan): who visits this page and the ONE thing it must make them do. Then pick the sections a real business of this kind needs — a café: menu with real prices, hours, address, booking; a SaaS: value in one line, how it works, product shots, pricing, FAQ, sign-up; a portfolio: selected work first, then about and contact; a tool or calculator: the tool itself above the fold, a short explanation, examples. Never pad with generic blocks.
@@ -2058,7 +2150,10 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
   const kept = [];
   // live 3D objects go back to the form the model writes (<img src="model:…">), so an edit keeps them
   const slim = code => unModel(String(code)).replace(/data:image\/[\w.+-]+;base64,[A-Za-z0-9+/=]+/g, d => 'kept:' + kept.push(d));
-  const user = custom.user || ((recent ? 'Conversation so far (for context):\n' + recent + '\n\n' : '') + 'Current element' + (implicit ? ' (not selected — the page built last)' : ' (selected)') + ': ' + JSON.stringify(target ? (target.scene ? { name: target.name, type: '3D scene', scene: target.scene } : { name: target.name, code: slim(target.code) }) : null) + '\nOther elements: ' + JSON.stringify(items.map(x => ({ name: x.name }))) + (target && !custom.ask ? '\nIf the request changes, fixes or restyles anything in the Current element, answer with action "update" and the COMPLETE updated element. Use "add" only for a clearly separate new block.' : '') + '\nRequest: ' + (custom.ask || request) + cineRef(custom.ask || request) + (appMode && !target?.app ? appReference(custom.ask || request) : '') + (custom.extra || ''));
+  // a big page is edited part by part: the model sees numbered blocks and sends back only the changes (page-patch.js)
+  const slimCode = target && !target.scene ? slim(target.code) : '';
+  const pageParts = !appMode && !custom.user && !variantsOn && target?.full && slimCode.length > 5000 ? splitPage(slimCode) : null;
+  const user = custom.user || ((recent ? 'Conversation so far (for context):\n' + recent + '\n\n' : '') + 'Current element' + (implicit ? ' (not selected — the page built last)' : ' (selected)') + ': ' + JSON.stringify(target ? (target.scene ? { name: target.name, type: '3D scene', scene: target.scene } : { name: target.name, code: pageParts ? numbered(pageParts) : slimCode }) : null) + '\nOther elements: ' + JSON.stringify(items.map(x => ({ name: x.name }))) + (pageParts ? '\n' + PATCH_RULES + '\nUse "add" only for a clearly separate new element next to the page.' : target && !custom.ask ? '\nIf the request changes, fixes or restyles anything in the Current element, answer with action "update" and the COMPLETE updated element. Use "add" only for a clearly separate new block.' : '') + '\nRequest: ' + (custom.ask || request) + cineRef(custom.ask || request) + (appMode && !target?.app ? appReference(custom.ask || request) : '') + (!target && !appMode && SWARM_RE.test(custom.ask || request) ? directionBrief(pickDirection('', custom.ask || request), 'hero') : '') + (custom.extra || ''));
   // web: pages linked in the request are read up front; the model can ask for a search (action "search")
   let webNote = '', searches = 0;
   const webGet = async qs => { const r = await fetch('/api/web?' + qs); if (!r.ok) throw Error((await r.json().catch(() => ({})))?.error?.message || 'HTTP ' + r.status); return r.json(); };
@@ -2073,6 +2168,31 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
       catch (err) { webNote += `\n\n(${link} could not be opened: ${err.message})`; }
     }
     if (webNote) webNote = '\n\nWeb pages from the request (fetched today):' + webNote;
+    // anything current (news, "latest", ratings, AI models…): search BEFORE writing — models remember an old world
+    // and almost never ask for a search themselves. AI-model topics also get the live model list from OpenRouter.
+    const ask0 = custom.ask || request;
+    const pageText = target && !target.scene ? (target.name || '') + ' ' + slimCode.replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').slice(0, 4000) : '';
+    const searchToo = needsWeb(ask0), aboutAI = AI_TOPIC.test(ask0) || AI_TOPIC.test(pageText);
+    const fresh = !custom.user && !custom.layoutFix && !custom.noWeb && !appMode && !links.length && (searchToo || aboutAI);
+    if (fresh) {
+      const ask = ask0;
+      if (aboutAI) { try { const f = await stop.web('checking which AI models are current', () => aiModelsFacts()); if (f) webNote += '\n\n' + f; } catch {} }
+      let qs = [];
+      if (searchToo) { qs = [keywordQuery(ask)]; try { qs = parseQueries(await chat(p, key, m.id, QUERY_PROMPT, 'Request: ' + ask), ask); } catch {} }
+      const found = [];
+      for (const q of qs) {
+        const one = async () => { const d = await stop.web(`searching the web: “${q.slice(0, 60)}”`, () => webGet('q=' + encodeURIComponent(q))); webNote += '\n\n' + resultsNote(q, d); found.push(...(d.results || [])); };
+        try { await one(); } catch (err) { if (/wait a second/i.test(err.message)) { await new Promise(r => setTimeout(r, 1100)); try { await one(); } catch {} } }
+      }
+      // exploring: the two best results are opened and read in full (rankings, scores, prices live there, not in snippets)
+      const hosts = new Set(), toRead = [];
+      for (const r of found) { let h = ''; try { h = new URL(r.url).hostname.replace(/^www\./, ''); } catch { continue; } if (hosts.has(h) || /wikipedia|youtube|reddit|x\.com|twitter/.test(h)) continue; hosts.add(h); toRead.push(r.url); if (toRead.length >= 2) break; }
+      for (const u of toRead) {
+        await new Promise(r => setTimeout(r, 1100)); // the web endpoint allows one lookup a second
+        try { const d = await stop.web(`exploring ${new URL(u).hostname.replace(/^www\./, '')}`, () => webGet('url=' + encodeURIComponent(u))); for (const pg of d.pages || []) webNote += `\n\nPage read in full — ${pg.url}${pg.title ? ' — ' + pg.title : ''}:\n${String(pg.text).slice(0, 5000)}`; } catch {}
+      }
+      if (webNote) { webNote = '\n\nFRESH FACTS (found today — use these names, numbers, scores and dates instead of what you remember; your memory is out of date. A number that is not in these facts is not known: write "—" instead of inventing it):' + webNote; searches = 2; }
+    }
     // One automatic retry when the answer can't be parsed (free models sometimes break the format);
     // a model that rejects images gets the request again without them.
     const getResult = async (extra = '', quiet = false) => {
@@ -2099,6 +2219,11 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
         try {
           if (typeof content !== 'string' || !content.trim()) throw Error('Empty model response');
           const r = parseScene(content) || parseAnswer(content);
+          if (/^patch$/i.test(String(r.action || ''))) {
+            const done = pageParts && applyPatch(pageParts, r.code);
+            if (!done) throw Error('The changes could not be applied to the page');
+            Object.assign(r, { action: 'update', full: true, code: done.code });
+          }
           if (!r.scene && !(r.action === 'reply' || (!r.code && r.reply)) && (typeof r.code !== 'string' || !r.code.trim())) throw Error('Invalid code');
           // an app whose script never closes was cut off by the answer limit: it would sit there doing nothing
           if (appMode && /<script\b/i.test(r.code || '') && !/<\/script\s*>/i.test(r.code)) throw Error('The app was cut off before it was finished — ask for a simpler version or pick another model');
@@ -2121,10 +2246,10 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
         try { const j = firstJSON(String(content).replace(/<think>[\s\S]*?<\/think>/gi, '')); data = j && looseJSON(j.json); } catch { data = null; }
         if (data && typeof data !== 'object') data = null;
       }
-      if (!data) throw Error('The model answered in an unexpected format');
-      artHue = Number.isFinite(+data.hue) ? +data.hue : 220;
-      result = { action: 'add', full: true, name: String(data.brand || 'Cinematic site').slice(0, 60) + ' · 3D site', code: cinePage(data), reply: String(data.reply || '') };
-    } else if (!appMode && !custom.user && !custom.ask && !custom.images?.length && !variantsOn && (!target || custom.swarm || (implicit && SWARM_NEW.test(request))) && (custom.swarm || SWARM_RE.test(request)) && (result = await buildSwarm({ p, key, m, request, recent, system, stop }))) {
+      // no usable content twice: the site is built the ordinary way, in one answer
+      if (!data) { stop.step('the cinematic content came out garbled — building the site in one go'); result = await getResult(); }
+      else { artHue = Number.isFinite(+data.hue) ? +data.hue : 220; result = { action: 'add', full: true, name: String(data.brand || 'Cinematic site').slice(0, 60) + ' · 3D site', code: cinePage(data), reply: String(data.reply || '') }; }
+    } else if (!appMode && !custom.user && !custom.ask && !custom.images?.length && !variantsOn && (!target || custom.swarm || (implicit && SWARM_NEW.test(request)) || (SWARM_MAKE.test(request) && !isPage(target))) && (custom.swarm || SWARM_RE.test(request)) && (result = await buildSwarm({ p, key, m, request, recent, system, stop, facts: webNote }))) {
       // a new page built by parallel agents (planner + one agent per section, see buildSwarm)
     } else if (variantsOn && !appMode && !custom.user && !custom.ask && !custom.images?.length) {
       stop.step('making 3 different variants');
@@ -2138,7 +2263,7 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
       const builds = done.filter(r => !r.scene && r.action !== 'reply' && typeof r.code === 'string' && r.code.trim() && r.code.length <= 200000);
       if (builds.length >= 2) {
         stop.step('finding photos for the variants');
-        await Promise.all(builds.map(async r => { r.full = r.full === true || r.full === 'true'; r.code = await fixContrast(withBrand(await resolveMedia(r.code, custom.attachments || [], () => {}, kept)), r.full); }));
+        await Promise.all(builds.map(async r => { r.full = r.full === true || r.full === 'true'; r.code = withInteractive(await fixContrast(withBrand(await resolveMedia(r.code, custom.attachments || [], () => {}, kept)), r.full)); }));
         stop.step('your turn: pick a variant'); stop.stageOff();
         const pick = await chooseVariant(builds);
         if (pick === null) { await stop.finish('no variant picked'); setState('kept the page as it was'); message('No variant picked — the page stays as it was.', 'assistant'); return; }
@@ -2183,7 +2308,7 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
       if (cineRef(custom.ask || request)) result.code = result.code.replace(/(["'(]\s*)photo:([^"'()<>\n?]{1,80})(\?\w+)?/g, (_, q, what) => `${q}art:${what.trim()}, cinematic 3d render, dark background, volumetric neon light`);
       result.code = await resolveMedia(result.code, custom.attachments || [], qs => stop.step('finding photos: ' + qs.slice(0, 4).join(', ') + (qs.length > 4 ? '…' : '')), kept, qs => stop.step('drawing 3D art: ' + qs.map(q => q.slice(0, 40)).join(' · ')), qs => stop.step('rendering 3D objects: ' + qs.slice(0, 4).join(' · ')));
       artHue = 220;
-      result.code = appMode ? withBrand(result.code) : await fixContrast(withBrand(result.code), full);
+      result.code = appMode ? withBrand(result.code) : withInteractive(await fixContrast(withBrand(result.code), full));
       if (full && !appMode) result.code = withMotion(result.code);
     }
     if (result.action !== 'update' && target && !target.scene && !custom.place && isRewriteOf(target.code, result.code)) result.action = 'update';
@@ -2196,16 +2321,25 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
     } else { add(String(result.name || 'New element').slice(0, 80), result.code, { full, ...(appMode && /<script\b/i.test(result.code) ? { app: true } : {}), ...(custom.place || {}) }); lastAiId = selected; }
     await stop.finish(result.action === 'update' && target ? 'updated on the canvas' : 'placed on the canvas'); setState('element ready', 'ok');
     message(String(result.reply || 'Done. The element is on the page.'), 'assistant'); logChat('assistant', result.reply || 'Done. The element is on the page.'); $('prompt').value = ''; window.dispatchEvent(new CustomEvent('oc:generated'));
+    // on the canvas clicks go to selecting and moving, not into the page: say once how to try the switches
+    if (!playing && /class=["'][^"']*\boc-(tabs|acc|toggle)\b/.test(result.code) && !store.get('oc-play-hint', false)) { store.set('oc-play-hint', true); toast(t('Tabs and switches work in ▶ play mode (P), in preview and on the published site')); }
     track('ai_ok');
+    // eyes: once the answer is drawn, look for overlapping parts and send them back to the model once (layout-check.js)
+    if (!appMode && !custom.layoutFix && !custom.user && lastAiId) { const id = lastAiId; setTimeout(() => layoutQA(id), 0); }
     if (p.kind === 'proxy' && !authUser && !nudged) signupNudge('first');
     else if (!custom.targetId) suggestNext();
   } catch (e) {
     stop();
+    if (cancel.signal.aborted) { setState('stopped'); $('chatStatus').textContent = ''; message('Stopped. The canvas stays as it was.', 'assistant'); return; }
     if (e.code === 'signin') { setState('sign in for more', 'error'); track('ai_limit'); signupNudge('limit'); return; }
     track('ai_fail'); track(failReason(e));
-    setState('ai error', 'error'); $('chatStatus').textContent = 'Error: ' + e.message; message('Could not apply the response. Try again or pick another model.', 'assistant');
+    setState('ai error', 'error'); $('chatStatus').textContent = 'Error: ' + e.message;
+    // a paid model with an empty account says so in many ways: point to the $0 models instead of "try again"
+    if (/balance|insufficient|credit|billing|payment|quota|top.?up|402/i.test(e.message) && p.kind !== 'proxy') message('This model costs money and your account with this service has no balance. Pick a model marked $0 in the list, or top up the account.', 'assistant');
+    else if (/missing api key|api key (is )?required|no api key/i.test(e.message) && p.kind !== 'proxy') message('This model needs your own key for this service. Paste it in ⚙ AI keys, or pick a model marked $0.', 'assistant');
+    else message(t('Could not apply the response. Try again or pick another model.') + (e.message ? '\n\n' + t('Reason') + ': ' + String(e.message).slice(0, 240) : ''), 'assistant');
   }
-  finally { $('send').disabled = false; window.dispatchEvent(new CustomEvent('oc:ai-idle')); }
+  finally { window.removeEventListener('oc:stop', onStop); if (aiCancel.signal === cancel.signal) aiCancel.signal = null; $('send').disabled = false; window.dispatchEvent(new CustomEvent('oc:ai-idle')); }
 }
 $('prompt').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('send').click(); } });
 
@@ -2325,6 +2459,14 @@ export const studio = {
   setAppMode: (on, quiet) => setAppMode(on, quiet),
   appMode: () => appOn,
   setCodeFocus: id => { codeFocus = id; },
+  // for the plain chat (chat.js): the models that can answer right now, the key of a service, the keys dialog
+  chatModels: () => allModels().filter(x => x.id !== 'openrouter/free' && usable(x.pid)).map(x => {
+    const p = byId(x.pid);
+    return { key: x.key, pid: x.pid, id: x.id, name: x.name, vendor: x.vendor || '', provider: p?.name || x.pid, free: isFree(x, p), logo: modelLogo(x) };
+  }),
+  modelKey: () => currentModel,
+  keyFor: pid => keys[pid] || '',
+  openKeys: pid => openSettings(pid),
   // a ready-made app from apps.js, placed on the canvas
   addApp(id){
     const ex = APP_EXAMPLES.find(x => x.id === id); if (!ex) return;
@@ -2363,4 +2505,13 @@ render();
 renderChat();
 requestAnimationFrame(fitZoom);
 // Keys are decrypted first, then each provider's model list loads
-readKeys().then(k => { keys = k || {}; }).catch(() => {}).finally(loadModels);
+readKeys().then(k => { keys = k || {}; }).catch(() => {}).then(connectFromRedirect).finally(loadModels);
+// Back from "Sign in with OpenRouter": the code becomes the person's own key, stored like a pasted one
+async function connectFromRedirect(){
+  try {
+    const key = await finishOpenRouter();
+    if (!key) return;
+    keys.openrouter = key; keysOff.delete('openrouter'); saveOff(); saveKeys(); renderStart();
+    toast(t('OpenRouter connected: its models are in the list under the chat'));
+  } catch (err) { toast(String(err.message || err), 'error'); }
+}

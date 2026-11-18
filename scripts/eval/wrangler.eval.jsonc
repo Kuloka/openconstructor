@@ -1,0 +1,7 @@
+{
+  "name": "oc-eval-ai",
+  "main": "ai-worker.js",
+  "compatibility_date": "2025-09-01",
+  "ai": { "binding": "AI", "remote": true },
+  "dev": { "port": 8799 }
+}

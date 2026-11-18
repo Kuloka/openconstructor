@@ -135,7 +135,10 @@ scenario('brand kit + make it better', async (ed, o) => {
   await ed.ev(`([...document.querySelectorAll('#ctxMenu [data-i]')].find(b => b.textContent.includes('make it better')).click(), 1)`);
   await ed.until(`JSON.parse(localStorage.getItem('form-canvas-v3'))[0]?.name === 'Better'`);
   assert.equal((await ed.items()).length, 1);
-  assert.ok(ed.posts.at(-1).includes('BRAND KIT') && ed.posts.at(-1).includes('DESIGN REVIEW'));
+  // the design review goes out with the brand kit; its own wording ("Current element") must not start a web search
+  const review = ed.posts.find(p => p.includes('DESIGN REVIEW') && !p.includes('You write web search'));
+  assert.ok(review && review.includes('BRAND KIT'), 'review request carries the brand kit');
+  assert.ok(!ed.posts.some(p => p.includes('You write web search')), 'no web search for "make it better"');
 });
 
 scenario('export: the static site .zip downloads', async (ed) => {
@@ -317,6 +320,81 @@ scenario('apps: the welcome screen opens a ready-made app on a new page', async 
   assert.equal(await ed.ev(`document.getElementById('appToggle').getAttribute('aria-pressed')`), 'true');
 }, { connect: false });
 
+// the AI keys dialog is a plain list with a search box and a filter; keyless services list only their free models
+scenario('keys: search and filter the services, a keyless service lists its free models', async (ed) => {
+  await ed.ev(`(document.getElementById('settingsButton').click(), 1)`); await sleep(300);
+  const rows = () => ed.ev(`[...document.querySelectorAll('#providers .prov[data-prov]')].map(r => r.dataset.prov)`);
+  assert.ok((await rows()).length > 80, 'all services are listed');
+  await ed.ev(`(() => { const i = document.getElementById('provSearch'); i.value = 'kilo'; i.dispatchEvent(new Event('input', { bubbles: true })); return 1; })()`);
+  assert.deepEqual(await rows(), ['kilo']);
+  await ed.ev(`(() => { const i = document.getElementById('provSearch'); i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('#provFilter [data-f=nokey]').click(); return 1; })()`);
+  const nokey = await rows();
+  assert.ok(nokey.includes('kilo') && nokey.includes('ovh') && !nokey.includes('groq'), 'the filter keeps only keyless services');
+  await ed.ev(`(document.querySelector('#provFilter [data-f=on]').click(), 1)`);
+  assert.deepEqual(await rows(), ['groq'], '"On" shows only what is switched on');
+  // no lights: the old cursor spotlight / border sweep are gone
+  assert.equal(await ed.ev(`getComputedStyle(document.querySelector('#providers .prov'), '::before').content`), 'none');
+}, { routes: [{ match: u => u.includes('/api/relay/kilo/models'), handle: () => ({ body: JSON.stringify({ data: [{ id: 'nvidia/nemotron-3.5-super-vl:free', name: 'NVIDIA: Nemotron 3.5 Super (free)' }, { id: 'anthropic/claude-opus-5.5', name: 'Anthropic: Claude Opus 5.5' }] }) }) }] });
+
+scenario('keys: a keyless relay service shows only its free models without a key', async (ed) => {
+  await ed.ev(`(document.getElementById('settingsButton').click(), 1)`); await sleep(300);
+  await ed.ev(`(document.querySelector('#providers [data-switch=kilo]').click(), 1)`);
+  assert.ok(await ed.until(`/1 /.test(document.querySelector('#providers [data-prov=kilo] .prov-st.ok')?.textContent || '')`), 'one free model, the paid one is hidden');
+}, { routes: [{ match: u => u.includes('/api/relay/kilo/models'), handle: () => ({ body: JSON.stringify({ data: [{ id: 'nvidia/nemotron-3.5-super-vl:free', name: 'NVIDIA: Nemotron 3.5 Super (free)' }, { id: 'anthropic/claude-opus-5.5', name: 'Anthropic: Claude Opus 5.5' }] }) }) }] });
+
+// plain chat mode: opened from the mode switch, the whole conversation goes to the model, the answer streams in,
+// the conversation is remembered, nothing lands on the canvas, Build brings the editor back
+scenario('plain chat: mode switch, streamed answer, history, back to Build', async (ed, o) => {
+  o.reply = () => ({ sse: ['Hello', ' there', '!\n\n- one\n- two'].map(c => ({ choices: [{ delta: { content: c } }] })).concat([{ choices: [{ delta: {}, finish_reason: 'stop' }] }]) });
+  await ed.ev(`(document.querySelector('.oc-modes.in-editor [data-mode=chat]').click(), 1)`); await sleep(300);
+  assert.equal(await ed.ev(`!document.getElementById('chatWorkspace').classList.contains('hidden')`), true, 'chat is open');
+  assert.equal(await ed.ev(`location.hash`), '#chat');
+  assert.match(await ed.ev(`document.querySelector('.och-model-btn').textContent`), /llama/i, 'the connected model is picked');
+  const send = text => ed.ev(`(() => { const t = document.querySelector('.och-compose textarea'); t.value = ${JSON.stringify(text)}; document.querySelector('.och-compose').requestSubmit(); return 1; })()`);
+  await send('hi');
+  assert.ok(await ed.until(`!document.querySelector('.och-msg.live') && !!document.querySelector('.och-msg.ai li')`), 'the answer streamed in with Markdown');
+  assert.match(await ed.ev(`document.querySelector('.och-msg.ai .och-text').textContent`), /Hello there!/);
+  await send('and again');
+  assert.ok(await ed.until(`document.querySelectorAll('.och-msg.ai').length === 2 && !document.querySelector('.och-msg.live')`));
+  const body = JSON.parse(ed.posts.at(-1));
+  assert.deepEqual(body.messages.filter(m => m.role !== 'system').map(m => m.role), ['user', 'assistant', 'user'], 'the history goes along');
+  const saved = await ed.ev(`JSON.parse(localStorage.getItem('oc-chats'))`);
+  assert.equal(saved.length, 1); assert.equal(saved[0].title, 'hi'); assert.equal(saved[0].messages.length, 4);
+  assert.equal((await ed.items()).length, 0, 'nothing on the canvas');
+  await ed.ev(`(document.querySelector('.oc-modes.in-chat [data-mode=build]').click(), 1)`); await sleep(200);
+  assert.equal(await ed.ev(`document.getElementById('chatWorkspace').classList.contains('hidden') && location.hash === ''`), true, 'back to the editor');
+  assert.equal(await ed.ev(`document.querySelector('.oc-modes.in-editor [data-mode=build]').getAttribute('aria-pressed')`), 'true');
+});
+
+// "who is X, look it up" in the chat: the model writes a query from the conversation, the web is searched,
+// the answer gets the results, and the sources show under it
+scenario('plain chat: searches the web when asked, shows sources', async (ed, o) => {
+  o.reply = body => /You write web search queries/.test(body) ? '["Kuloka developer github"]' : 'Kuloka is a developer on [GitHub](https://github.com/Kuloka).';
+  await ed.ev(`(window.__webCalls = [], window.__origFetch = window.fetch, window.fetch = (u, o) => { if (String(u).startsWith('/api/web')) { window.__webCalls.push(String(u)); return Promise.resolve(new Response(JSON.stringify({ results: [{ title: 'Kuloka · GitHub', url: 'https://github.com/Kuloka', snippet: 'openconstructor author' }] }), { headers: { 'Content-Type': 'application/json' } })); } return window.__origFetch(u, o); }, 1)`);
+  await ed.ev(`(document.querySelector('.oc-modes.in-editor [data-mode=chat]').click(), 1)`); await sleep(400);
+  await ed.ev(`(() => { const t = document.querySelector('.och-compose textarea'); t.value = 'кто такой Kuloka, поищи'; document.querySelector('.och-compose').requestSubmit(); return 1; })()`);
+  assert.ok(await ed.until(`!document.querySelector('.och-msg.live') && !!document.querySelector('.och-sources a')`, 12000), 'sources under the answer');
+  assert.match((await ed.ev(`window.__webCalls`))[0], /Kuloka%20developer%20github/, 'the model-written query was searched');
+  assert.match(ed.posts.at(-1), /Web results for/, 'the answer request carries the results');
+  assert.match(await ed.ev(`document.querySelector('.och-sources a').href`), /github\.com\/Kuloka/);
+  // a plain question does not search
+  await ed.ev(`(() => { const t = document.querySelector('.och-compose textarea'); t.value = 'привет'; document.querySelector('.och-compose').requestSubmit(); return 1; })()`);
+  assert.ok(await ed.until(`document.querySelectorAll('.och-msg.ai').length === 2 && !document.querySelector('.och-msg.live')`));
+  assert.equal((await ed.ev(`window.__webCalls`)).length, 1, 'no search for a greeting');
+});
+
+// the welcome screen's prompt in "Chat" mode opens the chat with the question already asked
+scenario('plain chat: started from the welcome screen prompt', async (ed, o) => {
+  o.reply = () => ({ sse: [{ choices: [{ delta: { content: 'Hi from chat' } }] }] });
+  await ed.ev(`(document.getElementById('homeBtn').click(), 1)`); await sleep(900);
+  await ed.ev(`([...document.querySelectorAll('.wl-hero-modes button')][2].click(), 1)`); await sleep(200);
+  assert.equal(await ed.ev(`document.querySelector('.wl-prompt button[type=submit]').textContent`), 'Send');
+  await ed.ev(`(() => { const i = document.querySelector('.wl-prompt input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, 'hello'); i.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('.wl-prompt button[type=submit]').click(); return 1; })()`);
+  assert.ok(await ed.until(`!document.getElementById('chatWorkspace').classList.contains('hidden') && /Hi from chat/.test(document.querySelector('.och-msg.ai')?.textContent || '')`), 'the chat opened and answered');
+  assert.equal(await ed.ev(`document.querySelector('.och-bubble').textContent`), 'hello');
+  assert.equal((await ed.items()).length, 0, 'nothing on the canvas');
+});
+
 // openconstructor code: the chat moves into the workspace, a new app shows in the live preview,
 // the next request edits that app (not the page on the canvas), the preview width is adjustable
 scenario('apps: Code workspace — chat + resizable live preview, edits stay on the app', async (ed, o) => {
@@ -431,4 +509,186 @@ scenario('3D: a live model without a width keeps its size on the canvas', async 
   await ed.ask('3d letter D'); await ed.idle();
   assert.ok(await ed.until(`(document.querySelector('.node .oc-live3d')?.offsetWidth || 0) > 300`, 15000), 'the live object is visible');
   assert.ok(await ed.ev(`document.querySelector('.node').offsetWidth > 300`), 'the element is not an empty box');
+});
+
+// "Sign in with OpenRouter": the callback's code becomes the person's key (the key exchange is faked),
+// the URL is cleaned and the models load with that key
+const orSeen = { exchanged: null, modelsAuth: '' };
+const orRoutes = [
+  { match: u => u.includes('openrouter.ai/api/v1/auth/keys'), handle: rq => { orSeen.exchanged = JSON.parse(rq.postData || '{}'); return { body: JSON.stringify({ key: 'sk-or-v1-test' }) }; } },
+  { match: u => u.includes('openrouter.ai/api/v1/models'), handle: rq => { orSeen.modelsAuth = rq.headers?.Authorization || rq.headers?.authorization || ''; return { body: JSON.stringify({ data: [{ id: 'deepseek/deepseek-chat', name: 'DeepSeek', pricing: { prompt: '0', completion: '0' } }] }) }; } },
+];
+scenario('OpenRouter: one-click sign-in turns the callback code into a key', async (ed) => {
+  assert.ok(await ed.ev(`!!document.querySelector('#emptyStart [data-or-connect]')`), 'the button is on the empty canvas');
+  await ed.ev(`(sessionStorage.setItem('oc-or-verifier', 'v-test'), 1)`);
+  await ed.send('Page.navigate', { url: URL_ + '?or-connect=1&code=c-test' });
+  assert.ok(await ed.until(`location.href.startsWith('http') && !location.search.includes('code=')`, 15000), 'the URL is cleaned');
+  for (let i = 0; i < 80 && !orSeen.modelsAuth; i++) await sleep(150);
+  assert.deepEqual(orSeen.exchanged, { code: 'c-test', code_verifier: 'v-test', code_challenge_method: 'S256' });
+  assert.equal(orSeen.modelsAuth, 'Bearer sk-or-v1-test', 'models load with the new key');
+}, { connect: false, routes: orRoutes });
+
+// "make a site about…" while only a small element (a logo, a 3D word) is on the canvas: a whole page is built by the
+// swarm, not an edit of that element (the typo is on purpose, like a real request)
+scenario('swarm: "make a site" over a small element builds a page, not an edit', async (ed, o) => {
+  o.reply = () => block('Glass word', '<div class="gw"><h1>OpenConstructor</h1></div>');
+  await ed.ask('glass word OpenConstructor'); await ed.idle();
+  let planned = false;
+  o.reply = body => {
+    const all = JSON.stringify(JSON.parse(body).messages);
+    if (/lead designer of a team/.test(all)) { planned = true; return JSON.stringify({ name: 'AI', reply: 'ok', css: '.pg{background:#0b0b10;color:#eee}', sections: ['header', 'hero', 'features', 'footer'].map(kind => ({ kind, brief: kind })) }); }
+    const n = +(all.match(/YOUR PART: section (\d+)/) || [])[1] || 1;
+    return '```html\n<section class="p' + n + '"><h2>part ' + n + '</h2></section>\n```';
+  };
+  await ed.ask('сделай сайт об artifical intelenge'); await ed.idle(); await sleep(800);
+  assert.ok(planned, 'the planner was asked for a page');
+  const list = await ed.items();
+  assert.equal(list.length, 2, 'the page is added next to the word');
+  assert.ok(list.some(it => /part 4/.test(it.code)), 'all sections built');
+});
+
+// a hero with min-height:100vh used to grow with its own frame up to 5000 px; on the canvas vh = the page's screen height
+scenario('canvas: 100vh means the screen height, not an endless frame', async (ed, o) => {
+  o.reply = () => block('Hero', '<style>.vh{min-height:100vh;display:grid;place-items:center;background:#111}</style><section class="vh"><h1>Hero</h1></section>', { full: true });
+  await ed.ask('a hero'); await ed.idle(); await sleep(800);
+  const h = await ed.ev(`document.querySelector('.node iframe')?.offsetHeight || 0`);
+  assert.ok(h >= 800 && h <= 1000, 'frame height ' + h);
+});
+
+// a big page is edited part by part: the model gets numbered blocks and sends only the changes (a full rewrite ran past the answer limit)
+scenario('edit: a big page takes a patch — a new section in place, the rest untouched', async (ed, o) => {
+  const filler = 'Real copy for the block. '.repeat(60);
+  const sec = n => `<style>.s${n}{padding:40px 0}</style><section class="s${n} sec"><div class="wrap"><h2>Block ${n}</h2><p>${filler}</p></div></section>`;
+  o.reply = () => block('AI site', `<style>.pg{background:#0b0b10;color:#eee}</style><div class="pg"><header class="s1"><b>AI</b></header>${[2, 3, 4].map(sec).join('\n')}<footer class="s5">© 2026</footer></div>`, { full: true });
+  await ed.ask('a page'); await ed.idle();
+  let asked = '';
+  o.reply = body => { asked = JSON.stringify(JSON.parse(body).messages); return '{"action":"patch","name":"AI site","reply":"added charts"}\n```html\n<!-- after 3 -->\n<section class="ch sec"><h2>Charts block</h2></section>\n<!-- replace 4 -->\n<section class="s4 sec"><h2>Block four, new</h2></section>\n```'; };
+  await ed.ask('add a section with charts after block 3'); await ed.idle(); await sleep(500);
+  assert.match(asked, /<!-- part 3 -->/, 'the page went out with numbered parts');
+  const list = await ed.items();
+  assert.equal(list.length, 1, 'the page was edited, not duplicated');
+  const code = list[0].code;
+  assert.ok(code.indexOf('Block 3') < code.indexOf('Charts block') && code.indexOf('Charts block') < code.indexOf('Block four, new'), 'the new section sits after block 3');
+  assert.ok(!/<h2>Block 4<\/h2>/.test(code) && /Block 2/.test(code) && /© 2026/.test(code), 'only the asked parts changed');
+});
+
+// free tiers on your own key answer "429 too many requests" to a burst of parallel agents: they queue, wait and retry
+{
+  const tries = {};
+  scenario('swarm: agents that hit "too many requests" wait and still build the page', async (ed, o) => {
+    o.reply = () => 'unused';
+    await ed.ask('сделай сайт кофейни'); await ed.idle(); await ed.until(`!document.querySelector('.message.thinking:not(.folded)')`, 40000); await sleep(800);
+    const list = await ed.items();
+    assert.equal(list.length, 1, 'a page was built');
+    assert.ok(/part 4/.test(list[0].code) && /part 1/.test(list[0].code), 'every section is there');
+    assert.ok(Object.values(tries).some(n => n >= 3), 'agents were turned away and retried');
+  }, { routes: [{ match: u => u.includes('api.groq.com') && u.includes('/chat/'), handle: rq => {
+    const all = JSON.stringify(JSON.parse(rq.postData).messages);
+    if (/lead designer of a team/.test(all)) return { body: JSON.stringify({ choices: [{ message: { content: JSON.stringify({ name: 'Cafe', reply: 'ok', css: '.pg{background:#111;color:#eee}', sections: ['header', 'hero', 'menu', 'footer'].map(kind => ({ kind, brief: kind })) }) }, finish_reason: 'stop' }] }) };
+    const n = +(all.match(/YOUR PART: section (\d+)/) || [])[1] || 0;
+    tries[n] = (tries[n] || 0) + 1;
+    if (tries[n] <= 2) return { status: 429, body: JSON.stringify({ error: { message: 'Rate limit reached, too many requests' } }) };
+    return { body: JSON.stringify({ choices: [{ message: { content: '```html\n<section class="p' + n + '"><h2>part ' + n + '</h2></section>\n```' }, finish_reason: 'stop' }] }) };
+  } }] });
+}
+
+// the chat says what actually went wrong instead of only "could not apply"
+scenario('errors: the real reason is shown under "could not apply"', async (ed) => {
+  await ed.ask('a button'); await ed.until(`/right now/.test([...document.querySelectorAll('.message.assistant')].pop()?.textContent || '')`, 20000);
+  const last = await ed.ev(`[...document.querySelectorAll('.message.assistant')].pop()?.textContent || ''`);
+  assert.match(last, /Reason: Model is overloaded right now/);
+}, { routes: [{ match: u => u.includes('api.groq.com') && u.includes('/chat/'), handle: () => ({ status: 400, body: JSON.stringify({ error: { message: 'Model is overloaded right now' } }) }) }] });
+
+// "current AI models": the web is searched before writing and the planner + every agent get the fresh facts
+{
+  const seen = { planner: '', agent: '', searched: '' };
+  scenario('web: a request about current AI models searches first and hands the facts to the swarm', async (ed) => {
+    await ed.ask('сделай с нуля новый сайт похожий на llm leaderboard с текущими сильными моделями');
+    await ed.until(`!document.querySelector('.message.thinking:not(.folded)')`, 40000); await sleep(800);
+    assert.match(seen.searched, /leaderboard/i, 'searched the web');
+    assert.match(seen.planner, /Claude Fable 5\.2/, 'the planner got the live model list');
+    assert.match(seen.planner, /benchlm/i, 'the planner got the search results');
+    assert.match(seen.agent, /FRESH FACTS/, 'the agents got the facts');
+    assert.equal((await ed.items()).length, 1);
+  }, { routes: [
+    { match: u => u.includes('openrouter.ai/api/v1/models'), handle: () => ({ body: JSON.stringify({ data: [{ id: 'anthropic/claude-fable-5.2', name: 'Anthropic: Claude Fable 5.2', created: 1794700000 }] }) }) },
+    { match: u => u.includes('/api/web'), handle: rq => { seen.searched += decodeURIComponent(rq.url) + ' '; return { body: JSON.stringify({ results: [{ title: 'LLM Leaderboard Nov 2026', url: 'https://benchlm.ai/', snippet: 'Claude Fable 5.2 leads' }], pages: [] }) }; } },
+    { match: u => u.includes('api.groq.com') && u.includes('/chat/'), handle: rq => {
+      const all = JSON.stringify(JSON.parse(rq.postData).messages);
+      const say = content => ({ body: JSON.stringify({ choices: [{ message: { content }, finish_reason: 'stop' }] }) });
+      if (/You write web search queries/.test(all)) return say('["LLM leaderboard November 2026"]');
+      if (/lead designer of a team/.test(all)) { seen.planner = all; return say(JSON.stringify({ name: 'Board', reply: 'ok', css: '.pg{background:#111;color:#eee}', sections: ['header', 'hero', 'table', 'footer'].map(kind => ({ kind, brief: kind })) })); }
+      seen.agent = all; const n = +(all.match(/YOUR PART: section (\d+)/) || [])[1] || 1;
+      return say('```html\n<section class="p' + n + '"><h2>part ' + n + '</h2></section>\n```');
+    } },
+  ] });
+}
+
+// art direction: the planner picks one, every agent gets its rules, the hero agent also the hand-made example
+{
+  const got = { planner: '', hero: '', other: '' };
+  scenario('swarm: the art direction reaches every agent, the hero gets its example', async (ed) => {
+    await ed.ask('сделай сайт архитектурного бюро'); await ed.until(`!document.querySelector('.message.thinking:not(.folded)')`, 40000); await sleep(800);
+    assert.match(got.planner, /giant wordmark — the brand name/, 'the planner sees the directions');
+    assert.match(got.hero, /ART DIRECTION — .{0,2}wordmark[\s\S]*EXAMPLE HERO/, 'the hero agent gets the rules and the example');
+    assert.match(got.other, /ART DIRECTION — .{0,2}wordmark/); assert.doesNotMatch(got.other, /EXAMPLE HERO/);
+    assert.match((await ed.items())[0].code, /--condensed/, 'the display fonts are in the page CSS');
+  }, { routes: [{ match: u => u.includes('api.groq.com') && u.includes('/chat/'), handle: rq => {
+    const all = JSON.stringify(JSON.parse(rq.postData).messages);
+    const say = content => ({ body: JSON.stringify({ choices: [{ message: { content }, finish_reason: 'stop' }] }) });
+    if (/lead designer of a team/.test(all)) { got.planner = all; return say(JSON.stringify({ name: 'Norda', reply: 'ok', system: 'studio', direction: 'wordmark', sections: ['header', 'hero', 'works', 'footer'].map(kind => ({ kind, brief: kind })) })); }
+    const n = +(all.match(/YOUR PART: section (\d+)/) || [])[1] || 1;
+    if (/— hero:/.test(all)) got.hero = all; else if (/— works:/.test(all)) got.other = all;
+    return say('```html\n<section class="s' + n + '"><h2>part ' + n + '</h2></section>\n```');
+  } }] });
+}
+
+// switches the AI makes have to switch: CSS-only tabs (no scripts on these pages), the CSS is added by the studio
+scenario('interactive: AI tabs switch in play mode without any JavaScript', async (ed, o) => {
+  o.reply = () => block('Board', '<section style="padding:40px;background:#111;color:#eee"><div class="oc-tabs"><input type="radio" name="lb" id="lb-1" checked><label for="lb-1">All tasks</label><input type="radio" name="lb" id="lb-2"><label for="lb-2">Code</label><div class="oc-panels"><div><p>Overall ranking</p></div><div><p>Coding ranking</p></div></div></div><details class="oc-acc"><summary>How is it scored?</summary><p>Elo from blind votes.</p></details></section>', { full: true });
+  await ed.ask('a leaderboard with filter tabs'); await ed.idle(); await sleep(1200);
+  assert.match((await ed.items())[0].code, /\.oc-tabs>input/, 'the tab CSS was added');
+  await ed.ev(`(document.getElementById('playToggle').click(), 1)`); await sleep(300);
+  const shown = () => ed.ev(`(() => { const d = document.querySelector('.node iframe').contentDocument; return [...d.querySelectorAll('.oc-panels > div')].map(p => getComputedStyle(p).display); })()`);
+  assert.deepEqual(await shown(), ['block', 'none'], 'the first tab is open');
+  await ed.ev(`(document.querySelector('.node iframe').contentDocument.querySelector('label[for=lb-2]').click(), 1)`); await sleep(200);
+  assert.deepEqual(await shown(), ['none', 'block'], 'clicking "Code" switches the panel');
+  assert.equal(await ed.ev(`document.querySelector('.canvas').classList.contains('playing') && getComputedStyle(document.querySelector('.node iframe')).pointerEvents`), 'auto', 'clicks reach the page in play mode');
+});
+
+// icons and logos: icon:NAME and logo:BRAND become real inline SVG (no empty boxes)
+scenario('icons: icon: and logo: pictures become inline SVG icons and company logos', async (ed, o) => {
+  o.reply = () => block('Ranking', '<section style="padding:40px;background:#fff;color:#111"><div><img src="icon:trophy" width="20" alt=""> <img src="logo:anthropic" width="28" alt="Anthropic"> Claude</div><div><img src="logo:deepseek" alt="DeepSeek"> <img src="logo:stripe" alt="Stripe"> <img src="logo:Qqqx Labs" alt="Q"></div></section>', { full: true });
+  await ed.ask('a ranking with logos'); await ed.idle(); await sleep(1500);
+  const code = (await ed.items())[0].code;
+  assert.doesNotMatch(code, /src="(icon|logo):/, 'every token resolved');
+  assert.ok((code.match(/<svg\b/g) || []).length >= 5, 'five svgs');
+  assert.match(code, /aria-label="Stripe"/);
+  assert.match(code, />QL<\/text>/, 'monogram for an unknown brand');
+});
+
+// the stop button: the composer's send square turns into "stop" while the AI works and cancels the answer
+scenario('stop: the stop button cancels the answer and leaves the canvas as it was', async (ed) => {
+  await ed.ask('a pricing card'); await sleep(1200);
+  assert.ok(await ed.ev(`!!document.querySelector('#react-composer .oc-stop')`), 'the send button turned into stop');
+  await ed.ev(`(document.querySelector('#react-composer .oc-stop').parentElement.click(), 1)`);
+  assert.ok(await ed.until(`/Stopped/.test([...document.querySelectorAll('.message.assistant')].pop()?.textContent || '')`, 8000), 'the chat says it stopped');
+  assert.equal((await ed.items()).length, 0, 'nothing was added');
+  assert.ok(await ed.until(`!document.querySelector('#react-composer .oc-stop')`, 3000), 'the send button is back');
+}, { routes: [{ match: u => u.includes('api.groq.com') && u.includes('/chat/'), handle: () => new Promise(r => setTimeout(() => r({ body: JSON.stringify({ choices: [{ message: { content: block('Late', '<div>late</div>') }, finish_reason: 'stop' }] }) }), 8000)) }] });
+
+// eyes: overlapping parts on the rendered page are found and sent back to the model once
+scenario('layout: overlapping parts are seen on the canvas and fixed automatically', async (ed, o) => {
+  const broken = '<section style="position:relative;padding:40px;background:#fff;color:#111;height:260px"><div style="position:relative"><select class="dev" style="width:400px;height:44px"><option>All models</option></select><label class="chk" style="position:absolute;left:10px;top:12px"><input type="checkbox" checked> Google</label></div><table style="margin-top:20px;width:600px"><tr><td>Gemini 4 Hydrogen</td><td>1049K</td></tr></table><svg class="chart" width="600" height="120" style="position:absolute;left:40px;top:100px" viewBox="0 0 600 120"><polyline points="0,100 200,40 400,60 600,10" fill="none" stroke="#36f"/><circle cx="200" cy="40" r="4"/><circle cx="400" cy="60" r="4"/></svg></section>';
+  const fixed = '<section style="padding:40px;background:#fff;color:#111"><label class="chk"><input type="checkbox" checked> Google</label><select class="dev" style="display:block;margin-top:12px;width:400px;height:44px"><option>All models</option></select><svg class="chart" width="600" height="120" viewBox="0 0 600 120" style="display:block;margin-top:20px"><polyline points="0,100 200,40 400,60 600,10" fill="none" stroke="#36f"/><circle cx="200" cy="40" r="4"/><circle cx="400" cy="60" r="4"/></svg><table style="margin-top:20px;width:600px"><tr><td>Gemini 4 Hydrogen</td><td>1049K</td></tr></table></section>';
+  let n = 0, asked = ''; const require_log = (k, b) => { const m = JSON.parse(b).messages; (globalThis.__calls ||= []).push(k + ' :: ' + m[0].content.slice(0, 60) + ' :: ' + m.at(-1).content.slice(-120)); };
+  o.reply = body => { n++; require_log(n, body); if (n === 1) return block('Board', broken, { full: true }); asked = JSON.stringify(JSON.parse(body).messages); return block('Board', fixed, { full: true, action: 'update' }); };
+  await ed.ask('a model board'); await ed.idle();
+  assert.ok(await ed.until(`[...document.querySelectorAll('.message.user')].some(m => /overlapping/i.test(m.textContent))`, 15000), 'the automatic fix was asked');
+  await ed.until(`!document.querySelector('.message.thinking:not(.folded)')`, 15000); await sleep(2500);
+  assert.match(asked, /LAYOUT BUGS/); assert.match(asked, /label\.chk[^"]*Google[^"]*overlaps|overlaps[^"]*label\.chk/, 'names the label');
+  assert.match(asked, /chart \/ drawing/, 'names the chart');
+  const list = await ed.items();
+  assert.equal(list.length, 1); assert.doesNotMatch(list[0].code, /position:absolute/, 'the fixed version is on the canvas');
+  assert.equal(n, 2, 'exactly one automatic round: ' + JSON.stringify(globalThis.__calls));
 });

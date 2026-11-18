@@ -22,7 +22,7 @@ export async function editor(url, { reply = () => 'ok', lang = 'en', connect = t
   const send = (method, params = {}) => new Promise(r => { const id = ++n; wait.set(id, r); ws.send(JSON.stringify({ id, method, params })); });
   const ev = async expr => { const r = await send('Runtime.evaluate', { expression: `(async () => (${expr}))()`, returnByValue: true, awaitPromise: true }); if (r.result?.exceptionDetails) throw Error(r.result.exceptionDetails.exception?.description || 'evaluate failed'); return r.result?.result?.value; };
   const cors = [{ name: 'Access-Control-Allow-Origin', value: '*' }, { name: 'Access-Control-Allow-Headers', value: '*' }, { name: 'Access-Control-Allow-Methods', value: 'GET, POST, OPTIONS' }];
-  ws.onmessage = e => {
+  ws.onmessage = async e => {
     const m = JSON.parse(e.data);
     if (m.id && wait.has(m.id)) { wait.get(m.id)(m); wait.delete(m.id); return; }
     if (m.method === 'Page.javascriptDialogOpening') send('Page.handleJavaScriptDialog', { accept: true });
@@ -32,7 +32,7 @@ export async function editor(url, { reply = () => 'ok', lang = 'en', connect = t
       if (rq.method === 'OPTIONS') return send('Fetch.fulfillRequest', { requestId: id, responseCode: 204, responseHeaders: cors });
       const route = routes.find(r => r.match(rq.url));
       if (route) {
-        const r = route.handle(rq);
+        const r = await route.handle(rq);
         return send('Fetch.fulfillRequest', { requestId: id, responseCode: r.status || 200, responseHeaders: [{ name: 'Content-Type', value: r.type || 'application/json' }, ...(r.headers || []), ...cors], body: Buffer.from(r.body ?? '').toString('base64') });
       }
       if (!rq.url.includes('api.groq.com')) return send('Fetch.continueRequest', { requestId: id });

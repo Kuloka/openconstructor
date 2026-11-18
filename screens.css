@@ -7,11 +7,11 @@
 .scr-tab.active { color: var(--text); background: var(--panel-2); border-color: var(--border); }
 .scr-tab.active::after { content: ''; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--accent); animation: scr-in .2s ease; }
 @keyframes scr-in { from { transform: scaleX(.3); opacity: 0; } }
-.scr-start { font-style: normal; color: var(--accent); font-size: 10px; }
+.scr-start { font-style: normal; color: var(--accent-text); font-size: 10px; }
 .scr-name { outline: none; min-width: 1ch; }
 .scr-name[contenteditable="plaintext-only"], .scr-name[contenteditable="true"] { padding: 0 3px; border-radius: 3px; background: var(--bg); box-shadow: 0 0 0 1px var(--accent); color: var(--text); cursor: text; }
 .scr-add { height: 22px; padding: 0 9px; border: 1px dashed var(--border); border-radius: 4px; background: transparent; color: var(--muted); font-size: 12px; white-space: nowrap; cursor: pointer; transition: color .12s, border-color .12s; }
-.scr-add:hover { color: var(--accent); border-color: var(--accent); }
+.scr-add:hover { color: var(--accent-text); border-color: var(--accent); }
 .scr-hint { margin-left: 8px; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .scr-hint code { padding: 1px 4px; border-radius: 3px; background: var(--panel-2); color: var(--text-2); font-family: inherit; }
 @media (max-width: 900px) { .scr-hint { display: none; } }

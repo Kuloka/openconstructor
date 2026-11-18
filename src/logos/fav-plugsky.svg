@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="fav-plugsky-g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5b8cff"/>
+      <stop offset="1" stop-color="#27e0a3"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#fav-plugsky-g)"/>
+  <path d="M32 12 L52 32 L32 52 L12 32 Z" fill="none" stroke="#041018" stroke-width="3.5" stroke-linejoin="round"/>
+  <path d="M32 20 L44 32 L32 44 L20 32 Z" fill="none" stroke="#041018" stroke-width="2.5" stroke-linejoin="round" opacity="0.55"/>
+</svg>

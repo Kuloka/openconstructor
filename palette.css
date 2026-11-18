@@ -2,7 +2,7 @@
 .pal { position: fixed; inset: 0; z-index: 95; display: flex; justify-content: center; align-items: flex-start; padding: 12vh 16px 16px; background: #000000a0; animation: fade-in .1s ease-out; }
 .pal-card { display: flex; flex-direction: column; width: min(620px, 100%); max-height: 64vh; overflow: hidden; border: 1px solid var(--border-2); border-radius: 8px; background: var(--panel); box-shadow: 0 30px 70px -20px #000; }
 .pal-input { display: flex; align-items: center; gap: 10px; padding: 0 14px; border-bottom: 1px solid var(--border); }
-.pal-input span { color: var(--accent); font-weight: 700; }
+.pal-input span { color: var(--accent-text); font-weight: 700; }
 .pal-input input { flex: 1; height: 46px; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 14px; }
 .pal-list { flex: 1; min-height: 0; margin: 0; padding: 6px; overflow: auto; list-style: none; }
 .pal-group { padding: 8px 10px 4px; color: var(--subtle); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; }
