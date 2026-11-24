@@ -11,9 +11,10 @@ export const LANGS = [
   { code: 'tr', name: 'Türkçe' },
   { code: 'es', name: 'Español' },
   { code: 'de', name: 'Deutsch' },
+  { code: 'ar', name: 'العربية' },
 ];
 // The language the AI should write its replies in
-export const AI_LANG = { en: 'English', ru: 'Russian', tr: 'Turkish', es: 'Spanish', de: 'German' };
+export const AI_LANG = { en: 'English', ru: 'Russian', tr: 'Turkish', es: 'Spanish', de: 'German', ar: 'Arabic' };
 
 const KEY = 'oc-lang';
 const known = c => LANGS.some(l => l.code === c);
