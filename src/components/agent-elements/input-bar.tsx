@@ -532,7 +532,7 @@ export const InputBar = memo(function InputBar({
                 )}
                 {leftActions}
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-3">
                 {rightActions}
                 {attachRight && showAttach && onAttach && (
                   <AttachmentButton onClick={onAttach} />

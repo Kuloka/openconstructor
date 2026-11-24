@@ -2,7 +2,7 @@ openconstructor — карта проекта
 ==============================
 Зачем этот файл: чтобы ИИ-помощник (и люди) не перечитывали весь код в каждой сессии.
 Читать его ПЕРВЫМ, потом открывать только нужные места. Обновлять, когда меняется структура.
-Последнее обновление: 2026-11-18
+Последнее обновление: 2026-11-24
 
 КАК УСТРОЕНО В ДВУХ СЛОВАХ
 --------------------------
@@ -128,6 +128,33 @@ projects.js — облачные проекты + карточка «стран�
 local-projects.js — список проектов на этом устройстве, startNew().
 auth.js — вход (Supabase), openAuth('signup'|'signin'), событие oc:auth (detail = user).
 screens.js — несколько экранов в проекте; versions.js — история версий; inline-edit.js — правка текста двойным кликом.
+select-edit.js + select-edit.css — режим «select» (кнопка #selectToggle в тулбаре холста, клавиша V), как Visual Edits в Lovable:
+  наведение → пунктирная рамка + метка тега, клик → рамка закреплена и рядом поле «What to change here?» → studio.editPart
+  (ИИ переписывает только эту часть). «styles» открывает инспектор inline-edit (editInline(id, at)), ↑ — родитель, Esc — снять/выйти.
+  Приложения (без same-origin) выбираются целиком, правка через чат. Взаимоисключается с play (studio шлёт oc:play). e2e: "select mode".
+permissions.js — ПРАВА ИИ как в opencode (2026-11-24): правила allow/ask/deny в localStorage 'oc-perms' — scripts (JS на любой
+  странице, по умолчанию ask), fonts (Google Fonts, allow), rewrite (замена >60% текста блока длиннее 1500 символов без слов
+  «переделай/с нуля/redesign…», ask). promptRules() меняет строку про JS/шрифты в системном промпте runAI; gate() проверяет ответ
+  перед вставкой: скрипт разрешён → блок становится app (песочница без сети), запрещён → вырезается (и on*-атрибуты);
+  шрифты запрещены → @import/link убираются; «нет» на большую правку → холст не меняется. «ask» = карточка .perm-ask в чате
+  (Разрешить один раз / Всегда / Нет). Секция #aiPerms наверху окна «AI keys». CSP холста/превью/APP_CSP пускают только
+  fonts.googleapis.com + fonts.gstatic.com. Промпт: «Freedom» — стилевые правила = умолчания, запрос пользователя важнее. e2e: "permissions".
+БЭКЕНД ПРИЛОЖЕНИЙ oc.db (2026-11-24): единственная «дверь» в сеть у приложений.
+  apps.js APP_DB (входит в APP_SHIM → везде, где есть приложения): oc.db.add(col, obj, {private}) / oc.db.list(col, {limit}).
+  Куда идёт: есть <meta name="oc-slug"> (worker.js inject для страниц с oc-app) → POST/GET https://openconstructor.pw/api/db/<slug>
+  (text/plain, без preflight); внутри редактора (parent !== window) → postMessage {ocDb} → app-db.js хранит в localStorage
+  'oc-appdata'; отдельный экспортированный файл → localStorage 'oc-db' / память. Приватные записи пишутся, но list их не отдаёт.
+  worker.js dbApi: CORS *, коллекция ^[a-z0-9_-]{1,40}$, запись ≤7 КБ, 1 запись/с на IP+страницу (caches), ошибки 400/404/413/429.
+  APP_HEADERS и csp3d(app): connect-src только ${HOME}/api/db/. SQL: supabase/appdata.sql (app_rows + db_add/db_list,
+  RLS: автор читает/удаляет; 2000 записей/день, 50 000 всего на страницу). Окно «App data» (app-db.js openAppData):
+  кнопка #appDataBtn в верхнем меню, «data» в Code, событие oc:app-data; вкладки test (браузер) / live (Supabase, автор).
+  Правила ИИ: APP_RULES «Saving and sharing data» + строка в permissions.js promptRules().script. Тесты: unit appdata.test.js, e2e "app data".
+github-star.js — звёзды GitHub (2026-11-24, ~190 уникальных/день, 3 звезды): кнопка .gh-star со счётчиком (api.github.com, кэш 1 ч
+  в 'oc-gh-stars') в .tb-right редактора (компактно: иконка + число) и на стартовом экране (.wl-star в Welcome.jsx). Одно приглашение
+  .star-ask после 2-й удачной генерации (гостям после 4-й — сначала у них «сохранить в облако» из projects.js), никогда поверх
+  .local-nudge, один раз навсегда ('oc-star-asked'). e2e: "GitHub star".
+opencode.css — визуальный слой «как opencode» (последний импорт в src/main.jsx): нейтральные серые #0c0c0c/#161616/#242424,
+  линии #2e2e2e/#4b4b4b, радиусы 4/6/8, Geist Mono для обвязки, sans для читаемого текста, лаванда только у primary.
 exporters.js — экспорт в React/Vue/Svelte/Tailwind/Roblox/LÖVE (скрипты вырезает!); export-zip.js — .zip.
 scene3d.js — 3D из JSON (Three.js); renderModel(query) — объекты для страниц по токену <img src="model:knot chrome #ff5a36">
   ЖИВОЕ 3D (2026-11-13): model-kit.js — общий модуль объектов (parseModel, buildModel, renderModel = картинка,
@@ -254,6 +281,13 @@ promo/ — материалы для соцсетей (roblox-export.gif: шаб
 Этап 2: экспорт в папку на компьютере (File System Access API в Chrome/Edge, иначе .zip);
   экспорт в React и т.п. сейчас вырезает скрипты — для приложений нужен свой путь.
 Этап 3: хранение данных приложений (ответы, заявки) — нужен SQL в Supabase.
+
+ИГРОВОЙ UI (studio.js, 2026-11-24): isGameUI(request) = GAME_RE (roblox, hud, инвентарь, хотбар, обби, тайкун…) и НЕТ WEBSITE_RE
+  (сайт/лендинг/website). Тогда «магазин/shop» = панель в игре: НЕ запускается рой сайта и не cineMode.
+  СВОБОДА (пользователь, 2026-11-24: «дай ИИ свободу, ты ему рамки ставишь»): GAME_RULES = «ты ведущий UI-художник топовой игры,
+  выбери стиль сам» + только реальные ограничения экспорта в Roblox. Образец из каталога НЕ прикладывается (модель его копировала),
+  сайтовые правила (фото, секции, motion, Linear/Stripe, формы) вырезаются из промпта (WEB_ONLY). «add next» → GAME_NEXT
+  (инвентарь, награды, лидерборд…). Сайт ПРО игру: photo: → art: (нарисованная игровая картинка). e2e: "game UI".
 
 РОЙ АГЕНТОВ (studio.js buildSwarm, 2026-11-13)
 ---------------------------------------------

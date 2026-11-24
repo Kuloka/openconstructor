@@ -18,14 +18,15 @@ const PAGE_HEADERS = {
   'X-Robots-Tag': 'noindex',
 };
 // Pages with mini-apps (editor marks them with <meta name="oc-app">, see apps.js): scripts run, still on an
-// opaque origin and with no network at all (connect-src 'none'), so they can't reach cookies or send data out.
+// opaque origin and with one network door only — the app-data API (connect-src /api/db/, see dbApi), so they
+// can't reach cookies or send data anywhere else.
 const APP_HEADERS = {
   ...PAGE_HEADERS,
-  'Content-Security-Policy': `sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms; script-src 'unsafe-inline' 'unsafe-eval'; connect-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action ${HOME}/api/form/`,
+  'Content-Security-Policy': `sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms; script-src 'unsafe-inline' 'unsafe-eval'; connect-src ${HOME}/api/db/; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action ${HOME}/api/form/`,
 };
 // Pages with live 3D objects load one script: our own oc3d.js (three.js inside, no network); inline scripts stay off
 // unless the page also has mini-apps
-const csp3d = app => `sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms; script-src ${HOME}/oc3d.js${app ? " 'unsafe-inline' 'unsafe-eval'" : ''}; connect-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action ${HOME}/api/form/`;
+const csp3d = app => `sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms; script-src ${HOME}/oc3d.js${app ? " 'unsafe-inline' 'unsafe-eval'" : ''}; connect-src ${app ? `${HOME}/api/db/` : "'none'"}; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action ${HOME}/api/form/`;
 const headersFor = html => {
   const app = /<meta name="oc-app"/.test(html), live3d = /<script src="https:\/\/openconstructor\.pw\/oc3d\.js"/.test(html);
   return live3d ? { ...PAGE_HEADERS, 'Content-Security-Policy': csp3d(app) } : app ? APP_HEADERS : PAGE_HEADERS;
@@ -61,7 +62,9 @@ function ogTags(html, slug, title, hash = ''){
 }
 
 function inject(html, slug, title, hash = ''){
-  const meta = ogTags(html, slug, title, hash);
+  let meta = ogTags(html, slug, title, hash);
+  // oc.db (apps.js APP_DB) reads the page's address from here
+  if (/<meta name="oc-app"/.test(html)) meta = `<meta name="oc-slug" content="${slug}">\n` + (meta || '');
   if (meta) {
     const h = /<head\b[^>]*>/i.exec(html);
     if (h) {
@@ -163,6 +166,50 @@ async function formSubmit(request, env, ctx, slug){
   }
   ctx.waitUntil(notifyAuthor(env, slug, data).catch(err => console.error('form: e-mail failed', slug, err?.message)));
   return thanks();
+}
+
+// App data (oc.db in published mini-apps, supabase/appdata.sql). Apps run in an opaque-origin sandbox, so this
+// answers any origin (no cookies are involved); POST bodies come as text/plain to skip the preflight.
+//   GET  /api/db/<slug>?c=<collection>&limit=50  → { rows: [{ id, data, created_at }] }  (public records only)
+//   POST /api/db/<slug>  { c, data, private }     → { row }
+const DB_COL_RE = /^[a-z0-9_-]{1,40}$/;
+const DB_CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '86400', 'Cache-Control': 'no-store' };
+async function dbApi(request, env, slug, url){
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: DB_CORS });
+  const no = (status, message) => json(status, { error: { message } }, DB_CORS);
+  if (!SLUG_RE.test(slug)) return no(404, 'page not found');
+  const rpc = (fn, body) => fetch(`${env.SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+    method: 'POST', headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${env.SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const why = async r => { const t = await r.text(); return /too many/i.test(t) ? no(429, 'this page saved too many records today') : /page not found/i.test(t) ? no(404, 'page not found') : no(502, 'could not reach the database'); };
+  try {
+    if (request.method === 'GET') {
+      const c = String(url.searchParams.get('c') || '').toLowerCase();
+      if (!DB_COL_RE.test(c)) return no(400, 'bad collection name');
+      const limit = Math.max(1, Math.min(200, +url.searchParams.get('limit') || 50));
+      const r = await rpc('db_list', { p_slug: slug, p_col: c, p_limit: limit });
+      if (!r.ok) return why(r);
+      return json(200, { rows: await r.json() }, DB_CORS);
+    }
+    if (request.method !== 'POST') return no(405, 'method not allowed');
+    if ((+request.headers.get('content-length') || 0) > 10000) return no(413, 'one record is limited to 7 KB');
+    // one write per visitor and page every second (the database adds a daily cap per page)
+    const ip = request.headers.get('cf-connecting-ip') || 'unknown';
+    const cache = caches.default, gate = new Request(`${HOME}/__db/${encodeURIComponent(slug)}/${encodeURIComponent(ip)}`);
+    if (await cache.match(gate)) return no(429, 'too fast — wait a second');
+    let body; try { body = JSON.parse(await request.text()); } catch { return no(400, 'send JSON'); }
+    const c = String(body?.c || '').toLowerCase(), data = body?.data;
+    if (!DB_COL_RE.test(c)) return no(400, 'bad collection name');
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return no(400, 'data must be an object');
+    if (JSON.stringify(data).length > 7000) return no(413, 'one record is limited to 7 KB');
+    await cache.put(gate, new Response('1', { headers: { 'Cache-Control': 'max-age=1' } }));
+    const r = await rpc('db_add', { p_slug: slug, p_col: c, p_data: data, p_private: body.private === true });
+    if (!r.ok) return why(r);
+    return json(201, { row: await r.json() }, DB_CORS);
+  } catch (err) {
+    console.error('db:', slug, err?.message);
+    return no(502, 'could not reach the database');
+  }
 }
 
 // E-mail the page's author about a new form message (Resend). Needs two secrets:
@@ -528,8 +575,8 @@ const BACKENDS = [
   { id: 'openrouter', secret: 'OPENROUTER_API_KEY', url: 'https://openrouter.ai/api/v1/chat/completions', model: 'openrouter/free', extra: { }, usage: true },
   // first: the best free designer (scripts/eval/out/after-gemini vs before-gemini). Its free tier is ~10 requests a minute, so
   // a refusal (429, or 400 'location not supported' in the EU) falls through at once to Flash-Lite, then to the rest.
-  { id: 'gemini', first: true, secret: 'GEMINI_API_KEY', url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', model: 'gemini-2.5-flash', extra: { reasoning_effort: 'low' }, usage: true },
-  { id: 'gemini-lite', first: true, secret: 'GEMINI_API_KEY', url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', model: 'gemini-2.5-flash-lite', extra: { reasoning_effort: 'low' }, usage: true },
+  { id: 'gemini', first: true, secret: 'GEMINI_API_KEY', url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', model: 'gemini-flash-latest', extra: { reasoning_effort: 'low' }, usage: true },
+  { id: 'gemini-lite', first: true, secret: 'GEMINI_API_KEY', url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', model: 'gemini-flash-lite-latest', extra: { reasoning_effort: 'low' }, usage: true },
   // Gemma on the same key: ~14k free requests a day. It takes no system message and at most 8192 output tokens.
   { id: 'gemma', secret: 'GEMINI_API_KEY', url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', model: 'gemma-3-27b-it', noSystem: true, maxOut: 8192, extra: { }, usage: true },
   { id: 'mistral', secret: 'MISTRAL_API_KEY', url: 'https://api.mistral.ai/v1/chat/completions', model: 'mistral-medium-latest', extra: { } },
@@ -538,8 +585,9 @@ const BACKENDS = [
   { id: 'cerebras', secret: 'CEREBRAS_API_KEY', url: 'https://api.cerebras.ai/v1/chat/completions', model: 'gpt-oss-120b', extra: { reasoning_effort: 'low' }, usage: true },
 ];
 const freeBackends = env => [...BACKENDS.filter(b => b.first && env[b.secret]), ...(env.AI ? WORKERS_AI_MODELS.map(model => ({ id: 'workers-ai', model })) : []), ...BACKENDS.filter(b => !b.first && env[b.secret])];
-// worth trying the next backend: limits, outages, auth, size — and a region the backend refuses (Gemini's free tier in the EU)
-const tryNext = r => r.status === 429 || r.status === 413 || r.status >= 500 || r.status === 402 || r.status === 401 || r.status === 403 || (r.status === 400 && /location|region|country|not supported/i.test(String(r.text)));
+// worth trying the next backend: limits, outages, auth, size, a retired model (404 — Nov 2026: a gone Gemini model took the
+// whole free AI down) — and a region the backend refuses (Gemini's free tier in the EU)
+const tryNext = r => r.status === 404 || r.status === 429 || r.status === 413 || r.status >= 500 || r.status === 402 || r.status === 401 || r.status === 403 || (r.status === 400 && /location|region|country|not supported/i.test(String(r.text)));
 const freeBackend = env => freeBackends(env)[0]?.id || null;
 
 // Call the upstreams in order and always answer in OpenAI chat-completions shape: { status, text, be }.
@@ -1138,6 +1186,8 @@ async function route(request, env, ctx){
     if (pm) return request.method === 'POST' && pm[1] === 'shot' && !pm[3] ? shotPut(request, env, decodeURIComponent(pm[2])) : request.method === 'GET' || request.method === 'HEAD' ? shotGet(request, env, ctx, pm[1], decodeURIComponent(pm[2]), pm[3] || '') : fail(405, 'Method not allowed', { Allow: 'GET, POST' });
     const sm = /^\/api\/sync\/([^/]+)$/.exec(url.pathname);
     if (sm) return request.method === 'GET' ? syncGet(request, env, ctx, sm[1]) : fail(405, 'Method not allowed', { Allow: 'GET' });
+    const dm = /^\/api\/db\/([^/]+)$/.exec(url.pathname);
+    if (dm) return dbApi(request, env, decodeURIComponent(dm[1]), url);
     const fm = /^\/api\/form\/([^/]+)$/.exec(url.pathname);
     if (fm) return request.method === 'POST' ? formSubmit(request, env, ctx, decodeURIComponent(fm[1])) : fail(405, 'Method not allowed', { Allow: 'POST' });
     if (url.pathname === '/api/web') return request.method === 'GET' ? web(request, ctx, url) : fail(405, 'Method not allowed', { Allow: 'GET' });

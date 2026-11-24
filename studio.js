@@ -27,6 +27,7 @@ import './donate.js';
 import { appDoc, withAppHead, APP_RULES, APP_EXAMPLES, appReference } from './apps.js';
 import { SYSTEMS, systemCSS, sectionSystem, requestLang, PLANNER_SYSTEMS } from './swarm-kit.js';
 import './tour.js';
+import { gate, promptRules, permsSection } from './permissions.js';
 
 const $ = id => document.getElementById(id);
 const escapeHTML = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -70,7 +71,8 @@ $('boardLabel').style.left = STAGE_PAD + 'px';
 $('boardLabel').style.top = STAGE_PAD - 26 + 'px';
 
 /* ── iframe documents (scripts blocked by sandbox + CSP) ──── */
-const CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:">`;
+// web fonts from Google Fonts are the one outside source a block may load (permissions.js, rule "fonts")
+const CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; img-src data:; font-src data: https://fonts.gstatic.com">`;
 function previewDoc(code, wide){
   // overflow:hidden + dark scheme, otherwise large components get white system scrollbars
   const body = wide ? ':root{color-scheme:dark}html,body{margin:0;background:#0d0b0a;color:#eee;font-family:system-ui;overflow:hidden}' : ':root{color-scheme:dark}html,body{margin:0;height:100%;overflow:hidden;background:#111113}body{display:grid;place-items:center;box-sizing:border-box;padding:20px;color:#eee;font-family:system-ui}';
@@ -505,11 +507,16 @@ const NEXT = [
   [/<form/i, 'Contact form', 'a contact form section (name, email, message)'],
   [/<footer|footer/i, 'Footer', 'a footer with links and contacts'],
 ];
-function suggestNext(){
+const GAME_NEXT = [
+  [/inventor|инвентар/i, 'Inventory', 'an inventory panel'], [/daily|ежеднев|reward|наград/i, 'Daily rewards', 'a daily rewards panel'],
+  [/leaderboard|лидер|рейтинг/i, 'Leaderboard', 'a leaderboard'], [/hotbar|хотбар/i, 'Hotbar', 'a hotbar'],
+  [/settings|настройк/i, 'Settings', 'a settings panel'], [/shop|магазин/i, 'Shop', 'a shop panel'],
+];
+function suggestNext(game = false){
   document.querySelectorAll('#messages .msg-next').forEach(n => n.remove());
-  if (!items.some(i => i.full)) return; // only for pages, not single components
+  if (!game && !items.some(i => i.full)) return; // only for pages, not single components
   const all = items.map(i => i.name + ' ' + i.code).join(' ');
-  const miss = NEXT.filter(([re]) => !re.test(all)).slice(0, 3);
+  const miss = (game ? GAME_NEXT : NEXT).filter(([re]) => !re.test(all)).slice(0, 3);
   if (!miss.length) return;
   const row = document.createElement('div'); row.className = 'msg-next';
   row.innerHTML = `<span>${escapeHTML(t('add next:'))}</span>` + miss.map(([, label], i) => `<button type="button" data-i="${i}">＋ ${escapeHTML(t(label))}</button>`).join('');
@@ -517,7 +524,7 @@ function suggestNext(){
     const b = e.target.closest('button'); if (!b) return;
     row.remove();
     const [, label, what] = miss[+b.dataset.i];
-    runAI(`＋ ${t(label)}`, { ask: `Add ${what} as a NEW block: use action "add" with full: true. Match the existing page exactly: the same colours, fonts, corner radius and spacing; write the texts in the language of the page.` });
+    runAI(`＋ ${t(label)}`, { ask: game ? `Add ${what} for the same Roblox game UI as a NEW element: use action "add" with full: false. Match the existing game UI exactly: the same style, colours, fonts and shapes; write the texts in its language.` : `Add ${what} as a NEW block: use action "add" with full: true. Match the existing page exactly: the same colours, fonts, corner radius and spacing; write the texts in the language of the page.` });
   };
   $('messages').append(row); toBottom();
 }
@@ -1211,7 +1218,7 @@ function openDevicePreview(){
   m.querySelector('[data-make-stack]')?.addEventListener('click', () => { setLayoutMode('stack'); requestAnimationFrame(() => requestAnimationFrame(openDevicePreview)); });
   // dark scrollbars, links open in a new tab, scripts stay off
   const apps = hasApps();
-  const head = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';${apps ? " script-src 'unsafe-inline' 'unsafe-eval';" : ''} img-src data: blob:; font-src data:"><base target="_blank"><style>:root{color-scheme:dark}html{scrollbar-width:thin;scrollbar-color:#3a302d transparent}</style>`;
+  const head = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com;${apps ? " script-src 'unsafe-inline' 'unsafe-eval';" : ''} img-src data: blob:; font-src data: https://fonts.gstatic.com"><base target="_blank"><style>:root{color-scheme:dark}html{scrollbar-width:thin;scrollbar-color:#3a302d transparent}</style>`;
   m.querySelectorAll('.device').forEach((fig, i) => {
     const d = devices[i], f = fig.querySelector('iframe'), screen = fig.querySelector('.device-screen');
     // a fixed-width page is laid out at its own width and scaled to the device, like a phone does with width=1440
@@ -1226,6 +1233,7 @@ let playing = false;
 function setPlaying(on){
   playing = on; canvas.classList.toggle('playing', on); for (const el of nodes.values()) el._live?.setInteractive(on); $('playToggle').setAttribute('aria-pressed', on);
   $('playToggle').innerHTML = on ? '■<span class="lbl"> stop</span>' : '▶<span class="lbl"> play</span>';
+  window.dispatchEvent(new CustomEvent('oc:play', { detail: on }));
   if (on) { select(null); setState('play mode: try hover, toggles, tabs · press P or ■ stop to edit again', 'busy'); } else setState('ready');
 }
 $('playToggle').onclick = () => setPlaying(!playing);
@@ -1956,6 +1964,15 @@ function signupNudge(why){
    with its own cursor. The planner writes the shared design system, so the sections look like one page. ── */
 const SWARM_RE = /сайт|site|page|страниц|лендинг|landing|портфолио|portfolio|магазин|shop|store|блог|blog|homepage|главн/i;
 // with a page already on the canvas only an explicit "new page" request starts a swarm (anything else is an edit)
+// Game UI (Roblox / in-game): here "магазин"/"shop" is a panel inside the game, not an online store, so no website
+// swarm and no cinematic site — one game-style element, with the closest Game UI component as a quality reference
+const GAME_RE = /roblox|роблокс|game ui|игров\S* (ui|интерфейс|меню|экран|магазин|панел)|в игр[уеы]\b|in-game|ingame|\bhud\b|\bхуд\b|хотбар|hotbar|инвентар|inventory|лидерборд|leaderboard|\bobby\b|обби|тайкун|tycoon|симулятор|simulator/i;
+const WEBSITE_RE = /сайт|website|web site|лендинг|landing|homepage|веб-?страниц|page (for|about) (the|my|a) game/i;
+const isGameUI = text => GAME_RE.test(text) && !WEBSITE_RE.test(text);
+const GAME_RULES = `- GAME UI: this request is an interface INSIDE a game (Roblox), not a website — no site header, nav, footer, hero or marketing sections. Set "full": false.
+  · You are the lead UI artist of a front-page Roblox game. Pick the visual style that fits this game and own it: the bright cartoony simulator look (bubbly shapes, juicy gradient buttons with a darker bottom edge, outlined icons and text), sleek sci-fi, minimal horror, anime, pixel — or your own. Make it look like a real hit game, not like a web form: strong hierarchy, playful details, satisfying buttons, clear states (selected, owned, locked, sale, rarity), real game content (items, prices in coins or gems, levels, timers) in the language of the request. Surprise us.
+  · Layout like a game screen: it must read at a glance on a phone. Never stretch tabs or buttons into tall empty columns; size things to their content.
+  · The only hard limit — it is exported to real Roblox GUI: shadows, glows, blur and filters look fine here but do not carry over, so the design must still look finished without them (draw depth with a darker offset layer or a border instead). Every visible text in its own element; icons as inline SVG, no external images; no position:fixed.`;
 const SWARM_NEW = /нов(ый|ую|ая|ое)|new|ещ[её] од|another|с нуля|from scratch|другой сайт|second site/i;
 // "make a site about…" also starts one when what is on the canvas isn't a page yet (a logo, a button, a 3D word):
 // otherwise the whole site request turns into an edit of that one small element
@@ -2094,7 +2111,7 @@ async function runAI(request, custom = {}){
     return ref ? '\n\nStyle reference — one finished section in the expected cinematic quality. Do NOT copy its texts or layout one-to-one — write every text in the language of the request, keep the 3D object clear of the headline; match its polish (glow, CSS 3D object, huge tight type, spacing) across the WHOLE page, and use an art: hero image:\n```html\n' + ref.code + '\n```' : '';
   };
   const appMode = !custom.user && (appOn || !!target?.app);
-  const system = `You are openconstructor AI, you build interfaces. Answer in EXACTLY this format and nothing else:
+  const system0 = `You are openconstructor AI, you build interfaces. Answer in EXACTLY this format and nothing else:
 line 1 — a one-line JSON header WITHOUT the code: {"action":"add|update|reply","full":true|false,"name":"short element name","reply":"short reply to the user"}
 then, unless action is "reply", the HTML and CSS in ONE fenced block:
 \`\`\`html
@@ -2110,19 +2127,20 @@ Rules:
 - ${INTERACTIVE_DOC.split('\n').join('\n  ')}
 - ${ICONS_DOC.split('\n').join('\n  ')}
 - Forms (contact, sign-up, newsletter, order): use a real <form> with a submit button and give every field a short name attribute (name="email", name="message") — on a published page the messages reach the page's author.
-${appMode ? APP_RULES + '\n- No external links or fonts. Icons as inline SVG.' : '- Self-contained HTML and CSS only: one <style> plus markup. No JavaScript, external links or fonts. Icons as inline SVG.'}
-- Real photos make pages feel finished: for websites, landing pages, heroes, product/menu cards, galleries, team and testimonials use photos — <img src="photo:2-4 English words" alt="…"> sized by CSS with object-fit:cover, or background-image:url('photo:2-4 English words'). Append ?portrait or ?square for tall or square slots (photo:barista portrait?portrait). Describe what should be in the picture with concrete nouns, the subject first (photo:latte art cup, photo:espresso coffee cup, photo:croissant pastry plate, photo:cozy cafe interior); avoid words with a second meaning (write "espresso coffee cup", not "espresso shot"; "burger meal", not "burger joint"); every photo on a page gets its own words. Never write http image URLs. Small UI components (buttons, inputs, toggles) need no photos.${custom.attachNote || ''}
+${appMode ? APP_RULES + '\n- ' + promptRules().fonts + ' Icons as inline SVG.' : '- Self-contained HTML: one <style> plus markup. ' + promptRules().script + ' ' + promptRules().fonts + ' Icons as inline SVG.'}
+- Freedom: the style notes below are strong defaults, not laws. The user's request, brand kit and references always win (style, colours, fonts, number of sections, motion or none); when the request is open, use your own judgement like a senior designer and pick what serves this brief best.
+${isGameUI(custom.ask || request) ? GAME_RULES + '\n' : ''}- Real photos make pages feel finished: for websites, landing pages, heroes, product/menu cards, galleries, team and testimonials use photos — <img src="photo:2-4 English words" alt="…"> sized by CSS with object-fit:cover, or background-image:url('photo:2-4 English words'). Append ?portrait or ?square for tall or square slots (photo:barista portrait?portrait). Describe what should be in the picture with concrete nouns, the subject first (photo:latte art cup, photo:espresso coffee cup, photo:croissant pastry plate, photo:cozy cafe interior); avoid words with a second meaning (write "espresso coffee cup", not "espresso shot"; "burger meal", not "burger joint"); every photo on a page gets its own words. Never write http image URLs. Small UI components (buttons, inputs, toggles) need no photos.${custom.attachNote || ''}
 - Cinematic / 3D websites: when the user asks for a 3D, immersive, cinematic, futuristic, neon, luxury or "premium/award-winning" website, page or landing, build HTML (NOT scene3d) in this style:
   · near-black background (#03050a–#0a0a0f), light text; ONE neon accent (electric blue #4d8dff, violet, cyan or magenta) used for glow: box-shadow 0 0 20px/60px/140px in the accent, text-shadow, radial-gradient light pools behind objects;
   · huge tight headlines: font-size clamp(44px,8vw,112px), line-height .95, letter-spacing -0.045em, weight 600, a second half of the sentence in a muted grey (Immersive experiences. <span>Lasting impressions.</span>); tiny uppercase labels above with letter-spacing .3em;
   · 3D objects are model: pictures (see "3D objects on pages"), with a radial-gradient light pool behind them in the accent and a slow float; CSS 3D (perspective + rotateX/Y) only for FLAT things — a tilted card, a glowing neon frame, a perspective grid floor (rotateX(60deg) on a line grid);
   · the hero background is a generated 3D render: <img src="art:…"> or background-image:url('art:…') with an English description ending in "cinematic 3d render, dark background, volumetric light" (art:glowing blue neon square floating above dark rocky terrain, cinematic 3d render, dark background, volumetric light). Use art: at most twice, only for big hero / showcase visuals; darken with a gradient overlay so the text stays readable;
   · motion on scroll without JS: @supports (animation-timeline:view()){.x{animation:rise linear both;animation-timeline:view();animation-range:entry 0% cover 35%}} @keyframes rise{from{opacity:0;transform:translateY(60px)}} — also for media that scales from .8 to 1 and words that light up from #2a3040 to white; marquee logo walls with mask fades; thin 1px #ffffff1c dividers, numbered services 01–04, wide case-study cards;
-  · the hero MUST show a glowing 3D object next to (not over) the headline — a model: picture (chrome knot, glass gem, iridescent blob…) on a light pool, or the neon frame from the reference;
-  · a COMPLETE site of 7+ sections, not just a hero: header, hero with the 3D object, a big statement, products or a 3D showcase (model: objects), numbered services 01–04, case studies, logo wall, call to action, footer;
+  · by default the hero shows a glowing 3D object next to (not over) the headline — a model: picture (chrome knot, glass gem, iridescent blob…) on a light pool, or the neon frame from the reference;
+  · a complete site, not just a hero (about 7 sections unless the user wants fewer): header, hero with the 3D object, a big statement, products or a 3D showcase (model: objects), numbered services 01–04, case studies, logo wall, call to action, footer;
   · in this style do NOT use photo: (stock photos break the mood) — case-study and product cards get dark cards with coloured radial-gradient light pools, model: objects or the art: picture instead;
   · lots of space (section padding 110px+), few words per block, everything respects prefers-reduced-motion.
-- Motion (EVERY website, landing or full page, any style): it must feel alive like an award-winning site — sections and cards rise in on scroll, pictures zoom from .88 to 1 as they enter, one big statement whose words light up one after another while scrolling, a logo wall as an endless marquee with mask fades, hover lift + soft glow on cards and buttons, a slow float on the hero visual. Pure CSS: scroll effects inside @supports (animation-timeline:view()){…} with animation-timeline:view() and animation-range:entry 0% cover 30%; everything wrapped so prefers-reduced-motion turns it off. The header and the hero are visible at once (no scroll reveal on them).
+- Motion (by default on websites, landings and full pages, unless the user wants a calm or static page): it should feel alive like an award-winning site — sections and cards rise in on scroll, pictures zoom from .88 to 1 as they enter, one big statement whose words light up one after another while scrolling, a logo wall as an endless marquee with mask fades, hover lift + soft glow on cards and buttons, a slow float on the hero visual. Pure CSS: scroll effects inside @supports (animation-timeline:view()){…} with animation-timeline:view() and animation-range:entry 0% cover 30%; everything wrapped so prefers-reduced-motion turns it off. The header and the hero are visible at once (no scroll reveal on them).
 - 3D objects on pages: NEVER build spheres, tori, pyramids, gems, blobs or cubes out of divs and CSS transforms — they come out flat and broken. Put a real rendered object instead: <img src="model:SHAPE MATERIAL COLOR" alt="…"> (transparent PNG, square; size it with CSS, e.g. width:min(420px,40vw)). SHAPE: cube, sphere, torus, ring, knot, pyramid, cone, cylinder, capsule, diamond, icosahedron, dodecahedron, blob, star, heart, helix, coin, shapes (a little composition), or "letter X" for one 3D letter (model:letter R chrome) or "text WORD" for a 3D word or logo of up to 24 characters, written EXACTLY as the user wrote it, in ONE model (model:text OPENCONSTRUCTOR glass; with spaces in quotes: model:text "Open Studio" chrome) — never split a word into several models and never fake 3D type with CSS gradients or text-shadow. The 3D font has Latin letters, digits and basic punctuation only: for Cyrillic or other scripts say so in the reply and offer the Latin spelling. MATERIAL: chrome, gold, metal, glass, iridescent, pearl, plastic, matte, clay, velvet, neon. COLOR: a #hex or a colour word (model:knot plastic #ff5a36, model:diamond glass #8b5cf6, model:torus chrome, model:blob iridescent). Every model: object is a LIVE real-time 3D model on the page (WebGL): it already turns smoothly toward the cursor and floats by itself — so when the user asks for a 3D model, a 3D letter or logo, or a 3D object that reacts to the cursor, THIS is how to do it: never fake it with a flat picture, CSS 3D or your own tilt/rotate/perspective/hover transforms on it (they fight its own motion; a plain size, position and a light pool behind are right). Letters keep their case: write the letter exactly as the user wrote it (model:letter D chrome). When you edit an element that has a model: object, KEEP the <img src="model:…"> (change its material or size if asked) — removing the background, a glow or a caption never removes the object itself; give it an explicit width (e.g. width:min(420px,80vw)). "Mirror" = chrome. Use them for heroes, feature cards (one per card, same material across a set), product showcases and decorative accents; give them a slow float (@keyframes up/down 6–8s), a soft drop-shadow or a radial-gradient light pool behind. Up to 8 per page.
 - A single 3D object — a 3D letter, number, word or logo, or one shape in a material (chrome D, glass knot, gold coin), especially one that should react to the cursor — is NOT a scene: answer with a small html element holding <img src="model:letter D chrome"> (see "3D objects on pages"): it is a live model that turns toward the cursor, with real mirror (chrome) and glass materials. "Just the letter" means just that element, no page around it.
 - 3D letters, numbers, words and logos are NEVER assembled from boxes, cylinders or tori — they come out as broken pieces. On a page: model:letter X; inside a scene3d: shape "text" with "text":"D".
@@ -2146,6 +2164,9 @@ Build recognizable things from MANY well-placed parts (a chair = seat + backrest
 ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current year is ${new Date().getFullYear()}. Use it for copyright lines, dates and \"since\"/\"years\" texts; never write an older year as the current one.\n- Clean, modern design: spacing, heading hierarchy, rounded corners, shadows, hover states. Respect prefers-reduced-motion for animations.
 - Write all UI text in the components in the same language as the user's request.
 - Keep the code compact (no comments, no repeated boilerplate) so the answer fits in one response.`;
+  // game UI: the website craft (photos, sections, motion, SaaS polish) only gets in the way — the request and the game rules lead
+  const WEB_ONLY = /^(Freedom: the style notes|Real photos|Cinematic \/ 3D websites|Motion \(|3D objects on pages|Understand the job|Copy like a senior|Craft like a senior|Forms \()/;
+  const system = isGameUI(custom.ask || request) ? system0.split('\n- ').filter(r => !WEB_ONLY.test(r)).join('\n- ') : system0;
   // photos already in the selected element travel as short kept:N tokens, not megabytes of base64
   const kept = [];
   // live 3D objects go back to the form the model writes (<img src="model:…">), so an edit keeps them
@@ -2153,7 +2174,7 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
   // a big page is edited part by part: the model sees numbered blocks and sends back only the changes (page-patch.js)
   const slimCode = target && !target.scene ? slim(target.code) : '';
   const pageParts = !appMode && !custom.user && !variantsOn && target?.full && slimCode.length > 5000 ? splitPage(slimCode) : null;
-  const user = custom.user || ((recent ? 'Conversation so far (for context):\n' + recent + '\n\n' : '') + 'Current element' + (implicit ? ' (not selected — the page built last)' : ' (selected)') + ': ' + JSON.stringify(target ? (target.scene ? { name: target.name, type: '3D scene', scene: target.scene } : { name: target.name, code: pageParts ? numbered(pageParts) : slimCode }) : null) + '\nOther elements: ' + JSON.stringify(items.map(x => ({ name: x.name }))) + (pageParts ? '\n' + PATCH_RULES + '\nUse "add" only for a clearly separate new element next to the page.' : target && !custom.ask ? '\nIf the request changes, fixes or restyles anything in the Current element, answer with action "update" and the COMPLETE updated element. Use "add" only for a clearly separate new block.' : '') + '\nRequest: ' + (custom.ask || request) + cineRef(custom.ask || request) + (appMode && !target?.app ? appReference(custom.ask || request) : '') + (!target && !appMode && SWARM_RE.test(custom.ask || request) ? directionBrief(pickDirection('', custom.ask || request), 'hero') : '') + (custom.extra || ''));
+  const user = custom.user || ((recent ? 'Conversation so far (for context):\n' + recent + '\n\n' : '') + 'Current element' + (implicit ? ' (not selected — the page built last)' : ' (selected)') + ': ' + JSON.stringify(target ? (target.scene ? { name: target.name, type: '3D scene', scene: target.scene } : { name: target.name, code: pageParts ? numbered(pageParts) : slimCode }) : null) + '\nOther elements: ' + JSON.stringify(items.map(x => ({ name: x.name }))) + (pageParts ? '\n' + PATCH_RULES + '\nUse "add" only for a clearly separate new element next to the page.' : target && !custom.ask ? '\nIf the request changes, fixes or restyles anything in the Current element, answer with action "update" and the COMPLETE updated element. Use "add" only for a clearly separate new block.' : '') + '\nRequest: ' + (custom.ask || request) + (isGameUI(custom.ask || request) ? '' : cineRef(custom.ask || request)) + (appMode && !target?.app ? appReference(custom.ask || request) : '') + (!target && !appMode && SWARM_RE.test(custom.ask || request) ? directionBrief(pickDirection('', custom.ask || request), 'hero') : '') + (custom.extra || ''));
   // web: pages linked in the request are read up front; the model can ask for a search (action "search")
   let webNote = '', searches = 0;
   const webGet = async qs => { const r = await fetch('/api/web?' + qs); if (!r.ok) throw Error((await r.json().catch(() => ({})))?.error?.message || 'HTTP ' + r.status); return r.json(); };
@@ -2234,7 +2255,7 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
     let result, prepared = false;
     // A new cinematic / 3D SITE: the page is assembled from the hand-made cinematic sections (cine-template.js);
     // the model only writes the content as JSON — small free models can't reach that polish on their own.
-    const cineMode = !appMode && !custom.user && !custom.ask && !custom.images?.length && (!target || implicit) && !!cineRef(request)
+    const cineMode = !appMode && !custom.user && !custom.ask && !custom.images?.length && (!target || implicit) && !isGameUI(request) && !!cineRef(request)
       && /сайт|site|page|страниц|лендинг|landing|портфолио|portfolio|главн/i.test(request);
     if (cineMode) {
       stop.step('writing the content for a cinematic 3D site');
@@ -2249,7 +2270,7 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
       // no usable content twice: the site is built the ordinary way, in one answer
       if (!data) { stop.step('the cinematic content came out garbled — building the site in one go'); result = await getResult(); }
       else { artHue = Number.isFinite(+data.hue) ? +data.hue : 220; result = { action: 'add', full: true, name: String(data.brand || 'Cinematic site').slice(0, 60) + ' · 3D site', code: cinePage(data), reply: String(data.reply || '') }; }
-    } else if (!appMode && !custom.user && !custom.ask && !custom.images?.length && !variantsOn && (!target || custom.swarm || (implicit && SWARM_NEW.test(request)) || (SWARM_MAKE.test(request) && !isPage(target))) && (custom.swarm || SWARM_RE.test(request)) && (result = await buildSwarm({ p, key, m, request, recent, system, stop, facts: webNote }))) {
+    } else if (!appMode && !custom.user && !custom.ask && !custom.images?.length && !variantsOn && (!target || custom.swarm || (implicit && SWARM_NEW.test(request)) || (SWARM_MAKE.test(request) && !isPage(target))) && (custom.swarm || (SWARM_RE.test(request) && !isGameUI(request))) && (result = await buildSwarm({ p, key, m, request, recent, system, stop, facts: webNote }))) {
       // a new page built by parallel agents (planner + one agent per section, see buildSwarm)
     } else if (variantsOn && !appMode && !custom.user && !custom.ask && !custom.images?.length) {
       stop.step('making 3 different variants');
@@ -2305,6 +2326,8 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
     const full = result.full === true || result.full === 'true';
     if (!prepared) {
       // cinematic pages: stock photos break the mood whatever the model was told → drawn art / neon light instead
+      // a site about a game: stock photos of real people (soldiers for a parkour game…) → drawn game art instead
+      if (!cineRef(custom.ask || request) && /roblox|роблокс|\bgame\b|игр[аыуе]\b|игров/i.test(custom.ask || request)) result.code = result.code.replace(/(["'(]\s*)photo:([^"'()<>\n?]{1,80})(\?\w+)?/g, (_, q, what) => `${q}art:${what.trim()}, stylized 3d video game render, bright colors, blocky characters`);
       if (cineRef(custom.ask || request)) result.code = result.code.replace(/(["'(]\s*)photo:([^"'()<>\n?]{1,80})(\?\w+)?/g, (_, q, what) => `${q}art:${what.trim()}, cinematic 3d render, dark background, volumetric neon light`);
       result.code = await resolveMedia(result.code, custom.attachments || [], qs => stop.step('finding photos: ' + qs.slice(0, 4).join(', ') + (qs.length > 4 ? '…' : '')), kept, qs => stop.step('drawing 3D art: ' + qs.map(q => q.slice(0, 40)).join(' · ')), qs => stop.step('rendering 3D objects: ' + qs.slice(0, 4).join(' · ')));
       artHue = 220;
@@ -2312,13 +2335,20 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
       if (full && !appMode) result.code = withMotion(result.code);
     }
     if (result.action !== 'update' && target && !target.scene && !custom.place && isRewriteOf(target.code, result.code)) result.action = 'update';
+    // permissions (opencode-style allow / ask / deny): scripts → sandboxed app, Google Fonts, big rewrites
+    {
+      const old = result.action === 'update' && target ? items.find(x => x.id === target.id)?.code || '' : '';
+      const g = await gate(result.code, { appMode, oldCode: old, request: custom.ask || request });
+      if (g.skip) { await stop.finish('kept as it was'); setState('ready'); message(t('Kept the page as it was. Ask for a smaller change, or allow big rewrites in AI keys → AI permissions.'), 'assistant'); return; }
+      result.code = g.code; if (g.app) result.app = true;
+    }
     if (result.action === 'update' && target) {
       const item = items.find(x => x.id === target.id); if (!item) throw Error('The element was deleted during the request');
       checkpoint(); item.name = String(result.name || item.name).slice(0, 80); item.code = result.code;
-      if (appMode && /<script\b/i.test(result.code)) item.app = true;
+      if ((appMode || result.app) && /<script\b/i.test(result.code)) item.app = true;
       if (full) { item.full = true; item.x = 0; }
       selected = item.id; lastAiId = item.id; render();
-    } else { add(String(result.name || 'New element').slice(0, 80), result.code, { full, ...(appMode && /<script\b/i.test(result.code) ? { app: true } : {}), ...(custom.place || {}) }); lastAiId = selected; }
+    } else { add(String(result.name || 'New element').slice(0, 80), result.code, { full, ...((appMode || result.app) && /<script\b/i.test(result.code) ? { app: true } : {}), ...(custom.place || {}) }); lastAiId = selected; }
     await stop.finish(result.action === 'update' && target ? 'updated on the canvas' : 'placed on the canvas'); setState('element ready', 'ok');
     message(String(result.reply || 'Done. The element is on the page.'), 'assistant'); logChat('assistant', result.reply || 'Done. The element is on the page.'); $('prompt').value = ''; window.dispatchEvent(new CustomEvent('oc:generated'));
     // on the canvas clicks go to selecting and moving, not into the page: say once how to try the switches
@@ -2327,7 +2357,7 @@ ${brandRules()}- Today is ${new Date().toISOString().slice(0, 10)}: the current 
     // eyes: once the answer is drawn, look for overlapping parts and send them back to the model once (layout-check.js)
     if (!appMode && !custom.layoutFix && !custom.user && lastAiId) { const id = lastAiId; setTimeout(() => layoutQA(id), 0); }
     if (p.kind === 'proxy' && !authUser && !nudged) signupNudge('first');
-    else if (!custom.targetId) suggestNext();
+    else if (!custom.targetId) suggestNext(isGameUI(custom.ask || request));
   } catch (e) {
     stop();
     if (cancel.signal.aborted) { setState('stopped'); $('chatStatus').textContent = ''; message('Stopped. The canvas stays as it was.', 'assistant'); return; }
@@ -2515,3 +2545,6 @@ async function connectFromRedirect(){
     toast(t('OpenRouter connected: its models are in the list under the chat'));
   } catch (err) { toast(String(err.message || err), 'error'); }
 }
+
+// AI permissions (allow / ask / deny) live at the top of the AI keys dialog
+document.querySelector('#settings .prov-bar')?.before(permsSection());

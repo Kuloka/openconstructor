@@ -10,6 +10,9 @@ import {t} from '../i18n.js';
 import {IconUsersGroup,IconSparkles,IconCode,IconLayoutColumns,IconPalette,IconDeviceMobile,IconPencil,IconTool,IconCube,IconChevronRight} from '@tabler/icons-react';
 const SLASH_ICONS={agents:IconUsersGroup,new:IconSparkles,app:IconCode,x3:IconLayoutColumns,polish:IconPalette,mobile:IconDeviceMobile,copy:IconPencil,fix:IconTool,'3d':IconCube};
 import '../inline-edit.js';
+import '../select-edit.js';
+import '../app-db.js';
+import '../github-star.js';
 import '../publish.js';
 import '../remix.js';
 import '../versions.js';
@@ -27,6 +30,7 @@ import '../modes.js';
 import '../thinking-cursor.js';
 import Welcome from './Welcome';
 import {langSelect} from '../i18n.js';
+import '../opencode.css';
 
 document.getElementById('sbLang')?.append(langSelect('lang-select'));
 import('../ui-theme.js');

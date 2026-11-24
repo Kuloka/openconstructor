@@ -117,6 +117,116 @@ scenario('part edit: only the picked part changes, Ctrl+Z restores', async (ed, 
   assert.equal((await ed.items())[0].code, before.code);
 });
 
+scenario('select mode: hover outlines a part, click pins it, the prompt changes only that part', async (ed, o) => {
+  o.reply = () => '```html\n<span class="ocx-new">PICKED</span>\n```';
+  await ed.ev(`(document.querySelector('[data-add]').click(), 1)`); await sleep(800);
+  const [before] = await ed.items();
+  await ed.ev(`(document.getElementById('selectToggle').click(), 1)`);
+  assert.equal(await ed.ev(`document.getElementById('canvas').classList.contains('selecting')`), true);
+  // the point of the first real element inside the block, in screen coordinates
+  const pt = await ed.ev(`(() => { const f = document.querySelector('.node iframe'), d = f.contentDocument, el = d.getElementById('__root').querySelector('*:not(style)'), fr = f.getBoundingClientRect(), k = fr.width / f.offsetWidth, r = el.getBoundingClientRect(); return { x: fr.left + (r.left + Math.min(6, r.width / 2)) * k, y: fr.top + (r.top + Math.min(6, r.height / 2)) * k }; })()`);
+  await ed.ev(`(document.querySelector('.node').dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: ${pt.x}, clientY: ${pt.y} })), 1)`); await sleep(120);
+  assert.ok(await ed.ev(`!document.querySelector('.sel-box.hover').classList.contains('hidden') && document.querySelector('.sel-label').textContent.length > 0`), 'hover outline + tag');
+  await ed.ev(`(document.querySelector('.node').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: ${pt.x}, clientY: ${pt.y} })), 1)`); await sleep(150);
+  assert.ok(await ed.ev(`!document.querySelector('.sel-pop').classList.contains('hidden')`), 'the prompt opens');
+  assert.deepEqual(await ed.items(), [before], 'a click in select mode does not move the block');
+  await ed.ev(`(document.getElementById('selAsk').value = 'change it', document.querySelector('.sel-pop').requestSubmit(), 1)`);
+  await ed.until(`JSON.parse(localStorage.getItem('form-canvas-v3'))[0].code.includes('PICKED')`);
+  const [after] = await ed.items();
+  assert.ok(!after.code.includes('data-oc-target'));
+  assert.ok(after.code.length > 40 && after.code !== before.code);
+  await ed.ev(`(document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })), 1)`);
+  assert.equal(await ed.ev(`document.getElementById('canvas').classList.contains('selecting')`), false);
+});
+
+scenario('permissions: a script asks first, "allow once" runs it as a sandboxed app', async (ed, o) => {
+  o.reply = () => block('Counter', '<style>.ct{padding:20px;background:#111;color:#fff}</style><div class="ct"><b class="ct-n">0</b><button class="ct-b">+1</button></div><script>(() => { const r = document.querySelector(".ct"); r.querySelector(".ct-b").addEventListener("click", () => { const n = r.querySelector(".ct-n"); n.textContent = +n.textContent + 1; }); })();</script>');
+  await ed.ask('a counter');
+  assert.ok(await ed.until(`!!document.querySelector('.perm-ask[data-perm="scripts"]')`), 'the ask card shows');
+  await ed.ev(`(document.querySelector('.perm-ask [data-p="once"]').click(), 1)`); await ed.idle(); await sleep(400);
+  const [it] = await ed.items();
+  assert.equal(it.app, true, 'runs as a sandboxed app');
+  assert.match(it.code, /<script>/);
+  assert.equal(await ed.ev(`localStorage.getItem('oc-perms')`), null, '"once" does not change the rule');
+});
+
+scenario('permissions: scripts denied are stripped, Google Fonts allowed by default stay', async (ed, o) => {
+  await ed.ev(`(localStorage.setItem('oc-perms', JSON.stringify({ scripts: 'deny' })), 1)`);
+  o.reply = () => block('Card', `<style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');.cd{padding:20px;background:#111;color:#fff;font-family:Inter,system-ui}</style><div class="cd" onclick="x()">Hi</div><script>alert(1)</script>`);
+  await ed.ask('a card'); await ed.idle(); await sleep(400);
+  const [it] = await ed.items();
+  assert.ok(!/<script|onclick/i.test(it.code), 'no script left');
+  assert.ok(!it.app);
+  assert.match(it.code, /fonts\.googleapis\.com/);
+  assert.equal(await ed.ev(`!!document.querySelector('.perm-ask')`), false, 'nothing was asked');
+  assert.match(JSON.parse(ed.posts.at(-1)).messages[0].content, /No JavaScript\./, 'the prompt says no scripts');
+});
+
+scenario('permissions: a big rewrite asks, "no" keeps the page', async (ed, o) => {
+  const words = Array.from({ length: 200 }, (_, i) => 'oldword' + i).join(' ');
+  const last = p => { try { return JSON.parse(p).messages.filter(m => m.role === 'user').pop()?.content || ''; } catch { return ''; } };
+  o.reply = p => !String(JSON.stringify(last(p))).includes('replace the text') ? block('Page', `<section style="padding:40px;background:#fff;color:#111"><p>${words}</p></section>`, { full: true }) : block('Page', `<section style="padding:40px;background:#fff;color:#111"><p>${Array.from({ length: 200 }, (_, i) => 'newword' + i).join(' ')}</p></section>`, { action: 'update', full: true });
+  await ed.ask('a page'); await ed.idle(); await sleep(400);
+  const [before] = await ed.items();
+  await ed.ask('replace the text');
+  assert.ok(await ed.until(`!!document.querySelector('.perm-ask[data-perm="rewrite"]')`), 'asked about the rewrite');
+  await ed.ev(`(document.querySelector('.perm-ask [data-p="no"]').click(), 1)`); await ed.idle(); await sleep(400);
+  assert.equal((await ed.items())[0].code, before.code);
+});
+
+scenario('permissions: the rules live in the AI keys dialog', async (ed) => {
+  await ed.ev(`(document.getElementById('settingsButton').click(), 1)`); await sleep(300);
+  await ed.ev(`(document.querySelector('#aiPerms [data-perm="fonts"][data-v="deny"]').click(), 1)`);
+  assert.equal(await ed.ev(`JSON.parse(localStorage.getItem('oc-perms')).fonts`), 'deny');
+  assert.equal(await ed.ev(`document.querySelector('#aiPerms [data-perm="fonts"][data-v="deny"]').getAttribute('aria-checked')`), 'true');
+});
+
+scenario('app data: an app saves with oc.db on the canvas, App data shows the records, private ones marked', async (ed, o) => {
+  await ed.ev(`(localStorage.setItem('oc-perms', JSON.stringify({ scripts: 'allow' })), 1)`);
+  o.reply = () => block('Guestbook', '<style>.gb{padding:20px;background:#111;color:#fff}</style><div class="gb"><b class="gb-n">…</b></div><script>(async () => { const r = document.querySelector(".gb"); try { await oc.db.add("guests", { name: "Ann" }); await oc.db.add("orders", { email: "a@b.c" }, { private: true }); const rows = await oc.db.list("guests"); const hidden = await oc.db.list("orders"); r.querySelector(".gb-n").textContent = "count:" + rows.length; await new Promise(f => setTimeout(f, 50)); await oc.db.add("seen", { guests: rows.length, orders: hidden.length }); } catch (e) { r.querySelector(".gb-n").textContent = "error:" + e.message; } })();</script>');
+  await ed.ask('a guestbook'); await ed.idle();
+  assert.ok(await ed.until(`(JSON.parse(localStorage.getItem('oc-appdata') || '{}').seen || []).length === 1`), 'records saved in this browser');
+  const db = await ed.ev(`JSON.parse(localStorage.getItem('oc-appdata'))`);
+  assert.equal(db.guests[0].data.name, 'Ann');
+  assert.equal(db.orders[0].private, true);
+  await ed.ev(`(document.getElementById('appDataBtn').click(), 1)`); await sleep(300);
+  assert.match(await ed.ev(`document.querySelector('#appData .ad-body').textContent`), /guests[\s\S]*Ann/);
+  assert.equal(await ed.ev(`document.querySelectorAll('#appData tr.is-private').length`), 1);
+  // what the app itself got back from oc.db.list: its guest, but never the private order
+  assert.deepEqual(db.seen[0].data, { guests: 1, orders: 0 }, 'private records are never listed');
+});
+
+scenario('game UI: "a shop for Roblox UI" builds an in-game panel with a free hand, without website rules', async (ed, o) => {
+  o.reply = () => block('Shop', '<style>.sh{padding:20px;background:#1d4ed8;color:#fff;border:4px solid #0b1d5c;border-radius:16px}</style><div class="sh"><b>SHOP</b></div>');
+  await ed.ask('крутой магазин для UI в роблокс'); await ed.idle(); await sleep(300);
+  assert.equal(ed.posts.length, 1, 'one answer — no website planner and section agents');
+  const body = JSON.parse(ed.posts[0]);
+  assert.match(body.messages[0].content, /GAME UI: this request is an interface INSIDE a game/);
+  const sys = body.messages[0].content;
+  assert.match(sys, /lead UI artist of a front-page Roblox game/, 'the AI picks the style itself');
+  assert.doesNotMatch(sys, /Real photos make pages|Craft like a senior product designer|Motion \(by default/, 'no website rules');
+  assert.doesNotMatch(JSON.stringify(body.messages.at(-1)), /gsp-/, 'no catalog sample to copy');
+  assert.match(await ed.ev(`[...document.querySelectorAll('.msg-next button')].map(b => b.textContent).join(' ')`), /Inventory/, 'next: game screens, not website sections');
+  const [it] = await ed.items();
+  assert.equal(it.name, 'Shop');
+  assert.ok(!it.full, 'a panel, not a full-width page');
+});
+
+scenario('GitHub star: a button in the top bar, one quiet ask after a few good generations, never over another notice', async (ed, o) => {
+  o.reply = () => block('Card', '<div style="padding:20px;background:#111;color:#fff">Hi</div>');
+  assert.match(await ed.ev(`document.querySelector('.tb-right .gh-star')?.href || ''`), /github\.com\/Kuloka\/openconstructor/);
+  for (let i = 0; i < 4; i++) {
+    await ed.ask('card ' + i); await ed.idle(); await sleep(400);
+    assert.ok(!(await ed.ev(`!!document.querySelector('.star-ask') && !!document.querySelector('.local-nudge')`)), 'never two notices at once');
+    await ed.ev(`(document.querySelector('.local-nudge [data-nudge-x]')?.click(), 1)`);
+  }
+  assert.ok(await ed.until(`!!document.querySelector('.star-ask')`, 6000), 'asked once the screen is free');
+  await ed.ev(`(document.querySelector('.star-ask [data-later]').click(), 1)`);
+  assert.equal(await ed.ev(`localStorage.getItem('oc-star-asked')`), '1');
+  await ed.ask('card again'); await ed.idle(); await sleep(3500);
+  assert.equal(await ed.ev(`!!document.querySelector('.star-ask')`), false, 'never asked twice');
+});
+
 scenario('page: "add next" chips and dark version', async (ed, o) => {
   o.reply = p => p.includes('RECOLOR') ? block('Dark', '<section style="padding:40px;background:#0b0b0f;color:#eee">x</section>', { action: 'update', full: true }) : block('Hero', '<section style="padding:40px;background:#fff;color:#111"><h1>Hi</h1></section>', { full: true });
   await ed.ask('landing page'); await ed.idle();

@@ -4,10 +4,32 @@
 // so an app can't read openconstructor.pw cookies or storage and can't send data anywhere.
 // Published pages that contain an app get the same rules from worker.js (APP_HEADERS).
 
-export const APP_CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:">`;
+export const APP_CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline' https://fonts.googleapis.com; img-src data: blob:; font-src data: https://fonts.gstatic.com; media-src data: blob:">`;
 
 // localStorage throws on an opaque origin: give apps an in-memory stand-in so they don't crash
-export const APP_SHIM = `<script>(function(){try{localStorage.getItem('oc')}catch(e){var m={},s={getItem:function(k){return Object.prototype.hasOwnProperty.call(m,k)?m[k]:null},setItem:function(k,v){m[k]=String(v)},removeItem:function(k){delete m[k]},clear:function(){m={}},key:function(i){return Object.keys(m)[i]||null},get length(){return Object.keys(m).length}};['localStorage','sessionStorage'].forEach(function(n){try{Object.defineProperty(window,n,{value:s,configurable:true})}catch(x){}})}})();</script>`;
+const STORAGE_SHIM = `<script>(function(){try{localStorage.getItem('oc')}catch(e){var m={},s={getItem:function(k){return Object.prototype.hasOwnProperty.call(m,k)?m[k]:null},setItem:function(k,v){m[k]=String(v)},removeItem:function(k){delete m[k]},clear:function(){m={}},key:function(i){return Object.keys(m)[i]||null},get length(){return Object.keys(m).length}};['localStorage','sessionStorage'].forEach(function(n){try{Object.defineProperty(window,n,{value:s,configurable:true})}catch(x){}})}})();</script>`;
+
+// oc.db — the one network door an app has: save and read records.
+//   published page (<meta name="oc-slug"> from worker.js) → https://openconstructor.pw/api/db/<slug> (Supabase, supabase/appdata.sql)
+//   inside the editor (canvas, Code preview, device preview) → postMessage to the editor, kept in this browser (app-db.js)
+//   an exported file opened on its own → kept in this browser (localStorage, or memory)
+// oc.db.add(collection, object, { private }) → { id, data, created_at };  oc.db.list(collection, { limit }) → newest first.
+export const APP_DB = `<script>(function(){var HOME='https://openconstructor.pw',n=0,wait={},mem={};
+function slug(){var m=document.querySelector('meta[name="oc-slug"]');return m&&m.content}
+function col(c){c=String(c||'').toLowerCase();if(!/^[a-z0-9_-]{1,40}$/.test(c))throw Error('oc.db: a collection name is 1-40 of a-z, 0-9, _ or -');return c}
+function clean(d){if(!d||typeof d!=='object'||Array.isArray(d))throw Error('oc.db: a record must be an object');var s=JSON.stringify(d);if(s.length>7000)throw Error('oc.db: one record is limited to 7 KB');return JSON.parse(s)}
+addEventListener('message',function(e){var m=e.data;if(!m||!m.ocDbReply||!wait[m.id])return;var w=wait[m.id];delete wait[m.id];if(m.error)w[1](Error(m.error));else w[0](m.result)});
+function local(op,a){var all;try{all=JSON.parse(localStorage.getItem('oc-db')||'{}')}catch(e){all=mem}var list=all[a.col]||(all[a.col]=[]);
+if(op==='add'){var row={id:Date.now()+''+Math.floor(Math.random()*1e3),data:a.data,created_at:new Date().toISOString(),private:a.private};list.unshift(row);list.length=Math.min(list.length,500);try{localStorage.setItem('oc-db',JSON.stringify(all))}catch(e){mem=all}return{id:row.id,data:a.private?{}:row.data,created_at:row.created_at}}
+return list.filter(function(r){return!r.private}).slice(0,a.limit).map(function(r){return{id:r.id,data:r.data,created_at:r.created_at}})}
+function editor(op,a){return new Promise(function(ok,no){var id=++n+'';wait[id]=[ok,no];parent.postMessage({ocDb:1,id:id,op:op,col:a.col,data:a.data,private:a.private,limit:a.limit},'*');setTimeout(function(){if(wait[id]){delete wait[id];no(Error('oc.db: the editor did not answer'))}},8000)})}
+function net(op,a){var u=HOME+'/api/db/'+encodeURIComponent(slug());var r=op==='add'?fetch(u,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({c:a.col,data:a.data,private:a.private})}):fetch(u+'?c='+a.col+'&limit='+a.limit);
+return r.then(function(res){return res.json().then(function(j){if(!res.ok)throw Error('oc.db: '+(j&&j.error&&j.error.message||res.status));return op==='add'?j.row:j.rows})})}
+function run(op,a){return slug()?net(op,a):parent!==window?editor(op,a):Promise.resolve(local(op,a))}
+window.oc=window.oc||{};window.oc.db={
+add:function(c,d,o){return Promise.resolve().then(function(){return run('add',{col:col(c),data:clean(d),private:!!(o&&o.private)})})},
+list:function(c,o){return Promise.resolve().then(function(){return run('list',{col:col(c),limit:Math.max(1,Math.min(200,+(o&&o.limit)||50))})})}};})();</script>`;
+export const APP_SHIM = STORAGE_SHIM + APP_DB;
 
 // Script errors are reported to the editor. This sits in <head>: the app's own script runs before anything placed after it.
 // Also reports "silent" bugs: NaN / undefined / [object Object] showing up on screen after the app renders or a click.
@@ -58,6 +80,13 @@ export const APP_RULES = `- APP MODE: build a WORKING mini-app, not a static moc
     – numbers from inputs: parseFloat(String(v).replace(',', '.')), then guard NaN, empty input and division by zero — show a readable message in the UI, never NaN, undefined or Infinity;
     – calculators: keep the current value, the previous value and the pending operator in state and compute in a function; round results to 10 significant digits; support chained operations, one decimal point, clear, backspace, percent, sign change and the keyboard (digits, operators, Enter, Backspace, Escape);
     – text typed by the user goes in with textContent, never glued into innerHTML;
+  · Saving and sharing data — \`oc.db\` is the ONLY network access an app has (fetch to anything else is blocked):
+    – \`await oc.db.add('scores', { name, score })\` saves a record; \`await oc.db.list('scores', { limit: 20 })\` returns the newest public records as [{ id, data, created_at }];
+    – use it when data must be shared between visitors or kept after publishing: guestbooks, comments, leaderboards, polls and votes (count the records), sign-ups, waitlists, simple boards;
+    – personal data (orders, contact details, applications): \`oc.db.add('orders', data, { private: true })\` — visitors can never read those back, only the page author;
+    – a visitor's own state (settings, drafts, progress) stays in localStorage;
+    – it is async and can fail: show a loading state, wrap calls in try/catch and show a short readable message on error; after add, re-list or put the record into state;
+    – collection names: lowercase a-z, 0-9, _ or -; one record at most 7 KB; at most one write per second per visitor.
     – save data in localStorage under one unique key inside try/catch and load it at start;
     – plain modern JavaScript: const/let, arrow functions, ===, semicolons. No frameworks, imports, external files, CDNs; no fetch/XHR/WebSocket (the network is blocked); no alert/confirm/prompt (blocked) — messages and confirmations are shown inside the UI;
     – finish everything: no TODOs, no "…" placeholders, no empty handlers, every button does its job. Before you end, check that every { ( [ and quote is closed and that the answer ends with })(); </script> and the closing \`\`\`.

@@ -6,31 +6,47 @@
 
 <p align="center"><a href="https://openconstructor.pw"><b>openconstructor.pw</b></a> — try it live</p>
 
-<p align="center"><a href="https://openconstructor.pw/roblox-ui-builder">Roblox UI builder</a> · <a href="https://openconstructor.pw/ai-ui-generator">AI UI generator</a> · <a href="https://openconstructor.pw/components">320+ components</a> · <a href="https://openconstructor.pw/html-to-react-vue-svelte">HTML to React / Vue / Svelte</a> · <a href="https://openconstructor.pw/love2d-ui">LÖVE 2D UI</a> · <a href="https://openconstructor.pw/gallery">Gallery</a></p>
+<p align="center"><a href="https://github.com/Kuloka/openconstructor/stargazers"><img src="https://img.shields.io/github/stars/Kuloka/openconstructor?style=social" alt="GitHub stars"></a> <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a></p>
+
+<p align="center">If openconstructor saves you time, a ⭐ helps other people find it.</p>
+
+<p align="center"><a href="https://openconstructor.pw/roblox-ui-builder">Roblox UI builder</a> · <a href="https://openconstructor.pw/ai-ui-generator">AI UI generator</a> · <a href="https://openconstructor.pw/components">500+ components</a> · <a href="https://openconstructor.pw/html-to-react-vue-svelte">HTML to React / Vue / Svelte</a> · <a href="https://openconstructor.pw/love2d-ui">LÖVE 2D UI</a> · <a href="https://openconstructor.pw/gallery">Gallery</a></p>
+
+<p align="center"><img src="promo/roblox-export.gif" width="760" alt="Game UI from the catalog on a 1280×720 screen, a part restyled with Select, exported to Roblox Luau"></p>
 
 ---
 
-Drop ready-made components onto one shared canvas, move them around freely, and ask an AI model to build or change anything on the page. When you're done, export a single self-contained HTML file.
+Describe a page, an app or a game UI, and AI builds it on a canvas. Change any part by clicking it, then export plain HTML, React / Vue / Svelte, or real Roblox GUI instances. It runs in the browser, it's free, and the AI works without a key.
 
 ## Features
 
-- **Component catalog** — 320+ components in 13 sections (AI & Chat, Dashboard, Commerce, Auth, Landing…), all plain HTML + CSS. Animated ones play on hover.
-- **Free-form canvas** — drag, pan, zoom, desktop / laptop / tablet / phone sizes.
-- **Background editor** — solid, linear, radial and mesh gradients, dot / grid / line / noise patterns, or raw CSS.
-- **⚗ Fusion** — right-click an element → *fuse with…* → click another: the AI breeds a new component that does the first one's job in the second one's visual style.
-- **AI assistant** — 20 free generations a day when signed in (GPT-OSS 120B via a small server proxy), or bring your own key for OpenRouter, Google Gemini, Groq, Cerebras, Mistral, DeepSeek, OpenAI, Anthropic, xAI or Together — those keys stay in your browser and go only to the provider you choose. Paste a screenshot to rebuild it with a vision model.
-- **Real photos & attachments** — the AI fills sites with stock photos (CC0, found by what should be in the picture) instead of grey boxes; press **+** or paste/drop to attach your logo, product photos or a text file to a request.
-- **3D models** — ask for a 3D object or scene: the AI describes it as data (shapes, materials, lights, motion) and a built-in Three.js renderer draws it — animated on the canvas, orbit it in ▶ play, download it as **.glb** for Blender, Unity, Godot or Roblox Studio.
-- **Edit without code** — double-click to edit text in place, restyle any part, swap in your own image, tune every animation (speed, direction, repeats).
-- **Multi-select** — Shift-click or Shift-drag a box, move together, align & distribute; smart guides while dragging.
-- **Screens & prototypes** — menu → shop → inventory: several screens in one project, link any button to `#screen` and it opens that screen in ▶ play, in the published page and in the Roblox export.
-- **Roblox Studio sync** ([guide](https://openconstructor.pw/roblox-ui-builder)) — install the [plugin](public/roblox/openconstructor-sync.lua), press *Export → Sync to Roblox Studio*, paste the code in Studio: the UI lands in StarterGui with named buttons. *Live* mode re-syncs on every change, and your own button scripts are kept.
-- **Game UI for Roblox** — 25 HUD components and 5 full screens (simulator, tycoon shop, shooter, obby, mobile RPG), Roblox safe-zone overlay, any page size from all four edges.
-- **Publish & share** — one-click public link, community gallery with **remix**, embed code, cloud projects, version history.
-- **VS Code–style layout** — resizable, movable, collapsible panels.
-- **Safe previews** — every element renders in a sandboxed iframe with scripts and network requests disabled.
-- **Export anywhere** — HTML, React, Vue, Svelte, plus **Roblox** (Luau LocalScript in pixel or scale mode, or a drag-and-drop **.rbxmx model** with named buttons and click handlers) and **LÖVE 2D (Lua)**: the rendered layout is converted into native UI code. AI-assisted ports to Flutter, SwiftUI, Jetpack Compose and Tailwind.
-- Optional sign-in with Google, GitHub or email (Supabase).
+**Build with AI**
+- **AI assistant** — free out of the box: 3 generations a day without an account, 20 when signed in. Or connect your own key: OpenRouter in one click, and 120+ providers (Anthropic, OpenAI, Gemini, Groq, DeepSeek, Mistral…), some of them with no key at all. Keys stay in your browser.
+- **Agent team** — a page is planned by an "architect" and built section by section in parallel. The studio checks the result for overlapping parts and sends them back to fix, and looks things up on the web before writing about anything current.
+- **Select & edit** — press **Select** (or `V`), click any part of the page and say what to change: only that part is rewritten. Or open its styles and tweak colors, size, spacing, images and animations by hand.
+- **AI permissions** (like opencode) — allow / ask / deny for JavaScript on pages, Google Fonts and big rewrites. "Ask" shows a question in the chat: allow once, always, or no.
+- **Paste a screenshot** to rebuild it, or attach your logo, photos and text files to a request. Sites get real photos instead of grey boxes.
+- **3D** — live 3D objects on pages (chrome, glass, gold…) and full 3D scenes you can download as **.glb**.
+
+**Apps with data**
+- **Mini-apps** — calculators, quizzes, trackers, small games with working JavaScript, in a sandbox without network.
+- **`oc.db`** — apps can save and read records: guestbooks, leaderboards, polls, waitlists, orders (`{ private: true }` — only the author can read those). In the editor the data stays in your browser; on a published page it goes to Supabase. See them in **App data**.
+- **Code workspace** — files, live preview, console, and errors sent to the AI to fix automatically.
+
+**Roblox**
+- **Game UI** — 25 HUD components (shop, hotbar, inventory, health bar, daily rewards…) and 5 full screens, a Roblox safe-zone overlay, every phone and screen size.
+- **Export to Studio** — a Luau LocalScript (pixel or scale mode: `UDim2.fromScale`, `TextScaled`, `UIAspectRatioConstraint`), or a drag-and-drop **.rbxmx** model with named buttons and click handlers. You get real Frames, TextLabels, TextButtons, UICorner, UIStroke and UIGradient.
+- **Studio sync** ([guide](https://openconstructor.pw/roblox-ui-builder)) — install the [plugin](public/roblox/openconstructor-sync.lua), press *Export → Sync to Roblox Studio* and paste the code: the UI lands in StarterGui. *Live* mode re-syncs on every change and keeps your edited button scripts.
+
+**Canvas and export**
+- **Component catalog** — 500+ components in 14 sections, all plain HTML + CSS.
+- **Free-form canvas** — drag, pan, zoom, multi-select, align and distribute, smart guides. Screens & prototypes: link a button to `#screen`.
+- **Publish & share** — a public link in one click, your own domain, forms that e-mail you, a community gallery with remix, version history.
+- **Export anywhere** — HTML, static site .zip, Vite + React project, React, Vue, Svelte, Roblox, LÖVE 2D. AI-assisted ports to Flutter, SwiftUI, Jetpack Compose and Tailwind.
+- **Plain Chat mode** — a regular chat with any connected model, with web search.
+
+**Safe by design**
+- Every element renders in a sandboxed iframe. Pages have no scripts; apps run scripts on an opaque origin with one network door only — `oc.db` to `/api/db/`.
 
 ## Quick start
 
@@ -43,7 +59,9 @@ npm run dev
 
 Open http://127.0.0.1:5173. Press `?` in the editor for a quick tour.
 
-To use the AI assistant, click the gear icon and paste a key from any supported provider. Google Gemini and Groq are the quickest to set up.
+The built-in free AI works right away. For more, click the gear icon and connect a provider: OpenRouter signs you in with one click, and Google Gemini and Groq give free keys.
+
+For published apps to save data with `oc.db`, run `supabase/appdata.sql` once in the Supabase SQL editor (see [SETUP.md](SETUP.md)).
 
 ## Configuration (optional)
 
@@ -71,7 +89,7 @@ Vite · vanilla JS editor · React 19 for the welcome screen and chat input · S
 
 ## Contributing
 
-Issues and pull requests are welcome. New catalog components go in `presets*.js`: self-contained HTML + CSS, a unique class prefix, no scripts.
+Issues and pull requests are welcome. New catalog components go in `presets*.js`: self-contained HTML + CSS, a unique class prefix, no scripts. Before a PR, run `npm test` (unit) and `npm run test:e2e` (headless Chrome, the AI is faked).
 
 ## License
 

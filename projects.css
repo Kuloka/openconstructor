@@ -46,4 +46,4 @@
 .local-nudge > i { margin-top: 5px; }
 .local-nudge b { display: block; margin-bottom: 2px; font-weight: 600; }
 .local-nudge-row { display: flex; gap: 6px; margin-top: 8px; }
-.local-nudge-row .btn { height: 26px; padding: 0 10px; font-size: 12px; }
+.local-nudge-row .btn { width: auto; height: 26px; padding: 0 10px; font-size: 12px; white-space: nowrap; } /* .toast button squeezes every button to 22px (meant for the ×) */

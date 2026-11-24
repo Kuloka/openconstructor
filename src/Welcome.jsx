@@ -10,6 +10,7 @@ import { startChat } from '../chat.js';
 import { pill } from '../pill.js';
 import { startNew } from '../local-projects.js';
 import { openAuth, user as authUser } from '../auth.js';
+import { starButton } from '../github-star.js';
 import { openDonate } from '../donate.js';
 import { track } from '../track.js';
 import { PROVIDERS } from '../providers.js';
@@ -578,6 +579,7 @@ export default function Welcome(){
           {['build', 'code', 'chat'].map(m => <button key={m} onClick={() => close(() => goMode(m, { instant: true }))}><span dangerouslySetInnerHTML={{ __html: ICO(ICONS[m]) }} />{tr(m[0].toUpperCase() + m.slice(1))}</button>)}
         </nav>
         <div className="wl-nav-end">
+          <span className="wl-star" ref={el => { if (el && !el.firstChild) el.append(starButton('in-welcome')); }} />
           <div className="wl-more" ref={moreRef}>
             <button className={'wl-more-btn' + (more ? ' on' : '')} onClick={() => setMore(v => !v)} aria-expanded={more}>{tr('More')}<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
             {more && <div className="wl-more-menu" role="menu">

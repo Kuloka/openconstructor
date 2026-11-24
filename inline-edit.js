@@ -332,4 +332,4 @@ addEventListener('keydown', e => { if (e.key === 'Escape' && session) finish(); 
 addEventListener('resize', () => session && place());
 window.addEventListener('oc:edit-inline', e => start(e.detail));
 
-export const editInline = id => start(id);
+export const editInline = (id, at) => start(id, at);

@@ -1,0 +1,211 @@
+/* ── opencode pass (2026-11-24) ────────────────────────────────────────────────────────────────
+   The editor, Code and Chat in the spirit of opencode.ai: pure neutral greys (no tint), 1px hairlines,
+   small radii (4/6/8), almost no shadow, no glass/blur, mono for the chrome (toolbars, buttons, labels,
+   status bar), sans only where people read (messages, prompt). Lavender stays for the one primary action
+   and the selection. Layout is untouched. Loaded last; `html body` lifts specificity over older layers. */
+:root {
+  --bg: #0c0c0c;
+  --panel: #111111;
+  --panel-2: #161616;
+  --hover: #1f1f1f;
+  --border: #242424;
+  --border-2: #2e2e2e;
+  --text: #fafafa;
+  --text-2: #dbdbdb;
+  --muted: #8f8f8f;
+  --subtle: #6a6a6a;
+  --line: #242424;
+  --line-2: #2e2e2e;
+  --line-3: #4b4b4b;
+  --fill: #161616;
+  --fill-2: #1f1f1f;
+  --r: 6px;
+  --r-sm: 4px;
+  --r-lg: 8px;
+  --shadow-pop: 0 0 0 1px var(--line-2), 0 16px 40px -16px #000e;
+  --mono: "Geist Mono", "JetBrains Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
+  --ui: var(--mono);
+}
+:root[data-ui="light"] {
+  --bg: #fbfbfb; --panel: #ffffff; --panel-2: #f5f5f5; --hover: #eeeeee;
+  --border: #e0e0e0; --border-2: #d2d2d2; --line: #e0e0e0; --line-2: #d2d2d2; --line-3: #888888;
+  --fill: #f5f5f5; --fill-2: #eeeeee;
+  --text: #161616; --text-2: #3a3a3a; --muted: #6b6b6b; --subtle: #888888;
+  --shadow-pop: 0 0 0 1px var(--line-2), 0 16px 40px -18px #0003;
+}
+
+/* ── chrome in mono, lowercase-friendly, 12px ── */
+html body .titlebar .btn, html body .canvas-toolbar .btn, html body .canvas-toolbar .theme-btn, html body .mini-select,
+html body .seg button, html body .scr-tab, html body .scr-add, html body .tab-label, html body .scr-label,
+html body .panel-title, html body .statusbar, html body .artboard-label, html body .node-tag,
+html body .tb-menu button, html body .tb-menu .tb-link, html body .zoom button, html body .msg-next, html body .msg-next button,
+html body .welcome-ideas button, html body .ctx button, html body .oc-modes button, html body .modal-actions .btn, html body .modal-foot .btn {
+  font-family: var(--ui); font-size: 12px; font-weight: 400; letter-spacing: 0; text-transform: none;
+}
+html body .tab-label, html body .scr-label, html body .panel-title { font-size: 11px; color: var(--subtle); letter-spacing: .02em; }
+html body .wordmark { font-family: var(--ui); font-size: 13px; letter-spacing: -.01em; }
+
+/* ── buttons: ghost hairline by default, one flat primary ── */
+html body .btn { border-radius: var(--r); border-color: var(--line-2); box-shadow: none; }
+html body .btn:hover { background: var(--fill-2); border-color: var(--line-3); }
+html body .btn:active { transform: none; }
+html body .btn.primary { box-shadow: none; }
+html body .btn.mini { border-color: transparent; }
+html body .btn.mini:hover { border-color: var(--line-2); background: transparent; }
+html body .btn.mini[aria-pressed="true"] { background: var(--fill-2); border-color: var(--line-3); }
+html body .seg { padding: 0; gap: 0; border: 1px solid var(--line-2); border-radius: var(--r); background: transparent; overflow: hidden; }
+html body .seg button { height: 26px; border-radius: 0; }
+html body .seg button + button { border-left: 1px solid var(--line-2); }
+html body .seg button[aria-checked="true"] { background: var(--fill-2); box-shadow: none; }
+html body .mini-select, html body .zoom { border-radius: var(--r); }
+html body .scr-tab, html body .scr-add { border-radius: var(--r-sm); }
+html body .scr-tab.active { background: transparent; box-shadow: inset 0 -1px 0 var(--text); border-radius: 0; }
+html body .activitybar button { border-radius: var(--r); }
+html body .activitybar button.active { background: transparent; box-shadow: inset 2px 0 0 var(--text); border-radius: 0; }
+
+/* ── top mode switch: a segmented hairline control, not a pill ── */
+html body .oc-modes { padding: 0; gap: 0; border: 1px solid var(--line-2); border-radius: var(--r); background: transparent; overflow: hidden; }
+html body .oc-modes button { height: 28px; padding: 0 12px; border-radius: 0; }
+html body .oc-modes button + button { border-left: 1px solid var(--line-2); }
+html body .oc-modes button:active { transform: none; }
+html body .oc-modes button[aria-pressed="true"], html body .oc-modes.pill button[aria-pressed="true"] { background: var(--fill-2); color: var(--text) !important; box-shadow: none; }
+html body .oc-modes button[aria-pressed="true"] svg, html body .oc-modes.pill .tb-code[aria-pressed="true"] svg { color: var(--text) !important; }
+html body .oc-modes.pill .tb-code[aria-pressed="true"] { color: var(--text) !important; }
+
+/* ── canvas: flatter page, fainter grid ── */
+html body .canvas { background-image: radial-gradient(color-mix(in srgb, var(--text) 7%, transparent) 1px, transparent 1.3px); }
+html body .board, html body .board.light { box-shadow: 0 0 0 1px var(--line-2); }
+html body .node-tag { border-radius: var(--r-sm) var(--r-sm) 0 0; }
+
+/* ── floating AI panel, composer, messages: solid surfaces, 8px, no blur ── */
+html body.chat-float .main > .chat-panel { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); box-shadow: 0 16px 40px -16px #000e; }
+html body .float-composer { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: 0 16px 40px -16px #000e; }
+html body .float-composer:focus-within { border-color: var(--line-3); box-shadow: 0 16px 40px -16px #000e; }
+html body .fc-mini { border-radius: var(--r-lg); }
+html body .message { border-radius: var(--r); }
+html body .message.welcome { border: 1px solid var(--line); border-radius: var(--r); background: transparent; }
+html body .message.user { border: 1px solid var(--line-2); border-radius: var(--r); background: var(--fill); }
+html body .welcome-ideas button { border-radius: var(--r-sm); }
+html body .msg-next button, html body .ag-ideas .chip, html body .mode-chip, html body .slash-state, html body .model-free { border-style: solid; border-radius: var(--r-sm); }
+html body .slash-ic { border-radius: var(--r-sm); }
+
+/* ── menus and dialogs ── */
+html body .ctx { border-radius: var(--r-lg); box-shadow: var(--shadow-pop); }
+html body .ctx button { border-radius: var(--r-sm); }
+html body .modal { backdrop-filter: none; background: #000000b3; }
+html body .modal-card, html body .modal-card.agents-card, html body .agents-card { border: 1px solid var(--line-2); border-radius: var(--r-lg); box-shadow: var(--shadow-pop); }
+html body .field input, html body .field textarea { border-radius: var(--r); }
+html body .field input:focus, html body .field textarea:focus { border-color: var(--line-3); box-shadow: none; }
+html body .ins-panel { border-top: 1px solid var(--line-2); border-radius: var(--r-lg); box-shadow: var(--shadow-pop); }
+html body .sel-pop { border-radius: var(--r-lg); box-shadow: var(--shadow-pop); }
+html body .sel-pop-row input, html body .sel-pop-send { border-radius: var(--r); }
+
+/* ── status bar: terminal line ── */
+html body .statusbar { background: var(--bg); border-top: 1px solid var(--line); color: var(--subtle); font-size: 11px; }
+
+/* ── plain Chat (chat.css): same system ── */
+html body .och-icon, html body .och-new, html body .och-item, html body .och-item-x, html body .och-opt, html body .och-model-btn, html body .och-menu-search { border-radius: var(--r); }
+html body .och-bubble { border-radius: var(--r-lg); background: var(--fill); border: 1px solid var(--line-2); }
+html body .och-compose { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); box-shadow: none; }
+html body .och-send { border-radius: var(--r); }
+html body .och-err { border-radius: var(--r); }
+html body .och-side-h, html body .och-foot, html body .och-model-btn { font-family: var(--ui); font-size: 11.5px; }
+html body .och-menu-g { background: var(--panel); font-family: var(--ui); font-size: 11px; }
+
+/* ── the mode switch thumb (chat.css .pill): a flat grey cell, label stays light ── */
+html body .oc-modes.pill { padding: 0; border-color: var(--line-2); border-radius: var(--r) !important; background: transparent; box-shadow: none; }
+html body .oc-modes.pill > button { border-radius: 0 !important; }
+html body .oc-modes.pill > .pill-thumb { border-radius: 0; background: var(--fill-2) !important; box-shadow: none !important; }
+html body .oc-modes.pill > button[aria-pressed="true"], html body .oc-modes.pill > button[aria-pressed="true"] svg, html body .oc-modes.pill > button[aria-pressed="true"] span { color: var(--text) !important; }
+
+/* reading text stays sans: idea chips and "add next" carry sentences, mono makes Cyrillic sentences clumsy */
+html body .welcome-ideas button, html body .msg-next button, html body .cw-ideas button { font-family: var(--sans); font-size: 12.5px; }
+
+/* ── Code screen (code.css): neutral, lavender only on the publish button; no glows ── */
+html body .cw { --cw-bg: var(--bg); --cw-line: var(--line); --accent-text: var(--text); --accent-dim: var(--fill-2); }
+html body .cw .btn.primary, html body .cw .cw-publish { --accent: #6f60f2; }
+html body .cw-brand b { border-color: var(--line-3); background: transparent; color: var(--muted); font-family: var(--ui); }
+html body .cw-act button[aria-pressed="true"]::before, html body .cw-panel-h [data-ptab][aria-selected="true"], html body .cw-files button[aria-selected="true"], html body .cw-tree button[aria-current="true"] { --accent: var(--text); }
+html body .cw-grip:hover::after, html body .cw-resizing .cw-grip::after { background: var(--line-3); box-shadow: none; }
+html body .cw-sash:hover::after, html body .cw-sash:active::after, html body .cw-sash.h:hover::after, html body .cw-sash.h:active::after { --accent: var(--line-3); }
+html body .cw-err.is-fixing > i { background: var(--text); box-shadow: none; }
+html body .cw-st-brand { background: var(--fill-2); color: var(--text); }
+html body .cw-width:focus-within { border-color: var(--line-3); }
+html body .cw-ideas button:hover { border-color: var(--line-3); transform: none; }
+html body .cw-orb { border-radius: var(--r-lg); }
+html body .cw .float-composer, html body .cw .float-composer:focus-within, html body .cw [class*="composer"]:focus-within { border-color: var(--line-3); box-shadow: none; }
+
+/* the React prompt (agent-composer): neutral focus ring, neutral input surface */
+html body .agent-composer { --an-input-background: var(--panel); --an-input-border-color: var(--line-2); --an-border-radius: var(--r-lg); --an-input-border-radius: var(--r-lg); }
+html body .agent-composer .cursor-text:focus-within { box-shadow: 0 0 0 1px var(--line-3) !important; }
+:root[data-ui="light"] body .agent-composer { --an-input-background: #ffffff; --an-input-border-color: var(--line-2); }
+html body #projectName:focus { box-shadow: 0 0 0 1px var(--line-3); }
+
+/* chat ideas, provider chips: small radius, hairline */
+html body .och-ideas button, html body .es-logo { border-radius: var(--r-sm); border-color: var(--line-2); }
+html body .es-logo { background: transparent; }
+html body .es-logo:hover, html body .och-ideas button:hover { border-color: var(--line-3); background: var(--fill); transform: none; }
+html body .es-logo.on { border-color: var(--text); }
+html body .och-side-note { white-space: normal; }
+
+/* empty canvas: monochrome mark, quiet cards — no lift, no white halo on hover */
+html body .empty-logo { width: 40px; height: 40px; border-radius: var(--r-lg); filter: grayscale(1) brightness(.75) contrast(1.2); }
+html body .empty-card { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: transparent; }
+html body .empty-card:hover { border-color: var(--line-3); background: var(--fill); transform: none; box-shadow: none; }
+html body .empty-card:active { transform: none; }
+html body .empty-card svg { color: var(--muted); }
+html body .empty-card:hover svg { transform: none; color: var(--text); }
+html body .empty-start { border-color: var(--line-2); border-radius: var(--r-lg); background: transparent; }
+
+/* ── AI permissions: settings rows + the "ask" card in the chat ── */
+html body .perms { margin: 4px 0 14px; padding: 12px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+html body .perms-h { margin: 0 0 2px; color: var(--text); font: 500 12px var(--ui); }
+html body .perms-note { margin: 0 0 8px; color: var(--muted); font-size: 12px; }
+html body .perm-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 7px 0; }
+html body .perm-row + .perm-row { border-top: 1px solid var(--line); }
+html body .perm-t { display: grid; gap: 1px; min-width: 0; }
+html body .perm-t b { color: var(--text); font-size: 13px; font-weight: 500; }
+html body .perm-t span { color: var(--muted); font-size: 12px; }
+html body .perm-row .seg { flex-shrink: 0; }
+html body .perm-row .seg button { min-width: 64px; font-family: var(--ui); font-size: 11.5px; }
+html body .message.perm-ask { border: 1px solid var(--line-2); border-left: 2px solid var(--text); border-radius: var(--r); background: var(--fill); }
+html body .perm-q { margin: 0 0 8px; color: var(--text); font-size: 13px; }
+html body .perm-btns { display: flex; flex-wrap: wrap; gap: 6px; color: var(--muted); font: 12px var(--ui); }
+html body .perm-btns .btn { height: 26px; font-size: 12px; }
+html body .perm-ask.answered { border-left-color: var(--line-3); }
+
+/* ── App data window (app-db.js) ── */
+html body .app-data .modal-card { width: min(960px, calc(100vw - 48px)); max-height: calc(100vh - 80px); display: flex; flex-direction: column; }
+html body .ad-bar { display: flex; align-items: center; gap: 8px; margin: 10px 0 12px; }
+html body .ad-body { overflow: auto; min-height: 120px; }
+html body .ad-col + .ad-col { margin-top: 18px; }
+html body .ad-col h3 { display: flex; align-items: baseline; gap: 8px; margin: 0 0 6px; font: 500 12px var(--ui); color: var(--text); }
+html body .ad-col h3 em { color: var(--subtle); font-style: normal; }
+html body .ad-table-wrap { overflow-x: auto; border: 1px solid var(--line-2); border-radius: var(--r); }
+html body .ad-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+html body .ad-table th { position: sticky; top: 0; padding: 6px 10px; background: var(--panel-2); border-bottom: 1px solid var(--line-2); color: var(--muted); font: 400 11.5px var(--ui); text-align: left; white-space: nowrap; }
+html body .ad-table td { max-width: 260px; padding: 6px 10px; border-bottom: 1px solid var(--line); color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html body .ad-table tr:last-child td { border-bottom: 0; }
+html body .ad-table tr:hover td { background: var(--fill); }
+html body .ad-time { color: var(--muted) !important; font: 11.5px var(--ui); }
+html body .ad-badge { margin-left: 4px; padding: 0 5px; border: 1px solid var(--line-3); border-radius: var(--r-sm); color: var(--text); font: 10.5px var(--ui); }
+html body .ad-del { width: 22px; height: 22px; border: 0; border-radius: var(--r-sm); background: none; color: var(--subtle); cursor: pointer; }
+html body .ad-del:hover { background: var(--fill-2); color: var(--text); }
+html body .ad-empty, html body .ad-note { margin: 8px 0; color: var(--muted); font-size: 12.5px; }
+html body .ad-note { font-family: var(--ui); font-size: 11.5px; }
+
+/* ── GitHub star (github-star.js): a quiet button with the count, and the one ask ── */
+html body .gh-star { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: var(--r); color: var(--text-2); font: 12px var(--ui); text-decoration: none; white-space: nowrap; }
+html body .gh-star:hover { border-color: var(--line-3); background: var(--fill-2); color: var(--text); }
+html body .gh-count { padding-left: 7px; border-left: 1px solid var(--line-2); color: var(--muted); font-variant-numeric: tabular-nums; }
+html body .gh-count[hidden] { display: none; }
+html body .wl-star { display: inline-flex; margin-right: 8px; }
+html body .wl-star .gh-star { height: 34px; padding: 0 12px; border-color: #ffffff1f; color: #e8e8e8; font-size: 13px; }
+html body .star-ask { position: fixed; left: 60px; bottom: 40px; z-index: 80; display: grid; gap: 10px; width: min(340px, calc(100vw - 32px)); padding: 14px; border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); box-shadow: var(--shadow-pop); animation: pop-in .18s var(--ease-out, ease-out); }
+html body .star-ask-t { display: grid; gap: 3px; }
+html body .star-ask-t b { color: var(--text); font-size: 13.5px; font-weight: 600; }
+html body .star-ask-t span { color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+html body .star-ask-b { display: flex; gap: 6px; }
+html body .star-ask-b .btn { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+html body .gh-star.in-editor > span:not(.gh-count) { display: none; } /* the editor bar is tight: icon + count, the label is in the tooltip */
+html body .gh-star.in-editor .gh-count { padding-left: 0; border-left: 0; }

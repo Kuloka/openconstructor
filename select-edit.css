@@ -1,0 +1,24 @@
+/* Select & edit: hairline outlines, a tag label and a compact prompt next to the picked part. No glow. */
+.canvas.selecting .node, .canvas.selecting .node * { cursor: crosshair; }
+.canvas.selecting .node:hover { outline-color: transparent; }
+.canvas.selecting .node.selected { outline-color: transparent !important; }
+
+.sel-box { position: fixed; z-index: 64; pointer-events: none; border-radius: 2px; }
+.sel-box.hover { outline: 1px dashed var(--text-2, #c8c8cf); outline-offset: 0; }
+.sel-box.pin { outline: 1.5px solid var(--accent); outline-offset: 1px; background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.sel-label { position: fixed; z-index: 65; pointer-events: none; padding: 2px 6px; border-radius: 3px; background: var(--panel-2); border: 1px solid var(--border-2); color: var(--text-2); font: 500 10.5px/1.4 var(--mono); white-space: nowrap; }
+
+.sel-pop { position: fixed; z-index: 66; width: 340px; padding: 6px; background: var(--panel); border: 1px solid var(--border-2); border-radius: 8px; box-shadow: 0 12px 32px #0008; animation: pop-in .14s var(--ease-out, ease-out); }
+.sel-pop-head { display: flex; align-items: center; gap: 2px; padding: 0 0 6px 4px; }
+.sel-pop-tag { flex: 1; min-width: 0; overflow: hidden; color: var(--muted); font: 11px/1 var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+.sel-pop-icon { height: 22px; min-width: 22px; padding: 0 6px; border: 0; border-radius: 4px; background: transparent; color: var(--muted); font-size: 11.5px; cursor: pointer; }
+.sel-pop-icon:hover:not(:disabled) { background: var(--panel-2); color: var(--text); }
+.sel-pop-icon:disabled { opacity: .35; cursor: default; }
+.sel-pop-row { display: flex; gap: 6px; }
+.sel-pop-row input { flex: 1; min-width: 0; height: 32px; padding: 0 10px; border: 1px solid var(--border-2); border-radius: 6px; background: var(--bg); color: var(--text); font: 13px var(--font, inherit); }
+.sel-pop-row input:focus { outline: none; border-color: var(--text-2, #c8c8cf); }
+.sel-pop-row input::placeholder { color: var(--subtle, #6b6b75); }
+.sel-pop-send { width: 32px; height: 32px; border: 0; border-radius: 6px; background: var(--accent); color: var(--on-accent); font-size: 14px; cursor: pointer; }
+.sel-pop-note { margin: 0; padding: 2px 4px 4px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.sel-pop .hidden, .sel-box.hidden, .sel-label.hidden, .sel-pop.hidden { display: none; }
+#selectToggle[aria-pressed="true"] { background: var(--panel-2); color: var(--text); border-color: var(--text-2, #c8c8cf); }

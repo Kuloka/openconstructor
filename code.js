@@ -55,6 +55,7 @@ root.innerHTML = `
       <button type="button" data-tab="preview" title="${esc(t('preview only'))}">${svg(ICON.eye, 14)}</button>
     </div>
     <button class="btn" type="button" data-cw="new">+ ${esc(t('new app'))}</button>
+    <button class="btn" type="button" data-cw="data" title="${esc(t('Records your apps save with oc.db'))}">${esc(t('data'))}</button>
     <button class="btn" type="button" data-cw="canvas">${esc(t('open on canvas'))}</button>
     <button class="btn primary" type="button" data-cw="publish">${esc(t('publish'))}</button>
     <button class="btn icon cw-x" type="button" data-cw="close" aria-label="${esc(t('close'))}" title="${esc(t('Back to the editor'))}">×</button>
@@ -408,6 +409,7 @@ root.addEventListener('click', e => {
   if (a === 'problems') { ui.panel = true; ui.ptab = 'problems'; save(); size(); renderPanel(); }
   if (a === 'clear') { if (ui.ptab === 'console') logs = []; else { problems = []; bug = null; showBug(); } renderPanel(); }
   if (a === 'publish') import('./publish.js').then(m => m.openPublish());
+  if (a === 'data') window.dispatchEvent(new CustomEvent('oc:app-data'));
   if (a === 'apply') apply();
 });
 wInput.addEventListener('change', () => { const v = parseInt(wInput.value, 10); ui.width = Number.isFinite(v) ? clampW(v) : 0; save(); size(); });
