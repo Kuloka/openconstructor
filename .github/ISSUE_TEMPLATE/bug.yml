@@ -1,0 +1,29 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what you got instead. A screenshot helps a lot.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open openconstructor.pw
+        2. Ask the AI "…"
+        3. …
+  - type: input
+    id: model
+    attributes:
+      label: AI model / provider (if the AI is involved)
+      placeholder: Free AI, or e.g. Groq · llama-3.3-70b
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and OS
+      placeholder: Chrome 142 on Windows 11
